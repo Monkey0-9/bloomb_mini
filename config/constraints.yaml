@@ -1,0 +1,48 @@
+# ═══════════════════════════════════════════════════════════════
+# HARD CONSTRAINTS — Non-negotiable system parameters
+# Override these values before deployment. Defaults are for
+# research/development. Halt and report if any constraint
+# is violated at runtime.
+# ═══════════════════════════════════════════════════════════════
+
+budget:
+  cloud_compute_monthly_usd: 5000
+  data_license_monthly_usd: 2000
+
+infrastructure:
+  cloud_provider: "aws"
+  region: "us-east-1"
+  data_sovereignty_notes: "All raw satellite data stored in us-east-1. No cross-region replication without legal review."
+
+team:
+  engineers: 1
+  analysts: 1
+  roles:
+    - name: "Lead Engineer"
+      responsibilities: ["pipeline development", "model training", "infrastructure", "on-call"]
+    - name: "Research Analyst"
+      responsibilities: ["signal research", "backtesting", "annotation review", "reporting"]
+
+regulatory:
+  framework: "internal_research_only"
+  # Options: "mifid_ii", "sec_15c3_5", "internal_research_only"
+  live_trading_permitted: false
+  audit_log_retention_years: 7
+  compliance_blocklist_enabled: false  # Enable when switching to regulated framework
+
+capital:
+  simulated_nav_usd: 10000000
+  max_single_name_pct: 2.0   # % of NAV
+  max_sector_pct: 15.0       # % of NAV (GICS L2)
+  max_country_pct: 25.0      # % of NAV
+  max_gross_exposure_pct: 150.0  # long/short book
+  min_liquidity_adtv_pct: 5.0    # position < 5% of 30-day ADTV
+
+uptime:
+  signal_pipeline_sla_pct: 99.5   # during market hours
+  batch_job_max_lag_hours: 6
+
+timeline:
+  phase_1_weeks: 16  # 1 signal, 1 region, 1 asset class
+  phase_2_weeks: 12  # multi-signal, global
+  phase_3_weeks: 8   # live paper trading

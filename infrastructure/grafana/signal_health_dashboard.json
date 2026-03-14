@@ -1,0 +1,158 @@
+{
+  "title": "SatTrade Signal Health Dashboard",
+  "description": "Live monitoring for satellite-based trading signals",
+  "panels": [
+    {
+      "title": "Rolling 63-Day IC",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sattrade_signal_ic_rolling_63d",
+          "legendFormat": "{{signal_name}}"
+        },
+        {
+          "expr": "sattrade_signal_ic_historical_p10",
+          "legendFormat": "{{signal_name}} P10 threshold"
+        }
+      ],
+      "thresholds": [
+        {"value": 0, "color": "red", "label": "Zero IC"},
+        {"value": 0.02, "color": "yellow", "label": "Weak"},
+        {"value": 0.05, "color": "green", "label": "Target"}
+      ],
+      "alert": {
+        "name": "IC Below P10",
+        "condition": "sattrade_signal_ic_below_p10_days > 10",
+        "severity": "warning",
+        "message": "Signal IC has been below historical P10 for 10+ consecutive days"
+      },
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8}
+    },
+    {
+      "title": "Pipeline Latency (P50/P95/P99)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(sattrade_pipeline_latency_seconds_bucket[1h]))",
+          "legendFormat": "P50 {{stage}}"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(sattrade_pipeline_latency_seconds_bucket[1h]))",
+          "legendFormat": "P95 {{stage}}"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(sattrade_pipeline_latency_seconds_bucket[1h]))",
+          "legendFormat": "P99 {{stage}}"
+        }
+      ],
+      "thresholds": [
+        {"value": 21600, "color": "red", "label": "6h SLA"}
+      ],
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8}
+    },
+    {
+      "title": "Feature Drift (PSI)",
+      "type": "bargauge",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sattrade_feature_psi",
+          "legendFormat": "{{feature_name}}"
+        }
+      ],
+      "thresholds": [
+        {"value": 0, "color": "green"},
+        {"value": 0.1, "color": "yellow", "label": "Fine-tune"},
+        {"value": 0.2, "color": "red", "label": "Full retrain"}
+      ],
+      "gridPos": {"x": 0, "y": 8, "w": 8, "h": 6}
+    },
+    {
+      "title": "Data Coverage by Region",
+      "type": "gauge",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sattrade_data_coverage_pct",
+          "legendFormat": "{{region}}"
+        }
+      ],
+      "thresholds": [
+        {"value": 0, "color": "red"},
+        {"value": 50, "color": "yellow"},
+        {"value": 80, "color": "green"}
+      ],
+      "gridPos": {"x": 8, "y": 8, "w": 8, "h": 6}
+    },
+    {
+      "title": "Model Confidence Distribution",
+      "type": "histogram",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sattrade_model_confidence_mean",
+          "legendFormat": "{{model_version}}"
+        }
+      ],
+      "gridPos": {"x": 16, "y": 8, "w": 8, "h": 6}
+    },
+    {
+      "title": "Tiles Processed (by Source & Status)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(sattrade_tiles_processed_total[1h])",
+          "legendFormat": "{{source}} — {{status}}"
+        }
+      ],
+      "gridPos": {"x": 0, "y": 14, "w": 12, "h": 6}
+    },
+    {
+      "title": "Risk Engine — Kill Switch Status",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sattrade_kill_switch_active",
+          "legendFormat": "Kill Switch"
+        }
+      ],
+      "thresholds": [
+        {"value": 0, "color": "green", "label": "ACTIVE"},
+        {"value": 1, "color": "red", "label": "KILLED"}
+      ],
+      "gridPos": {"x": 12, "y": 14, "w": 6, "h": 6}
+    },
+    {
+      "title": "Portfolio NAV",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sattrade_portfolio_nav_usd",
+          "legendFormat": "NAV"
+        }
+      ],
+      "gridPos": {"x": 18, "y": 14, "w": 6, "h": 6}
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "signal_name",
+        "type": "query",
+        "query": "label_values(sattrade_signal_ic_rolling_63d, signal_name)"
+      },
+      {
+        "name": "stage",
+        "type": "query",
+        "query": "label_values(sattrade_pipeline_latency_seconds_bucket, stage)"
+      }
+    ]
+  },
+  "time": {"from": "now-7d", "to": "now"},
+  "refresh": "5m"
+}

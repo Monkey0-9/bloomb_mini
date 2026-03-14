@@ -1,0 +1,27 @@
+{
+  "on_call_ops": [
+    {
+      "name": "Praveen P",
+      "role": "CTO / Lead Quant",
+      "phone": "+1-555-SAT-TRADE",
+      "email": "praveen@sattrade.ai",
+      "timezone": "UTC+5:30",
+      "hours": "12:00-20:00 UTC",
+      "escalation_level": 1
+    },
+    {
+      "name": "Risk Officer Alpha",
+      "role": "Risk Management",
+      "phone": "+1-555-RISK-OPS",
+      "email": "risk@sattrade.ai",
+      "timezone": "UTC-5",
+      "hours": "20:00-04:00 UTC",
+      "escalation_level": 1
+    }
+  ],
+  "escalation_policy": {
+    "infra_failure": "Praveen P",
+    "risk_breach": "Risk Officer Alpha",
+    "signal_anomaly": "Praveen P"
+  }
+}
