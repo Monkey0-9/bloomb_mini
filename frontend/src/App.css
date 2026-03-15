@@ -1,0 +1,75 @@
+/* Base App styles */
+.app-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+}
+
+.main-content {
+  grid-column: 2 / 3;
+  grid-row: 2 / 3;
+  position: relative;
+}
+
+.sidebar-left {
+  grid-column: 1 / 2;
+  grid-row: 2 / 4;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sidebar-right {
+  grid-column: 3 / 4;
+  grid-row: 2 / 4;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.bottom-panel {
+  grid-column: 2 / 3;
+  grid-row: 3 / 4;
+}
+
+/* Component specifics */
+.map-canvas {
+  width: 100%;
+  height: 100%;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.stat-card {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--primary);
+  text-shadow: var(--glow-primary);
+}
+
+.stat-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+}
+
+.status-badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.status-active { background: rgba(0, 255, 136, 0.1); color: var(--success); border: 1px solid var(--success); }
+.status-warn { background: rgba(255, 255, 0, 0.1); color: #ffff00; border: 1px solid #ffff00; }

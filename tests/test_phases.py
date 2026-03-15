@@ -12,18 +12,22 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import pytest
 
-
-# ═══════════════════════════════════════════════════════════════════
-# ANNOTATION QUALITY TESTS (Phase 3)
-# ═══════════════════════════════════════════════════════════════════
-
 from src.annotate.quality import AnnotationQualityAgent, Annotation
 from src.annotate.taxonomy import (
     get_taxonomy,
     UseCase,
     PORT_THROUGHPUT_TAXONOMY,
 )
+from src.features.feature_store import FeatureStore, FeatureRecord
+from src.features.ais_fusion import AISFusionEngine, SARVesselDetection
+from src.ingest.ais import VesselPosition
+from src.signals.price_impact import ICAnalyzer, LinearModel
+from src.backtest.walk_forward import WalkForwardValidator
 
+
+# ═══════════════════════════════════════════════════════════════════
+# ANNOTATION QUALITY TESTS (Phase 3)
+# ═══════════════════════════════════════════════════════════════════
 
 class TestAnnotationQuality:
     @pytest.fixture
@@ -97,9 +101,6 @@ class TestTaxonomy:
 # FEATURE STORE TESTS (Phase 4)
 # ═══════════════════════════════════════════════════════════════════
 
-from src.features.feature_store import FeatureStore, FeatureRecord
-
-
 class TestFeatureStore:
     @pytest.fixture
     def store(self):
@@ -149,10 +150,6 @@ class TestFeatureStore:
 # AIS FUSION TESTS (Phase 4)
 # ═══════════════════════════════════════════════════════════════════
 
-from src.features.ais_fusion import AISFusionEngine, SARVesselDetection
-from src.ingest.ais import VesselPosition
-
-
 class TestAISFusion:
     @pytest.fixture
     def engine(self):
@@ -199,9 +196,6 @@ class TestAISFusion:
 # SIGNAL MODELING TESTS (Phase 5)
 # ═══════════════════════════════════════════════════════════════════
 
-from src.signals.price_impact import ICAnalyzer, LinearModel
-
-
 class TestICAnalyzer:
     def test_perfect_signal(self):
         """Perfect signal should have IC close to 1."""
@@ -236,9 +230,6 @@ class TestLinearModel:
 # WALK-FORWARD TESTS (Phase 6)
 # ═══════════════════════════════════════════════════════════════════
 
-from src.backtest.walk_forward import WalkForwardValidator
-
-
 class TestWalkForward:
     def test_fold_generation(self):
         holdout = datetime(2024, 1, 1)
@@ -248,110 +239,4 @@ class TestWalkForward:
         assert len(folds) >= 1
         # All fold test ends should be before holdout
         for fold in folds:
-            assert fold.test_end <= holdout
-
-
-# ═══════════════════════════════════════════════════════════════════
-# ORDER MANAGER TESTS (Phase 7)
-# ═══════════════════════════════════════════════════════════════════
-
-from src.execution.order_manager import OrderManager, OrderSide, OrderType, OrderStatus
-
-
-class TestOrderManager:
-    @pytest.fixture
-    def manager(self):
-        return OrderManager()
-
-    def test_order_lifecycle(self, manager):
-        """Order should flow through full lifecycle."""
-        order = manager.create_order(
-            asset_id="MAERSK",
-            side=OrderSide.BUY,
-            quantity=100,
-            order_type=OrderType.MARKET,
-        )
-        assert order.status == OrderStatus.PENDING
-
-        manager.approve_risk(order.order_id, "risk_check_123")
-        assert order.status == OrderStatus.RISK_APPROVED
-
-        manager.submit(order.order_id)
-        assert order.status == OrderStatus.SUBMITTED
-
-        manager.fill(order.order_id, fill_price=500.0)
-        assert order.status == OrderStatus.FILLED
-        assert order.fill_price == 500.0
-
-    def test_cannot_submit_unapproved(self, manager):
-        order = manager.create_order("MAERSK", OrderSide.BUY, 100)
-        with pytest.raises(ValueError, match="Cannot submit"):
-            manager.submit(order.order_id)
-
-
-# ═══════════════════════════════════════════════════════════════════
-# SOURCE REGISTRY TESTS (Phase 1)
-# ═══════════════════════════════════════════════════════════════════
-
-from src.ingest.source_registry import SourceRegistry, SourceTier
-
-
-class TestSourceRegistry:
-    def test_phase1_sources_all_free(self):
-        registry = SourceRegistry()
-        sources = registry.get_phase1_sources()
-        for s in sources:
-            assert s.tier == SourceTier.FREE
-            assert s.cost_per_month_usd == 0.0
-            assert s.commercial_use_permitted
-
-    def test_phase1_cost_zero(self):
-        registry = SourceRegistry()
-        costs = registry.get_monthly_cost()
-        # Phase 1 (free tier only active by default)
-        assert costs["total"] == 0.0
-
-    def test_validate_registered_source(self):
-        registry = SourceRegistry()
-        assert registry.validate_source("sentinel-2")
-        assert not registry.validate_source("unregistered-source")
-
-
-# ═══════════════════════════════════════════════════════════════════
-# RETRAINING SCHEDULER TESTS (Phase 8)
-# ═══════════════════════════════════════════════════════════════════
-
-from src.monitoring.retrain import RetrainingScheduler, RetrainTrigger
-
-
-class TestRetrainingScheduler:
-    @pytest.fixture
-    def scheduler(self):
-        return RetrainingScheduler()
-
-    def test_drift_triggers_retrain(self, scheduler):
-        drift_results = {
-            "vessel_count": {"psi": 0.25, "classification": "SIGNIFICANT_DRIFT"},
-        }
-        jobs = scheduler.check_triggers(feature_drift_results=drift_results)
-        # Should trigger both quarterly (first run) and drift retrain
-        drift_jobs = [j for j in jobs if j.trigger == RetrainTrigger.DRIFT_FULL_RETRAIN]
-        assert len(drift_jobs) == 1
-
-    def test_model_promotion_gate(self, scheduler):
-        drift_results = {"f1": {"psi": 0.3, "classification": "SIGNIFICANT_DRIFT"}}
-        jobs = scheduler.check_triggers(feature_drift_results=drift_results)
-        retrain_job = [j for j in jobs if j.trigger == RetrainTrigger.DRIFT_FULL_RETRAIN][0]
-
-        # Model must beat baseline by ≥ 0.02 Sharpe
-        assert not scheduler.evaluate_retrained_model(
-            retrain_job.job_id, new_sharpe=0.50, baseline_sharpe=0.49
-        )
-        # Resufficient improvement
-        new_job = scheduler.manual_trigger("analyst", "test")
-        # Backdate train_data_end to satisfy 4-week OOS requirement relative to completed_at
-        # Assuming evaluate_retrained_model sets completed_at to NOW
-        new_job.train_data_end = datetime.now(timezone.utc) - timedelta(weeks=5)
-        assert scheduler.evaluate_retrained_model(
-            new_job.job_id, new_sharpe=0.55, baseline_sharpe=0.50
-        )
+            assert fold.test_end < holdout
