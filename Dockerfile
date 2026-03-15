@@ -1,70 +1,39 @@
-# ─────────────────────────────────────────────────────────
-# SatTrade — Multi-stage Docker Build
-# Target: Python 3.11 with GDAL + ML dependencies
-# ─────────────────────────────────────────────────────────
-
-# Stage 1: Builder
+# Stage 1: Build dependencies
 FROM python:3.11-slim AS builder
 
+WORKDIR /build
+COPY pyproject.toml .
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    gdal-bin \
-    libgdal-dev \
-    libgeos-dev \
-    libproj-dev \
-    curl \
-    git \
+    gcc g++ libgdal-dev gdal-bin \
     && rm -rf /var/lib/apt/lists/*
 
-ENV CPLUS_INCLUDE_PATH=/usr/include/gdal
-ENV C_INCLUDE_PATH=/usr/include/gdal
+RUN pip install --no-cache-dir build wheel
+RUN pip install --no-cache-dir -e ".[dev]" --prefix=/install
 
-WORKDIR /build
-
-# Install Python dependencies first (layer caching)
-COPY pyproject.toml .
-RUN pip install --no-cache-dir --prefix=/install -e ".[dev]" 2>/dev/null || \
-    pip install --no-cache-dir --prefix=/install pydantic numpy scipy requests pyyaml
-
-# Stage 2: Runtime
+# Stage 2: Runtime image
 FROM python:3.11-slim AS runtime
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gdal-bin \
-    libgdal32 \
-    libgeos3.12.1 \
-    libproj25 \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Never run as root
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+WORKDIR /app
 
 # Copy installed packages from builder
 COPY --from=builder /install /usr/local
 
-# Create non-root user
-RUN groupadd -r sattrade && useradd -r -g sattrade -d /app sattrade
+# Install only runtime OS deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgdal32 gdal-bin \
+    && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+# Copy source code
+COPY --chown=appuser:appuser src/ ./src/
+COPY --chown=appuser:appuser tests/ ./tests/
+COPY --chown=appuser:appuser demo_full_system.py .
+COPY --chown=appuser:appuser pyproject.toml .
 
-# Copy application code
-COPY src/ ./src/
-COPY config/ ./config/
-COPY agents/ ./agents/
-COPY pyproject.toml ./
+USER appuser
 
-# Ensure directories exist
-RUN mkdir -p /app/data/raw /app/data/processed /app/data/features \
-    /app/logs /app/mlruns \
-    && chown -R sattrade:sattrade /app
-
-USER sattrade
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "from src.common.config import load_constraints; load_constraints()" || exit 1
-
-# Default: run the pipeline orchestrator
-ENV PYTHONPATH=/app
-ENV PYTHONUNBUFFERED=1
-
-ENTRYPOINT ["python", "-m"]
-CMD ["src.ingest.sentinel"]
+# Smoke test: run pytest on container start
+CMD ["pytest", "tests/", "-v", "--tb=short"]

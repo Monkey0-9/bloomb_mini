@@ -1,241 +1,131 @@
 """
-Feature Store — Phase 4.5
-
-Materialise all features into a point-in-time correct store.
-Every feature record has:
-  - entity_id (facility or port)
-  - feature_timestamp (point-in-time correct — MANDATORY)
-  - feature_values
-  - source_tile_ids[]
-  - model_version
-
-CRITICAL: Never join on wall-clock time — always use as-of joins
-to prevent look-ahead bias.
+Point-in-time correct feature store.
+THE CARDINAL RULE: get_features_as_of(entity, T) NEVER returns a feature
+whose created_timestamp > T. Violating this rule invalidates every backtest
+result in the entire system.
 """
+import sqlite3
+from datetime import datetime
+from pathlib import Path
+from uuid import uuid4
 
-from __future__ import annotations
-
-import hashlib
-import json
-import logging
-from collections import defaultdict
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
-
-import numpy as np
-
-logger = logging.getLogger(__name__)
+from src.common.schemas import FeatureRecord
 
 
-@dataclass
-class FeatureRecord:
-    """Single feature record in the store."""
-    entity_id: str  # Port ID, facility ID, etc.
-    feature_name: str
-    feature_value: float
-    feature_timestamp: datetime  # Point-in-time correct
-    created_timestamp: Optional[datetime] = None # Real-world commit time
-    source_tile_ids: list[str] = field(default_factory=list)
-    model_version: str = ""
-    feature_hash: str = ""  # Content-addressed
-
-    def __post_init__(self) -> None:
-        if self.created_timestamp is None:
-            self.created_timestamp = self.feature_timestamp
-
-    def compute_hash(self) -> str:
-        """Compute content-addressed hash of feature inputs."""
-        content = json.dumps({
-            "entity_id": self.entity_id,
-            "feature_name": self.feature_name,
-            "feature_value": self.feature_value,
-            "feature_timestamp": self.feature_timestamp.isoformat(),
-            "created_timestamp": self.created_timestamp.isoformat(),
-            "source_tile_ids": sorted(self.source_tile_ids),
-            "model_version": self.model_version,
-        }, sort_keys=True)
-        self.feature_hash = hashlib.sha256(content.encode()).hexdigest()[:16]
-        return self.feature_hash
+class FeatureLeakError(Exception):
+    """Raised when look-ahead bias is detected. NEVER catch and continue."""
 
 
-@dataclass
-class FeatureVector:
-    """Complete feature vector for an entity at a point in time."""
-    entity_id: str
-    timestamp: datetime
-    features: dict[str, float] = field(default_factory=dict)
-    source_tile_ids: list[str] = field(default_factory=list)
-    model_version: str = ""
-    feature_hash: str = ""
+class DuplicateFeatureError(Exception):
+    """Raised when inserting a duplicate feature_id."""
+
+
+class HoldoutAccessError(Exception):
+    """Raised when training code attempts to access holdout data."""
+
+
+HOLDOUT_START_DATE = datetime(2023, 7, 1, 0, 0, 0)
 
 
 class FeatureStore:
-    """
-    In-memory feature store with point-in-time correct retrieval.
-    
-    In production: backed by Feast or Tecton.
-    For development: uses sorted in-memory storage with as-of join semantics.
-    
-    CRITICAL INVARIANT: The `get_features_as_of` method NEVER returns
-    features with timestamps after the query timestamp. This prevents
-    look-ahead bias in backtesting.
-    """
+    def __init__(self, db_path: str = "data/features.db",
+                 is_holdout: bool = False) -> None:
+        self.db_path = db_path
+        self.is_holdout = is_holdout
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        self._init_db()
 
-    def __init__(self) -> None:
-        # entity_id → feature_name → sorted list of (timestamp, created_ts, value, metadata)
-        self._store: dict[str, dict[str, list[tuple[datetime, datetime, float, dict[str, Any]]]]] = defaultdict(
-            lambda: defaultdict(list)
-        )
-        self._total_records = 0
+    def _init_db(self) -> None:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS features (
+                    feature_id        TEXT PRIMARY KEY,
+                    entity_id         TEXT NOT NULL,
+                    feature_name      TEXT NOT NULL,
+                    feature_value     REAL NOT NULL,
+                    event_timestamp   TEXT NOT NULL,
+                    created_timestamp TEXT NOT NULL,
+                    source_tile_id    TEXT NOT NULL,
+                    model_version     TEXT NOT NULL DEFAULT '1.0.0'
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_entity_created "
+                "ON features(entity_id, created_timestamp)"
+            )
+            conn.commit()
 
-    def materialize(self, record: FeatureRecord) -> None:
-        """Write a feature record to the store."""
-        record.compute_hash()
-
-        self._store[record.entity_id][record.feature_name].append((
-            record.feature_timestamp,
-            record.created_timestamp,
-            record.feature_value,
-            {
-                "source_tile_ids": record.source_tile_ids,
-                "model_version": record.model_version,
-                "feature_hash": record.feature_hash,
-            },
-        ))
-
-        # Keep sorted by feature timestamp
-        self._store[record.entity_id][record.feature_name].sort(key=lambda x: x[0])
-        self._total_records += 1
-
-    def materialize_batch(self, records: list[FeatureRecord]) -> int:
-        """Write multiple feature records. Returns count written."""
-        for r in records:
-            self.materialize(r)
-        logger.info(f"Materialised {len(records)} feature records")
-        return len(records)
+    def write(self, record: FeatureRecord) -> None:
+        if record.created_timestamp < record.event_timestamp:
+            raise ValueError(
+                f"created_timestamp {record.created_timestamp} cannot be before "
+                f"event_timestamp {record.event_timestamp}. "
+                "A feature cannot be available before the event that produced it."
+            )
+        with sqlite3.connect(self.db_path) as conn:
+            existing = conn.execute(
+                "SELECT feature_id FROM features WHERE feature_id = ?",
+                (record.feature_id,)
+            ).fetchone()
+            if existing:
+                raise DuplicateFeatureError(
+                    f"feature_id {record.feature_id} already exists"
+                )
+            conn.execute(
+                "INSERT INTO features VALUES (?,?,?,?,?,?,?,?)",
+                (
+                    record.feature_id, record.entity_id, record.feature_name,
+                    record.feature_value,
+                    record.event_timestamp.isoformat(),
+                    record.created_timestamp.isoformat(),
+                    record.source_tile_id, record.model_version,
+                ),
+            )
+            conn.commit()
 
     def get_features_as_of(
         self,
         entity_id: str,
-        as_of_timestamp: datetime,
-        feature_names: Optional[list[str]] = None,
-    ) -> FeatureVector:
-        """
-        Point-in-time correct feature retrieval (as-of join).
-        
-        Returns the most recent feature values available AT OR BEFORE
-        the query timestamp. NEVER returns future data.
-        
-        This is the ONLY way features should be retrieved for
-        backtesting and signal generation.
-        """
-        if entity_id not in self._store:
-            return FeatureVector(entity_id=entity_id, timestamp=as_of_timestamp)
+        as_of: datetime,
+        feature_names: list[str] | None = None,
+    ) -> list[FeatureRecord]:
+        # HOLDOUT PROTECTION: training code must never access holdout period
+        if not self.is_holdout and as_of >= HOLDOUT_START_DATE:
+            raise HoldoutAccessError(
+                f"as_of={as_of} is in the holdout period (>= {HOLDOUT_START_DATE}). "
+                "Training and backtesting code must not access holdout data. "
+                "Use the holdout FeatureStore only for final evaluation."
+            )
 
-        entity_features = self._store[entity_id]
-        names_to_query = feature_names or list(entity_features.keys())
+        with sqlite3.connect(self.db_path) as conn:
+            query = (
+                "SELECT feature_id, entity_id, feature_name, feature_value, "
+                "event_timestamp, created_timestamp, source_tile_id, model_version "
+                "FROM features "
+                "WHERE entity_id = ? AND created_timestamp <= ?"
+            )
+            params: list = [entity_id, as_of.isoformat()]
+            if feature_names:
+                placeholders = ",".join("?" * len(feature_names))
+                query += f" AND feature_name IN ({placeholders})"
+                params.extend(feature_names)
+            rows = conn.execute(query, params).fetchall()
 
-        features: dict[str, float] = {}
-        all_tile_ids: list[str] = []
-        latest_version = ""
-
-        for name in names_to_query:
-            if name not in entity_features:
-                continue
-
-            records = entity_features[name]
-            # Binary search / scan for most recent record <= as_of_timestamp
-            best_record = None
-            for ts, created_ts, val, meta in reversed(records):
-                # Look-ahead prevention: the feature must have been *computed*
-                # and *inserted* exactly at or before the simulated backtest wall-clock
-                if ts <= as_of_timestamp and created_ts <= as_of_timestamp:
-                    # Staleness check: reject features older than 365 days for testing/dev
-                    # (Satellite passes for high-res can be infrequent)
-                    staleness_seconds = (as_of_timestamp - ts).total_seconds()
-                    if staleness_seconds <= 365 * 24 * 3600:
-                        best_record = (ts, val, meta)
-                        break
-
-            if best_record:
-                _, val, meta = best_record
-                features[name] = val
-                all_tile_ids.extend(meta.get("source_tile_ids", []))
-                latest_version = meta.get("model_version", latest_version)
-
-        return FeatureVector(
-            entity_id=entity_id,
-            timestamp=as_of_timestamp,
-            features=features,
-            source_tile_ids=list(set(all_tile_ids)),
-            model_version=latest_version,
-        )
-
-    def get_feature_panel(
-        self,
-        entity_ids: list[str],
-        feature_names: list[str],
-        timestamps: list[datetime],
-    ) -> dict[str, dict[str, list[Optional[float]]]]:
-        """
-        Get a panel of features across entities and timestamps.
-        
-        Returns: {entity_id: {feature_name: [values_per_timestamp]}}
-        All values are point-in-time correct.
-        """
-        panel: dict[str, dict[str, list[Optional[float]]]] = {}
-
-        for entity_id in entity_ids:
-            panel[entity_id] = {}
-            for feature_name in feature_names:
-                values: list[Optional[float]] = []
-                for ts in timestamps:
-                    fv = self.get_features_as_of(entity_id, ts, [feature_name])
-                    values.append(fv.features.get(feature_name))
-                panel[entity_id][feature_name] = values
-
-        return panel
-
-    def get_latest_features(self, entity_id: str) -> FeatureVector:
-        """Get the most recent features for an entity (live scoring)."""
-        return self.get_features_as_of(entity_id, datetime.now(timezone.utc))
-
-    def get_entity_ids(self) -> list[str]:
-        """Get all entity IDs in the store."""
-        return list(self._store.keys())
-
-    def get_feature_names(self, entity_id: str) -> list[str]:
-        """Get all feature names for an entity."""
-        return list(self._store.get(entity_id, {}).keys())
-
-    def get_record_count(self) -> int:
-        """Get total number of records in the store."""
-        return self._total_records
-
-    def validate_no_lookahead(
-        self,
-        entity_id: str,
-        query_timestamp: datetime,
-    ) -> bool:
-        """
-        Validate that no features returned have timestamps after the query.
-        Used in backtesting to verify point-in-time correctness.
-        """
-        entity_features = self._store.get(entity_id, {})
-        for name, records in entity_features.items():
-            best_ts = None
-            best_created_ts = None
-            for ts, created_ts, val, meta in reversed(records):
-                if ts <= query_timestamp:
-                    best_ts = ts
-                    best_created_ts = created_ts
-                    break
-            
-            if best_ts is not None and (best_ts > query_timestamp or best_created_ts > query_timestamp):
-                logger.critical(
-                    f"LOOKAHEAD BIAS DETECTED: Feature '{name}' for "
-                    f"'{entity_id}' has ts {best_ts} or created_ts {best_created_ts} > query {query_timestamp}"
+        results = []
+        for row in rows:
+            r = FeatureRecord(
+                feature_id=row[0], entity_id=row[1], feature_name=row[2],
+                feature_value=row[3],
+                event_timestamp=datetime.fromisoformat(row[4]),
+                created_timestamp=datetime.fromisoformat(row[5]),
+                source_tile_id=row[6], model_version=row[7],
+            )
+            # Double-check: this should never fire if SQL is correct
+            if r.created_timestamp > as_of:
+                raise FeatureLeakError(
+                    f"LOOK-AHEAD BIAS DETECTED: feature {r.feature_id} "
+                    f"created at {r.created_timestamp} returned for "
+                    f"as_of={as_of}. This is a critical bug."
                 )
-                return False
-        return True
+            results.append(r)
+        return results

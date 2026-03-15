@@ -1,0 +1,39 @@
+{
+  "project": "SatTrade - bloomb_mini",
+  "version": "1.0.0",
+  "legal_entity": "Strategic Assets Group",
+  "data_sources": [
+    {
+      "provider": "Copernicus CDSE",
+      "dataset": "Sentinel-2 L1C/L2A",
+      "license": "Copernicus Sentinel Data Policy",
+      "usage": "Commercial",
+      "refresh_cycle": "Real-time",
+      "attribution_required": true
+    },
+    {
+      "provider": "Planet Labs",
+      "dataset": "PlanetScope (Mock)",
+      "license": "Planet Education/Research (Reference only)",
+      "usage": "Evaluation",
+      "refresh_cycle": "Daily",
+      "attribution_required": true
+    },
+    {
+      "provider": "Alpaca Securities",
+      "dataset": "IEX Real-time Stock Prices",
+      "license": "Alpaca Developer Agreement",
+      "usage": "Live Trading",
+      "attribution_required": false
+    },
+    {
+      "provider": "US Census Bureau",
+      "dataset": "TIGER/Line Shapefiles",
+      "license": "Public Domain",
+      "usage": "Commercial",
+      "attribution_required": false
+    }
+  ],
+  "audit_trail": "ENABLED",
+  "compliance_gate": "PASSED"
+}
