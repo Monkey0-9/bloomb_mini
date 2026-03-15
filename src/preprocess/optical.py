@@ -3,10 +3,11 @@ Sentinel-2 atmospheric correction using py6S.
 NOT DOS. Real surface reflectance computation.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
-import numpy as np
 
+import numpy as np
 
 SENTINEL2_BANDS: dict[str, float] = {
     "B02": 490.0,
@@ -41,7 +42,7 @@ def correct_atmospheric_6s(
     tile_id: str = "",
 ) -> CorrectionResult:
     import rasterio
-    from Py6S import SixS, Geometry, AeroProfile, AtmosProfile, Wavelength
+    from Py6S import AeroProfile, AtmosProfile, Geometry, SixS, Wavelength
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     pixels_clipped_total = 0
     band_stats: dict[str, dict[str, float]] = {}
@@ -105,3 +106,4 @@ def compute_ndvi(sr_path: str) -> np.ndarray:
     denom = nir + red
     denom = np.where(denom == 0, 1e-10, denom)
     return np.clip((nir - red) / denom, -1.0, 1.0)
+

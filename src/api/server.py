@@ -6,13 +6,13 @@ import asyncio
 import json
 import os
 import random
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
+import akshare as ak
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-import akshare as ak
 
 app = FastAPI(title="SatTrade API", version="0.1.0")
 
@@ -34,7 +34,7 @@ MOCK_SIGNALS = {
         "delta_vs_baseline": 0.34,
         "ic": 0.047,
         "icir": 0.62,
-        "last_updated": datetime.now(timezone.utc).isoformat(),
+        "last_updated": datetime.now(UTC).isoformat(),
         "affected_equities": [
             {"ticker": "AMKBY", "strength": "STRONG", "direction": "↑↑"},
             {"ticker": "ZIM",   "strength": "MEDIUM", "direction": "↑"},
@@ -48,7 +48,7 @@ MOCK_SIGNALS = {
         "delta_vs_baseline": 0.12,
         "ic": 0.044,
         "icir": 0.58,
-        "last_updated": datetime.now(timezone.utc).isoformat(),
+        "last_updated": datetime.now(UTC).isoformat(),
         "affected_equities": [
             {"ticker": "WMT", "strength": "STRONG", "direction": "↑↑"},
             {"ticker": "TGT", "strength": "WEAK",   "direction": "~"},
@@ -62,7 +62,7 @@ MOCK_SIGNALS = {
         "delta_vs_baseline": 0.45,
         "ic": 0.052,
         "icir": 0.68,
-        "last_updated": datetime.now(timezone.utc).isoformat(),
+        "last_updated": datetime.now(UTC).isoformat(),
         "affected_equities": [
             {"ticker": "MT",  "strength": "STRONG", "direction": "↑↑"},
             {"ticker": "X",   "strength": "MEDIUM", "direction": "↑"},
@@ -76,7 +76,7 @@ MOCK_SIGNALS = {
         "delta_vs_baseline": 0.62,
         "ic": 0.058,
         "icir": 0.74,
-        "last_updated": datetime.now(timezone.utc).isoformat(),
+        "last_updated": datetime.now(UTC).isoformat(),
         "affected_equities": [
             {"ticker": "NTR",  "strength": "STRONG", "direction": "↑↑"},
             {"ticker": "MOS",  "strength": "STRONG", "direction": "↑↑"},
@@ -92,13 +92,12 @@ async def get_movements() -> dict[str, Any]:
     Returns high-density global movements. 
     Simulates 50+ vessels and 25+ flights for "Unlimited" Bloomberg visualization.
     """
-    import random
-    
+
     vessels = []
     names = ["MSC", "MAERSK", "COSCO", "ZIM", "EVERGREEN", "HAPAG-LLOYD"]
     suffixes = ["AMBITION", "GLOBAL I", "VOYAGER", "TRADER", "MARINER", "STAR"]
     cargo_types_ship = ["Crude Oil", "LNG", "Food Grains", "Standard TEUs", "Urea / Potash", "Automobiles"]
-    
+
     for i in range(50):
         c_type = random.choice(cargo_types_ship)
         amount = f"{random.randint(50, 300)}K Tonnes" if c_type != "Standard TEUs" else f"{random.randint(5, 24)}K TEUs"
@@ -141,7 +140,7 @@ async def get_movements() -> dict[str, Any]:
     return {
         "vessels": vessels,
         "flights": flights,
-        "as_of": datetime.now(timezone.utc).isoformat()
+        "as_of": datetime.now(UTC).isoformat()
     }
 
 
@@ -151,13 +150,13 @@ async def health() -> dict[str, Any]:
         "status": "live",
         "pipeline": "active",
         "signals_active": len(MOCK_SIGNALS),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
 
 @app.get("/api/signals")
 async def get_signals() -> dict[str, Any]:
-    return {"signals": MOCK_SIGNALS, "as_of": datetime.now(timezone.utc).isoformat()}
+    return {"signals": MOCK_SIGNALS, "as_of": datetime.now(UTC).isoformat()}
 
 
 @app.get("/api/signals/{signal_name}")
@@ -175,7 +174,7 @@ async def get_nav() -> dict[str, Any]:
         "gross_exposure_pct": 142.0,
         "var_99_1d_pct": 0.82,
         "kill_switch_state": "ARMED",
-        "as_of": datetime.now(timezone.utc).isoformat(),
+        "as_of": datetime.now(UTC).isoformat(),
     }
 
 
@@ -227,7 +226,6 @@ async def get_equities() -> dict[str, Any]:
 
 
 def _fallback_equity(ticker: str, name: str, exchange: str) -> dict[str, Any]:
-    import random
     base = {"AAPL": 178.2, "MSFT": 415.3, "NVDA": 876.4, "AMZN": 182.4,
             "AMKBY": 128.4, "WMT": 58.7, "ZIM": 14.22, "MT": 28.4,
             "HD": 352.6, "TGT": 142.1, "LNG": 158.4, "MATX": 124.4,
@@ -262,17 +260,17 @@ async def get_news(ticker: str = "GLOBAL") -> dict[str, Any]:
             title = row.get("标题", row.get("title", ""))
             if not title:
                 continue
-            
+
             # Simulated Impact calculation
             impact = "neutral"
             if "涨" in title or "增" in title or "高" in title or "利好" in title:
                 impact = "bullish"
             elif "跌" in title or "减" in title or "低" in title or "利空" in title:
                 impact = "bearish"
-                
+
             time_str = str(row.get("发布时间", row.get("time", "Now")))
             time_fmt = time_str[-8:-3] if len(time_str) >= 8 else time_str
-            
+
             news_items.append({
                 "id": i,
                 "time": time_fmt,
@@ -282,28 +280,28 @@ async def get_news(ticker: str = "GLOBAL") -> dict[str, Any]:
             })
     except Exception as e:
         print(f"AkShare News Error: {e}")
-        
+
     if not news_items:
         # Fallback simulator for 100% uptime ("Unlimited Strategy")
         import random
         from datetime import datetime
         now = datetime.now()
-        
+
         sources = ["BBG", "RTRS", "DJ", "FT", "WSJ"]
         target = ticker.split(" ")[0] if ticker else "GLOBAL"
         templates = [
             f"GLOBAL LOGISTICS ROUTING FOR {target} SHOWS UNEXPECTED DELAYS IN PANAMA CANAL",
-            f"SATELLITE TELEMETRY INDICATES SURGE IN ACTIVITY AT SHANGHAI YANGSHAN PORT",
-            f"OPEC+ ANNOUNCES SURPRISE PRODUCTION CUTS, IMPACTING HEAVY CRUDE RATES",
-            f"EUROPEAN CENTRAL BANK HOLDS RATES STEADY AMIDST INFLATION CONCERNS",
-            f"SEMICONDUCTOR FAB UTILIZATION RATES IN TAIWAN REACH 98% CAPACITY",
-            f"UNUSUAL VESSEL CONGREGATION DETECTED NEAR HORMUZ STRAIT BY SENTINEL-2",
-            f"WHEAT FUTURES SURGE AFTER BLACK SEA SUPPLY CHAIN DISRUPTIONS",
+            "SATELLITE TELEMETRY INDICATES SURGE IN ACTIVITY AT SHANGHAI YANGSHAN PORT",
+            "OPEC+ ANNOUNCES SURPRISE PRODUCTION CUTS, IMPACTING HEAVY CRUDE RATES",
+            "EUROPEAN CENTRAL BANK HOLDS RATES STEADY AMIDST INFLATION CONCERNS",
+            "SEMICONDUCTOR FAB UTILIZATION RATES IN TAIWAN REACH 98% CAPACITY",
+            "UNUSUAL VESSEL CONGREGATION DETECTED NEAR HORMUZ STRAIT BY SENTINEL-2",
+            "WHEAT FUTURES SURGE AFTER BLACK SEA SUPPLY CHAIN DISRUPTIONS",
             f"{target} OPTIONS VOLUME SPIKES 400% AHEAD OF EARNINGS",
-            f"BALTIC DRY INDEX JUMPS 4.2% AS CAPESIZE RATES EXPLODE",
-            f"NEW SATELLITE IMAGERY REVEALS EXPANSION OF RARE EARTH MINING FACILITIES"
+            "BALTIC DRY INDEX JUMPS 4.2% AS CAPESIZE RATES EXPLODE",
+            "NEW SATELLITE IMAGERY REVEALS EXPANSION OF RARE EARTH MINING FACILITIES"
         ]
-        
+
         for i in range(10):
             impact = random.choice(["bullish", "bearish", "neutral", "bullish"])
             news_items.append({
@@ -325,7 +323,7 @@ async def websocket_signals(websocket: WebSocket) -> None:
             await asyncio.sleep(15)
             payload = {
                 "type": "SIGNAL_UPDATE",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "signals": MOCK_SIGNALS,
                 "health": {
                     "pipeline": "live",
