@@ -26,8 +26,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
 
 import numpy as np
 
@@ -39,28 +38,29 @@ logger = logging.getLogger(__name__)
 @dataclass
 class EconomicProxy:
     """A constructed economic proxy value."""
+
     entity_id: str
     proxy_name: str
     proxy_value: float
     alpha_signal: float  # satellite - consensus
     alpha_confidence: float  # 0-1
-    consensus_value: Optional[float] = None
+    consensus_value: float | None = None
     unit: str = ""
-    feature_timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    feature_timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     source_features: dict[str, float] = field(default_factory=dict)
 
 
 class PortThroughputProxy:
     """
     Convert port CV features into TEU (Twenty-foot Equivalent Unit) estimates.
-    
+
     Formula:
     TEU_estimate = (
         container_count × avg_teu_per_stack +
         vessels_at_berth × avg_teu_per_vessel × berth_utilisation_factor +
         crane_activity_score × teu_per_crane_hour
     )
-    
+
     Alpha = (satellite_TEU - consensus_TEU) / consensus_TEU
     """
 
@@ -77,7 +77,7 @@ class PortThroughputProxy:
         self,
         entity_id: str,
         feature_vector: FeatureVector,
-        consensus_teu: Optional[float] = None,
+        consensus_teu: float | None = None,
     ) -> EconomicProxy:
         """Compute TEU estimate and alpha signal for a port."""
         features = feature_vector.features
@@ -110,7 +110,9 @@ class PortThroughputProxy:
             alpha = 0.0
 
         # Confidence: higher when more feature sources agree
-        non_zero_features = sum(1 for v in [container_count, vessels_at_berth, crane_activity] if v > 0)
+        non_zero_features = sum(
+            1 for v in [container_count, vessels_at_berth, crane_activity] if v > 0
+        )
         confidence = non_zero_features / 3.0
 
         # Cache for rolling consensus
@@ -143,7 +145,7 @@ class PortThroughputProxy:
 class RetailOccupancyProxy:
     """
     Convert parking lot CV features into occupancy signals.
-    
+
     Alpha = z-score of current occupancy vs trailing 52-week same-DoW baseline.
     """
 
@@ -201,7 +203,7 @@ class RetailOccupancyProxy:
 class IndustrialThermalProxy:
     """
     Convert LST anomalies into industrial output intensity proxy.
-    
+
     Alpha = deviation from 5-year seasonal pattern.
     """
 
@@ -227,7 +229,7 @@ class IndustrialThermalProxy:
         activity_ratio = thermal_plume_active / total_plumes if total_plumes > 0 else 0.0
 
         # Operational intensity proxy: combine LST anomaly with activity ratio
-        intensity = (lst_anomaly_zscore * 0.6 + activity_ratio * 0.4)
+        intensity = lst_anomaly_zscore * 0.6 + activity_ratio * 0.4
 
         # Seasonal comparison
         month = feature_vector.timestamp.month

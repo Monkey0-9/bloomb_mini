@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -25,10 +25,11 @@ PREPROCESSING_VERSION = "0.1.0"
 @dataclass
 class ThermalPreprocessingResult:
     """Result of thermal preprocessing pipeline run."""
+
     tile_id: str
     success: bool
-    lst_path: Optional[str] = None
-    anomaly_path: Optional[str] = None
+    lst_path: str | None = None
+    anomaly_path: str | None = None
     preprocessing_version: str = PREPROCESSING_VERSION
     steps_completed: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
@@ -51,7 +52,7 @@ class ThermalPipeline:
 
     def __init__(
         self,
-        ndvi_source_path: Optional[Path] = None,
+        ndvi_source_path: Path | None = None,
         baseline_dir: Path = Path("baselines"),
         output_dir: Path = Path("processed"),
     ) -> None:
@@ -64,6 +65,7 @@ class ThermalPipeline:
     def process(self, tile_id: str, input_path: Path) -> ThermalPreprocessingResult:
         """Run the full thermal preprocessing pipeline."""
         import time
+
         start = time.time()
         result = ThermalPreprocessingResult(tile_id=tile_id, success=False)
 
@@ -103,6 +105,7 @@ class ThermalPipeline:
         out_path = input_path.with_suffix(".radiance.tif")
         try:
             import rasterio
+
             with rasterio.open(input_path) as src:
                 data = src.read()
                 meta = src.meta
@@ -110,13 +113,15 @@ class ThermalPipeline:
             with rasterio.open(out_path, "w", **meta) as dst:
                 dst.write(radiance_data)
         except Exception:
-            with open(out_path, "wb") as f: f.write(b"mock_thermal")
+            with open(out_path, "wb") as f:
+                f.write(b"mock_thermal")
         return {"radiance_path": out_path}
 
     def lst_retrieval(self, radiance: dict[str, Any]) -> dict[str, Any]:
         out_path = Path(str(radiance["radiance_path"]).replace(".radiance.", ".lst."))
         try:
             import rasterio
+
             with rasterio.open(radiance["radiance_path"]) as src:
                 data = src.read()
                 meta = src.meta
@@ -131,6 +136,7 @@ class ThermalPipeline:
         out_path = Path(str(lst["lst_path"]).replace(".lst.", ".lst_corrected."))
         try:
             import rasterio
+
             with rasterio.open(lst["lst_path"]) as src:
                 data = src.read()
                 meta = src.meta
@@ -145,10 +151,13 @@ class ThermalPipeline:
         out_path = Path(str(lst["output_path"]).replace(".lst_corrected.", ".anomaly."))
         try:
             import rasterio
+
             with rasterio.open(lst["output_path"]) as src:
                 data = src.read()
                 meta = src.meta
-            zscore = (data - np.mean(data)) / (np.std(data) + 1e-6) # physical Z-score against scene
+            zscore = (data - np.mean(data)) / (
+                np.std(data) + 1e-6
+            )  # physical Z-score against scene
             with rasterio.open(out_path, "w", **meta) as dst:
                 dst.write(zscore)
         except Exception:
@@ -156,7 +165,9 @@ class ThermalPipeline:
         return {"anomaly_path": out_path}
 
     @staticmethod
-    def aggregate_facility_anomaly(anomaly_raster: np.ndarray, facility_mask: np.ndarray) -> dict[str, float]:
+    def aggregate_facility_anomaly(
+        anomaly_raster: np.ndarray, facility_mask: np.ndarray
+    ) -> dict[str, float]:
         masked = anomaly_raster[facility_mask > 0]
         if len(masked) == 0:
             return {"mean_zscore": 0.0, "max_zscore": 0.0, "active_pixel_pct": 0.0}

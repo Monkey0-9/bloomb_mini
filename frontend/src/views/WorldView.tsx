@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useTerminalStore } from '../store';
 import GlobalGlobe from '../components/GlobalGlobe';
 
 const WorldView = () => {
-  const [activeLayers, setActiveLayers] = useState<string[]>(['PORTS', 'VESSELS', 'THERMAL']);
+  const { activeLayers, toggleLayer, updateZoom } = useTerminalStore();
 
   return (
     <div className="w-full h-full relative bg-void overflow-hidden">
@@ -19,10 +19,10 @@ const WorldView = () => {
         <div className="flex gap-2 pointer-events-auto">
            {['PORTS', 'RETAIL', 'THERMAL', 'VESSELS', 'CLOUDS'].map((l) => (
              <button 
-               key={l}
-               onClick={() => setActiveLayers(prev => prev.includes(l) ? prev.filter(x => x !== l) : [...prev, l])}
-               className={`type-data-xs px-3 py-1 border transition-all rounded-sm uppercase tracking-widest ${
-                 activeLayers.includes(l) ? 'bg-accent-primary text-void border-accent-primary font-bold shadow-[0_0_10px_rgba(0,200,255,0.3)]' : 'bg-surface-1/40 border-white/10 text-text-3 hover:border-white/30'
+                key={l}
+                onClick={() => toggleLayer(l)}
+                className={`type-data-xs px-3 py-1 border transition-all rounded-sm uppercase tracking-widest ${
+                  activeLayers.includes(l) ? 'bg-accent-primary text-void border-accent-primary font-bold shadow-[0_0_10px_rgba(0,200,255,0.3)]' : 'bg-surface-1/40 border-white/10 text-text-3 hover:border-white/30'
                }`}
              >
                {l}
@@ -31,14 +31,42 @@ const WorldView = () => {
         </div>
       </div>
 
+      {/* PORT INDEX PANEL */}
+      <div className="absolute top-24 left-4 z-overlay pointer-events-auto w-48 bg-void/60 backdrop-blur-md border border-white/10 rounded-sm overflow-hidden flex flex-col max-h-[300px]">
+         <div className="p-2 border-b border-white/10 bg-surface-1/40 text-[9px] text-text-4 uppercase tracking-widest font-bold">Port Registry</div>
+         <div className="flex-1 overflow-y-auto custom-scrollbar p-1 space-y-0.5">
+            {[
+              { name: 'ROTTERDAM', lat: 51.9, lng: 4.5 },
+              { name: 'SINGAPORE', lat: 1.3, lng: 103.8 },
+              { name: 'SHANGHAI', lat: 31.2, lng: 121.5 },
+              { name: 'LONG BEACH', lat: 33.7, lng: -118.3 },
+              { name: 'JEBEL ALI', lat: 25.0, lng: 55.0 }
+            ].map(p => (
+              <button 
+                key={p.name}
+                onClick={() => updateZoom(3)} // Zoom in
+                className="w-full text-left px-2 py-1.5 hover:bg-accent-primary hover:text-void transition-colors type-data-xs truncate"
+              >
+                {p.name}
+              </button>
+            ))}
+         </div>
+      </div>
+
       <GlobalGlobe />
 
       {/* BOTTOM HUD CONTROLS */}
       <div className="absolute bottom-6 right-6 flex flex-col gap-1 z-overlay">
          <div className="bg-void/60 backdrop-blur-md border border-white/10 p-1 flex flex-col gap-1 rounded-sm">
-            <button className="w-7 h-7 flex items-center justify-center type-h1 text-text-2 hover:bg-surface-3 transition-colors">＋</button>
+            <button 
+              onClick={() => updateZoom(-0.5)}
+              className="w-7 h-7 flex items-center justify-center type-h1 text-text-2 hover:bg-surface-3 transition-colors"
+            >＋</button>
             <div className="h-[1px] bg-white/5 mx-1"></div>
-            <button className="w-7 h-7 flex items-center justify-center type-h1 text-text-2 hover:bg-surface-3 transition-colors">－</button>
+            <button 
+              onClick={() => updateZoom(0.5)}
+              className="w-7 h-7 flex items-center justify-center type-h1 text-text-2 hover:bg-surface-3 transition-colors"
+            >－</button>
          </div>
          <button className="h-7 px-2 bg-void/60 backdrop-blur-md border border-white/10 type-data-xs text-text-2 hover:bg-surface-3 transition-colors uppercase">3D</button>
       </div>

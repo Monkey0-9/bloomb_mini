@@ -15,9 +15,9 @@ Walk-forward protocol:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Callable, Optional
 
 import numpy as np
 
@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class WalkForwardFold:
     """A single fold in the walk-forward validation."""
+
     fold_id: int
     train_start: datetime
     train_end: datetime
@@ -40,6 +41,7 @@ class WalkForwardFold:
 @dataclass
 class WalkForwardResult:
     """Complete walk-forward validation result."""
+
     folds: list[WalkForwardFold] = field(default_factory=list)
     oos_sharpe_mean: float = 0.0
     oos_sharpe_std: float = 0.0
@@ -47,13 +49,13 @@ class WalkForwardResult:
     oos_ic_std: float = 0.0
     degradation_ratio: float = 0.0  # OOS Sharpe / IS Sharpe
     passed: bool = False
-    fail_reason: Optional[str] = None
+    fail_reason: str | None = None
 
 
 class WalkForwardValidator:
     """
     Walk-forward validation with expanding window.
-    
+
     The last line of defence before backtesting:
     if walk-forward OOS Sharpe < 0.5, do NOT proceed to full backtest.
     """
@@ -102,15 +104,17 @@ class WalkForwardValidator:
             if not test_dates:
                 break
 
-            folds.append(WalkForwardFold(
-                fold_id=fold_id,
-                train_start=start,
-                train_end=train_end,
-                test_start=test_start,
-                test_end=test_end,
-                train_size=len(train_dates),
-                test_size=len(test_dates),
-            ))
+            folds.append(
+                WalkForwardFold(
+                    fold_id=fold_id,
+                    train_start=start,
+                    train_end=train_end,
+                    test_start=test_start,
+                    test_end=test_end,
+                    train_size=len(train_dates),
+                    test_size=len(test_dates),
+                )
+            )
 
             fold_id += 1
 
@@ -126,7 +130,7 @@ class WalkForwardValidator:
     ) -> WalkForwardResult:
         """
         Run full walk-forward validation.
-        
+
         Args:
             signals: (T, N) signal matrix
             returns: (T, N) return matrix
@@ -163,9 +167,12 @@ class WalkForwardValidator:
 
             # Compute metrics
             is_sharpe = self._compute_sharpe(y_train.mean(axis=1) if y_train.ndim > 1 else y_train)
-            oos_sharpe = self._compute_sharpe(predictions if predictions.ndim == 1 else predictions.mean(axis=1))
+            oos_sharpe = self._compute_sharpe(
+                predictions if predictions.ndim == 1 else predictions.mean(axis=1)
+            )
 
             from scipy import stats
+
             if X_test.ndim > 1 and y_test.ndim > 1:
                 ics = []
                 for t in range(len(X_test)):

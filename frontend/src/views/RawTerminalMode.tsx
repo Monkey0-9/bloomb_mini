@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useTerminalStore } from '../store';
+import { executeCommand } from '../lib/commandEngine';
 
 const RawTerminalMode = () => {
   const [history, setHistory] = useState<string[]>([
@@ -27,12 +28,15 @@ const RawTerminalMode = () => {
 
   const handleCommand = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-      const cmd = input.trim().toUpperCase();
-      setHistory(prev => [...prev, `SATTRADE> ${input}`, `EXECUTING: ${cmd}...`, ""]);
+      const cmd = input.trim();
+      if (!cmd) return;
+      
+      setHistory(prev => [...prev, `SATTRADE> ${cmd}`, `EXECUTING INSTITUTIONAL RELAY...`]);
+      executeCommand(cmd);
       setInput("");
       
-      if (cmd === 'HELP') {
-        setHistory(prev => [...prev, "AVAILABLE COMMANDS:", "- AMKBY, ZIM, TGT: Ticker lookup", "- MAP WORLD: Switch to global map", "- SIGNAL ALL: Show all signal data", "- TEACH ME: Enter plain-English mode", ""]);
+      if (cmd.toUpperCase() === 'HELP') {
+        setHistory(prev => [...prev, "AVAILABLE COMMANDS:", "- <TICKER>: Equity lookup", "- W <GO>: Global world map", "- MX <GO>: Signal Matrix", "- FD <GO>: Satellite feed", "- TEACH ME: Explain mode", ""]);
       }
     }
   };

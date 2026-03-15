@@ -2,10 +2,11 @@
 Real Sentinel-2 tile downloader using Copernicus Data Space Ecosystem STAC API.
 NO MOCKS. NO STUBS. Real HTTP requests. Real tiles on disk.
 """
+
 import hashlib
 import os
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -17,23 +18,23 @@ log = structlog.get_logger()
 
 STAC_URL = "https://catalogue.dataspace.copernicus.eu/stac/search"
 TOKEN_URL = (
-    "https://identity.dataspace.copernicus.eu/auth/realms/CDSE"
-    "/protocol/openid-connect/token"
+    "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
 )
 DOWNLOAD_BASE = "https://download.dataspace.copernicus.eu"
 
 LOCATIONS: dict[str, list[float]] = {
-    "rotterdam":  [3.9,   51.85, 4.6,   52.05],
-    "singapore":  [103.6,  1.2,  104.1,  1.5],
-    "losangeles": [-118.35,33.7, -118.1, 33.85],
-    "shanghai":   [121.8,  30.5, 122.1,  30.75],
-    "felixstowe": [1.3,   51.9,  1.5,   52.05],
-    "tokyo":      [139.5,  35.5, 140.1,  35.9],
-    "hamburg":    [9.7,   53.4,  10.2,   53.7],
-    "dubai":      [55.0,  25.1,  55.5,   25.5],
-    "busan":      [128.9,  35.0, 129.2,   35.2],
-    "laem_chabang":[100.8,13.0, 101.1,   13.2],
+    "rotterdam": [3.9, 51.85, 4.6, 52.05],
+    "singapore": [103.6, 1.2, 104.1, 1.5],
+    "losangeles": [-118.35, 33.7, -118.1, 33.85],
+    "shanghai": [121.8, 30.5, 122.1, 30.75],
+    "felixstowe": [1.3, 51.9, 1.5, 52.05],
+    "tokyo": [139.5, 35.5, 140.1, 35.9],
+    "hamburg": [9.7, 53.4, 10.2, 53.7],
+    "dubai": [55.0, 25.1, 55.5, 25.5],
+    "busan": [128.9, 35.0, 129.2, 35.2],
+    "laem_chabang": [100.8, 13.0, 101.1, 13.2],
 }
+
 
 class CopernicusAuth:
     def __init__(self) -> None:
@@ -57,9 +58,7 @@ class CopernicusAuth:
         resp.raise_for_status()
         data = resp.json()
         self._token = data["access_token"]
-        self._expires_at = datetime.utcnow() + timedelta(
-            seconds=data["expires_in"] - 60
-        )
+        self._expires_at = datetime.utcnow() + timedelta(seconds=data["expires_in"] - 60)
         return self._token
 
 
@@ -123,8 +122,7 @@ class SentinelIngester:
             "collections": ["SENTINEL-2"],
             "bbox": bbox,
             "datetime": (
-                f"{start_dt.strftime('%Y-%m-%dT%H:%M:%SZ')}/"
-                f"{end_dt.strftime('%Y-%m-%dT%H:%M:%SZ')}"
+                f"{start_dt.strftime('%Y-%m-%dT%H:%M:%SZ')}/{end_dt.strftime('%Y-%m-%dT%H:%M:%SZ')}"
             ),
             "query": {
                 "eo:cloud_cover": {"lte": max_cloud_cover},
@@ -135,12 +133,11 @@ class SentinelIngester:
         }
         for attempt in range(3):
             try:
-                resp = httpx.post(
-                    STAC_URL, json=payload, headers=headers, timeout=30
-                )
+                resp = httpx.post(STAC_URL, json=payload, headers=headers, timeout=30)
                 if resp.status_code == 429:
                     import time
-                    time.sleep(2 ** attempt * 5)
+
+                    time.sleep(2**attempt * 5)
                     continue
                 resp.raise_for_status()
                 features = resp.json().get("features", [])
@@ -167,16 +164,16 @@ class SentinelIngester:
                     break
             if download_url is None:
                 assets = feature.get("assets", {})
-                download_url = (
-                    assets.get("data", {}).get("href")
-                    or assets.get("thumbnail", {}).get("href")
-                )
+                download_url = assets.get("data", {}).get("href") or assets.get(
+                    "thumbnail", {}
+                ).get("href")
             if download_url is None:
                 raise ValueError(f"No download URL found for tile {tile_id}")
 
             headers = {"Authorization": f"Bearer {self.auth.get_token()}"}
-            with httpx.stream("GET", download_url, headers=headers, timeout=300,
-                              follow_redirects=True) as resp:
+            with httpx.stream(
+                "GET", download_url, headers=headers, timeout=300, follow_redirects=True
+            ) as resp:
                 resp.raise_for_status()
                 with open(file_path, "wb") as f:
                     for chunk in resp.iter_bytes(chunk_size=1024 * 1024):
@@ -188,9 +185,7 @@ class SentinelIngester:
         metadata = TileMetadata(
             tile_id=tile_id,
             source="sentinel2",
-            acquisition_utc=datetime.fromisoformat(
-                props["datetime"].replace("Z", "+00:00")
-            ),
+            acquisition_utc=datetime.fromisoformat(props["datetime"].replace("Z", "+00:00")),
             processing_level=props.get("processing:level", "L2A"),
             sensor_type="OPTICAL",
             resolution_m=10.0,
@@ -225,24 +220,29 @@ class SentinelIngester:
             conn.execute(
                 """INSERT INTO tiles VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    m.tile_id, m.source,
+                    m.tile_id,
+                    m.source,
                     m.acquisition_utc.isoformat(),
-                    m.processing_level, m.sensor_type, m.resolution_m,
-                    m.cloud_cover_pct, str(m.bbox_wgs84), m.license_id,
-                    int(m.commercial_use_ok), m.checksum_sha256,
-                    m.preprocessing_ver, m.ingest_timestamp_utc.isoformat(),
-                    m.file_path, m.location_key,
+                    m.processing_level,
+                    m.sensor_type,
+                    m.resolution_m,
+                    m.cloud_cover_pct,
+                    str(m.bbox_wgs84),
+                    m.license_id,
+                    int(m.commercial_use_ok),
+                    m.checksum_sha256,
+                    m.preprocessing_ver,
+                    m.ingest_timestamp_utc.isoformat(),
+                    m.file_path,
+                    m.location_key,
                 ),
             )
             conn.commit()
         log.info("catalog_insert", tile_id=m.tile_id, location=m.location_key)
 
-    def fetch_latest_tile(
-        self, location_key: str, max_cloud_cover: float = 30.0
-    ) -> TileMetadata:
+    def fetch_latest_tile(self, location_key: str, max_cloud_cover: float = 30.0) -> TileMetadata:
         if location_key not in LOCATIONS:
-            raise ValueError(f"Unknown location: {location_key}. "
-                             f"Valid: {list(LOCATIONS.keys())}")
+            raise ValueError(f"Unknown location: {location_key}. Valid: {list(LOCATIONS.keys())}")
         features = self.search_tiles(location_key, max_cloud_cover=max_cloud_cover)
         if not features:
             raise RuntimeError(
@@ -254,9 +254,9 @@ class SentinelIngester:
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--location", default="rotterdam",
-                        choices=list(LOCATIONS.keys()))
+    parser.add_argument("--location", default="rotterdam", choices=list(LOCATIONS.keys()))
     parser.add_argument("--max-cloud", type=float, default=30.0)
     args = parser.parse_args()
 

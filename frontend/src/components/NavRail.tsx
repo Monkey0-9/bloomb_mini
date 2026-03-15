@@ -1,81 +1,89 @@
-import { useTerminalStore } from '../store';
 import { 
-  Globe2, 
-  BarChart3, 
-  LayoutGrid, 
+  Globe, 
+  Table, 
   Satellite, 
+  BarChart3, 
   Briefcase, 
-  BookOpen, 
-  Terminal, 
-  GraduationCap,
+  Search, 
   Settings, 
-  HelpCircle 
+  Terminal,
+  HelpCircle,
+  GraduationCap
 } from 'lucide-react';
+import { useTerminalStore } from '../store';
+
+const NavButton = ({ item, isActive, onClick }: any) => (
+  <button 
+    onClick={onClick}
+    className={`w-full group relative flex flex-col items-center py-3 transition-all duration-200 border-l-2 ${
+      isActive 
+        ? 'bg-surface-2 border-accent-primary' 
+        : 'border-transparent hover:bg-surface-1'
+    }`}
+  >
+    <div className={`transition-colors duration-200 ${
+        isActive ? 'text-accent-primary' : 'text-text-4 group-hover:text-text-2'
+      }`}>
+      {item.icon}
+    </div>
+    <span className={`text-[8px] uppercase mt-1 font-bold tracking-tighter text-center px-1 ${
+      isActive ? 'text-accent-primary' : 'text-text-5 group-hover:text-text-4'
+    }`}>
+      {item.id.substring(0, 4)}
+    </span>
+    
+    {/* Bloomberg Shortcut Tag */}
+    <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+       <span className="text-[7px] text-text-5 bg-surface-3 px-0.5 rounded-sm">{item.shortcut}</span>
+    </div>
+
+    {/* TOOLTIP */}
+    <div className="absolute left-full ml-2 px-2 py-1 bg-surface-3 border border-white/10 rounded-sm opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-floating text-[10px] text-text-1 uppercase tracking-widest shadow-xl">
+      {item.label}
+    </div>
+  </button>
+);
 
 const NavRail = () => {
   const { selectedView, setView } = useTerminalStore();
-  
-  const topItems = [
-    { id: 'world', icon: <Globe2 size={20} strokeWidth={1.5} />, label: 'WORLD MAP' },
-    { id: 'charts', icon: <BarChart3 size={20} strokeWidth={1.5} />, label: 'CHARTS & ANALYSIS' },
-    { id: 'matrix', icon: <LayoutGrid size={20} strokeWidth={1.5} />, label: 'SIGNAL MATRIX' },
-    { id: 'feed', icon: <Satellite size={20} strokeWidth={1.5} />, label: 'SATELLITE IMAGE FEED' },
-    { id: 'portfolio', icon: <Briefcase size={20} strokeWidth={1.5} />, label: 'PORTFOLIO & POSITIONS' },
-    { id: 'research', icon: <BookOpen size={20} strokeWidth={1.5} />, label: 'RESEARCH' },
-  ];
 
-  const secondaryItems = [
-    { id: 'terminal', icon: <Terminal size={20} strokeWidth={1.5} />, label: 'RAW TERMINAL MODE' },
-    { id: 'education', icon: <GraduationCap size={20} strokeWidth={1.5} />, label: 'EXPLAIN MODE' },
+  const navItems = [
+    { id: 'world', icon: <Globe size={18} />, label: 'Global Map', shortcut: 'W' },
+    { id: 'matrix', icon: <Table size={18} />, label: 'Signal Matrix', shortcut: 'MX' },
+    { id: 'feed', icon: <Satellite size={18} />, label: 'Satellite Feed', shortcut: 'FD' },
+    { id: 'charts', icon: <BarChart3 size={18} />, label: 'Price Charts', shortcut: 'CH' },
+    { id: 'portfolio', icon: <Briefcase size={18} />, label: 'Portfolio', shortcut: 'PF' },
+    { id: 'research', icon: <Search size={18} />, label: 'Research', shortcut: 'RS' },
+    { id: 'education', icon: <GraduationCap size={18} />, label: 'SatTrade Academy', shortcut: 'ED' },
+    { id: 'terminal', icon: <Terminal size={18} />, label: 'Terminal Mode', shortcut: 'TM' },
   ];
 
   const bottomItems = [
-    { id: 'settings', icon: <Settings size={20} strokeWidth={1.5} />, label: 'SETTINGS' },
-    { id: 'help', icon: <HelpCircle size={20} strokeWidth={1.5} />, label: 'HELP' },
+    { id: 'help', icon: <HelpCircle size={18} />, label: 'Help', shortcut: 'H' },
+    { id: 'settings', icon: <Settings size={18} />, label: 'Settings', shortcut: 'ST' },
   ];
 
-  const NavButton = ({ item }: { item: typeof topItems[0] }) => {
-    const isActive = selectedView === item.id;
-    return (
-      <button
-        onClick={() => setView(item.id as any)}
-        className={`w-10 h-10 flex items-center justify-center transition-all duration-150 relative group rounded-sm ${
-          isActive ? 'bg-surface-3 text-accent-primary' : 'text-text-4 hover:bg-surface-2 hover:text-text-2'
-        }`}
-      >
-        {isActive && (
-          <div className="absolute left-[-12px] top-1 bottom-1 w-[2px] bg-accent-primary"></div>
-        )}
-        
-        {item.icon}
-
-        {/* TOOLTIP: Right of icon */}
-        <div className="absolute left-14 px-3 py-1.5 bg-surface-3 border border-border-3 rounded-sm opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-overlay transition-all duration-150 translate-x-1 group-hover:translate-x-0 shadow-2">
-          <span className="type-ui-sm text-text-1">{item.label}</span>
-          {/* Arrow */}
-          <div className="absolute left-[-4px] top-1/2 -translate-y-1/2 w-2 h-2 bg-surface-3 border-l border-b border-border-3 rotate-45"></div>
-        </div>
-      </button>
-    );
-  };
-
   return (
-    <nav className="w-[52px] bg-void border-r border-border-1 flex flex-col items-center py-3 shrink-0 z-floating">
-      <div className="flex-1 flex flex-col items-center gap-1">
-        {topItems.map((item) => (
-          <NavButton key={item.id} item={item} />
-        ))}
-        
-        <div className="w-8 h-[1px] bg-border-1 my-4"></div>
-
-        {secondaryItems.map((item) => (
-          <NavButton key={item.id} item={item} />
+    <nav className="w-14 h-full bg-void border-r border-white/5 flex flex-col justify-between shrink-0 z-raised relative">
+      <div className="flex flex-col w-full">
+        {navItems.map((item) => (
+          <NavButton
+            key={item.id}
+            item={item}
+            isActive={selectedView === item.id}
+            onClick={() => setView(item.id as any)}
+          />
         ))}
       </div>
 
-      <div className="flex flex-col items-center gap-1 mt-auto">
+      <div className="flex flex-col w-full border-t border-white/5">
         {bottomItems.map((item) => (
-          <NavButton key={item.id} item={item as any} />
+          <NavButton
+            key={item.id}
+            item={item}
+            isActive={selectedView === item.id}
+            onClick={() => setView(item.id as any)}
+          />
         ))}
       </div>
     </nav>

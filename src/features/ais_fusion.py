@@ -19,12 +19,12 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from datetime import datetime, timedelta
+from typing import Any
 
 import numpy as np
 
-from src.ingest.ais import VesselPosition, PortDefinition
+from src.ingest.ais import PortDefinition, VesselPosition
 
 logger = logging.getLogger(__name__)
 
@@ -32,35 +32,38 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SARVesselDetection:
     """Vessel detected in SAR imagery."""
+
     detection_id: str
     tile_id: str
     latitude: float
     longitude: float
     acquisition_utc: datetime
-    length_m: Optional[float] = None
-    width_m: Optional[float] = None
-    heading_deg: Optional[float] = None
+    length_m: float | None = None
+    width_m: float | None = None
+    heading_deg: float | None = None
     confidence: float = 0.5
 
 
 @dataclass
 class FusedVessel:
     """SAR detection matched with AIS identity."""
+
     detection_id: str
-    ais_mmsi: Optional[str] = None
-    vessel_name: Optional[str] = None
-    vessel_type: Optional[int] = None
+    ais_mmsi: str | None = None
+    vessel_name: str | None = None
+    vessel_type: int | None = None
     is_dark: bool = False  # No AIS match = dark vessel
     spatial_distance_m: float = 0.0
     temporal_distance_min: float = 0.0
     match_confidence: float = 0.0
-    sar_detection: Optional[SARVesselDetection] = None
-    ais_position: Optional[VesselPosition] = None
+    sar_detection: SARVesselDetection | None = None
+    ais_position: VesselPosition | None = None
 
 
 @dataclass
 class PortFusionFeatures:
     """Fused feature output for a port at a specific timestamp."""
+
     port_id: str
     feature_timestamp: datetime
     vessel_count_per_berth: float = 0.0
@@ -85,7 +88,7 @@ EARTH_RADIUS_M = 6_371_000
 class AISFusionEngine:
     """
     Fuse SAR vessel detections with AIS position reports.
-    
+
     The fusion matches detections using spatial and temporal windows,
     then computes port-level features for the signal pipeline.
     """
@@ -105,17 +108,17 @@ class AISFusionEngine:
     ) -> list[FusedVessel]:
         """
         Match SAR detections with AIS positions.
-        
+
         Matching criteria:
         - Temporal: [timestamp ± 15 min]
         - Spatial: [distance < 500m]
-        
+
         Unmatched SAR detections are flagged as dark vessels.
         """
         fused: list[FusedVessel] = []
 
         for det in sar_detections:
-            best_match: Optional[VesselPosition] = None
+            best_match: VesselPosition | None = None
             best_distance = float("inf")
             best_temporal = float("inf")
 
@@ -127,8 +130,10 @@ class AISFusionEngine:
 
                 # Spatial check
                 spatial_dist = self._haversine_distance(
-                    det.latitude, det.longitude,
-                    ais.latitude, ais.longitude,
+                    det.latitude,
+                    det.longitude,
+                    ais.latitude,
+                    ais.longitude,
                 )
                 if spatial_dist > self._spatial_threshold:
                     continue
@@ -141,26 +146,32 @@ class AISFusionEngine:
                     best_temporal = time_diff / 60  # Convert to minutes
 
             if best_match:
-                fused.append(FusedVessel(
-                    detection_id=det.detection_id,
-                    ais_mmsi=best_match.mmsi,
-                    vessel_name=best_match.vessel_name,
-                    vessel_type=best_match.vessel_type,
-                    is_dark=False,
-                    spatial_distance_m=best_distance,
-                    temporal_distance_min=best_temporal,
-                    match_confidence=self._compute_match_confidence(best_distance, best_temporal),
-                    sar_detection=det,
-                    ais_position=best_match,
-                ))
+                fused.append(
+                    FusedVessel(
+                        detection_id=det.detection_id,
+                        ais_mmsi=best_match.mmsi,
+                        vessel_name=best_match.vessel_name,
+                        vessel_type=best_match.vessel_type,
+                        is_dark=False,
+                        spatial_distance_m=best_distance,
+                        temporal_distance_min=best_temporal,
+                        match_confidence=self._compute_match_confidence(
+                            best_distance, best_temporal
+                        ),
+                        sar_detection=det,
+                        ais_position=best_match,
+                    )
+                )
             else:
                 # Dark vessel: SAR detection with no AIS match
-                fused.append(FusedVessel(
-                    detection_id=det.detection_id,
-                    is_dark=True,
-                    match_confidence=0.0,
-                    sar_detection=det,
-                ))
+                fused.append(
+                    FusedVessel(
+                        detection_id=det.detection_id,
+                        is_dark=True,
+                        match_confidence=0.0,
+                        sar_detection=det,
+                    )
+                )
 
         dark_count = sum(1 for f in fused if f.is_dark)
         logger.info(
@@ -178,7 +189,7 @@ class AISFusionEngine:
     ) -> PortFusionFeatures:
         """
         Compute port-level features from fused vessel data.
-        
+
         Features per spec:
         - vessel_count_per_berth
         - avg_dwell_time_hours
@@ -188,10 +199,10 @@ class AISFusionEngine:
         """
         # Filter to port bbox
         port_vessels = [
-            fv for fv in fused_vessels
-            if fv.sar_detection and self._in_bbox(
-                fv.sar_detection.latitude, fv.sar_detection.longitude, port.bbox
-            )
+            fv
+            for fv in fused_vessels
+            if fv.sar_detection
+            and self._in_bbox(fv.sar_detection.latitude, fv.sar_detection.longitude, port.bbox)
         ]
 
         total = len(port_vessels)
@@ -199,14 +210,8 @@ class AISFusionEngine:
         dark = sum(1 for v in port_vessels if v.is_dark)
 
         # Container ships and tankers
-        containers = sum(
-            1 for v in port_vessels
-            if v.vessel_type and 70 <= v.vessel_type < 73
-        )
-        tankers = sum(
-            1 for v in port_vessels
-            if v.vessel_type and 80 <= v.vessel_type < 90
-        )
+        containers = sum(1 for v in port_vessels if v.vessel_type and 70 <= v.vessel_type < 73)
+        tankers = sum(1 for v in port_vessels if v.vessel_type and 80 <= v.vessel_type < 90)
 
         # Estimate berth count (from port definition or default)
         n_berths = max(len(port.berth_zones), 5)  # Default 5 berths
@@ -225,10 +230,7 @@ class AISFusionEngine:
         dark_ratio = dark / total if total > 0 else 0.0
 
         # Collect source tile IDs
-        tile_ids = list(set(
-            v.sar_detection.tile_id for v in port_vessels
-            if v.sar_detection
-        ))
+        tile_ids = list(set(v.sar_detection.tile_id for v in port_vessels if v.sar_detection))
 
         return PortFusionFeatures(
             port_id=port.port_id,
@@ -247,12 +249,13 @@ class AISFusionEngine:
         )
 
     def _estimate_dwell_from_ais(
-        self, ais_positions: list[VesselPosition], port: PortDefinition,
+        self,
+        ais_positions: list[VesselPosition],
+        port: PortDefinition,
     ) -> float:
         """Estimate average vessel dwell time in port from AIS tracks."""
         port_positions = [
-            p for p in ais_positions
-            if self._in_bbox(p.latitude, p.longitude, port.bbox)
+            p for p in ais_positions if self._in_bbox(p.latitude, p.longitude, port.bbox)
         ]
 
         mmsi_tracks: dict[str, list[datetime]] = {}
@@ -273,7 +276,10 @@ class AISFusionEngine:
 
     @staticmethod
     def _haversine_distance(
-        lat1: float, lon1: float, lat2: float, lon2: float,
+        lat1: float,
+        lon1: float,
+        lat2: float,
+        lon2: float,
     ) -> float:
         """Compute great-circle distance between two points in meters."""
         lat1_r, lon1_r = math.radians(lat1), math.radians(lon1)

@@ -1,12 +1,13 @@
 from dataclasses import dataclass
-from typing import Literal, List, Optional
+from typing import Literal
+
 
 @dataclass
 class FacilityMapping:
     facility_id: str
     facility_name: str
     facility_type: Literal["PORT", "RETAIL", "INDUSTRIAL"]
-    bbox_wgs84: List[float]
+    bbox_wgs84: list[float]
     primary_ticker: str
     primary_exchange: str
     revenue_attribution: float
@@ -17,8 +18,9 @@ class FacilityMapping:
     lag_days_expected: int
     validation_status: Literal["VALIDATED", "PROVISIONAL", "SPECULATIVE"]
 
+
 class FacilityMapper:
-    INITIAL_MAPPINGS: List[FacilityMapping] = [
+    INITIAL_MAPPINGS: list[FacilityMapping] = [
         FacilityMapping(
             facility_id="PORT-ROTTERDAM-001",
             facility_name="Port of Rotterdam Maasvlakte 2",
@@ -122,14 +124,14 @@ class FacilityMapper:
         ),
     ]
 
-    def get_by_facility_id(self, facility_id: str) -> Optional[FacilityMapping]:
+    def get_by_facility_id(self, facility_id: str) -> FacilityMapping | None:
         for m in self.INITIAL_MAPPINGS:
             if m.facility_id == facility_id:
                 return m
         return None
 
-    def get_by_ticker(self, ticker: str) -> List[FacilityMapping]:
+    def get_by_ticker(self, ticker: str) -> list[FacilityMapping]:
         return [m for m in self.INITIAL_MAPPINGS if m.primary_ticker == ticker]
 
-    def get_all_by_type(self, ftype: str) -> List[FacilityMapping]:
+    def get_all_by_type(self, ftype: str) -> list[FacilityMapping]:
         return [m for m in self.INITIAL_MAPPINGS if m.facility_type == ftype]

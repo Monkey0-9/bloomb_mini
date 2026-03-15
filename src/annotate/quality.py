@@ -17,10 +17,9 @@ Annotation Metrics (weekly report):
 from __future__ import annotations
 
 import logging
-import math
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 import numpy as np
 
@@ -30,32 +29,35 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Annotation:
     """Single annotator's annotation for one tile."""
+
     tile_id: str
     annotator_id: str
     class_name: str
     bbox: tuple[float, float, float, float]  # x, y, w, h (COCO format)
-    segmentation_mask: Optional[list[list[float]]] = None  # Polygon coords
+    segmentation_mask: list[list[float]] | None = None  # Polygon coords
     confidence: float = 1.0
 
 
 @dataclass
 class TileAnnotationResult:
     """Result of annotation quality check for a single tile."""
+
     tile_id: str
     status: str  # "accepted", "adjudication", "discarded"
     min_pairwise_iou: float
     mean_iou: float
     num_annotators: int
     annotations: list[Annotation] = field(default_factory=list)
-    majority_vote_mask: Optional[Any] = None
+    majority_vote_mask: Any | None = None
     adjudicated: bool = False
-    adjudicator_id: Optional[str] = None
-    rejection_reason: Optional[str] = None
+    adjudicator_id: str | None = None
+    rejection_reason: str | None = None
 
 
 @dataclass
 class BatchReport:
     """End-of-batch annotation quality report."""
+
     batch_id: str
     n_tiles: int
     n_accepted: int
@@ -71,7 +73,7 @@ class BatchReport:
 class AnnotationQualityAgent:
     """
     Annotation quality enforcement for the labeling pipeline.
-    
+
     Implements the Annotation Agent spec:
     1. Enforce minimum 3 annotators per tile
     2. Compute pairwise IoU for every class
@@ -80,8 +82,8 @@ class AnnotationQualityAgent:
     5. Generate weekly quality reports
     """
 
-    IOU_ACCEPT_THRESHOLD = 0.70   # ≥ 0.70 → accept
-    IOU_ADJUDICATE_LOW = 0.50     # 0.50-0.70 → adjudicate
+    IOU_ACCEPT_THRESHOLD = 0.70  # ≥ 0.70 → accept
+    IOU_ADJUDICATE_LOW = 0.50  # 0.50-0.70 → adjudicate
     IOU_DISCARD_THRESHOLD = 0.50  # < 0.50 → discard
     MIN_ANNOTATORS = 3
     MIN_CORPUS_SIZE = 2000
@@ -98,11 +100,11 @@ class AnnotationQualityAgent:
     ) -> BatchReport:
         """
         Process a batch of tile annotations.
-        
+
         Args:
             tile_annotations: {tile_id: [[annotator1_annots], [annotator2_annots], ...]}
         """
-        batch_id = f"batch_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+        batch_id = f"batch_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}"
         results: list[TileAnnotationResult] = []
 
         for tile_id, annotator_sets in tile_annotations.items():
@@ -262,7 +264,9 @@ class AnnotationQualityAgent:
         return result
 
     def _generate_report(
-        self, batch_id: str, results: list[TileAnnotationResult],
+        self,
+        batch_id: str,
+        results: list[TileAnnotationResult],
     ) -> BatchReport:
         """Generate batch quality report."""
         accepted = [r for r in results if r.status == "accepted"]
@@ -277,9 +281,7 @@ class AnnotationQualityAgent:
                     class_ious[a.class_name] = []
                 class_ious[a.class_name].append(r.mean_iou)
 
-        mean_iou_per_class = {
-            cls: float(np.mean(vals)) for cls, vals in class_ious.items()
-        }
+        mean_iou_per_class = {cls: float(np.mean(vals)) for cls, vals in class_ious.items()}
 
         # Class distribution
         class_dist: dict[str, int] = {}
@@ -300,7 +302,7 @@ class AnnotationQualityAgent:
             annotator_agreement_kappa=kappa,
             rejection_rate_by_annotator={},
             class_distribution=class_dist,
-            generated_utc=datetime.now(timezone.utc).isoformat(),
+            generated_utc=datetime.now(UTC).isoformat(),
         )
 
     @staticmethod

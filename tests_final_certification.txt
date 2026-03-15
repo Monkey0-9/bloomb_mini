@@ -1,0 +1,172 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.11.9, pytest-9.0.2, pluggy-1.6.0 -- C:\Program Files\Python311\python.exe
+cachedir: .pytest_cache
+rootdir: C:\satellite_trade
+configfile: pyproject.toml
+plugins: anyio-4.12.0, asyncio-1.3.0, base-url-2.1.0, cov-7.0.0, playwright-0.7.2, typeguard-4.5.1
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 24 items
+
+tests/test_feature_store.py::test_look_ahead_bias_is_prevented PASSED    [  4%]
+tests/test_feature_store.py::test_past_features_are_returned PASSED      [  8%]
+tests/test_feature_store.py::test_duplicate_feature_id_raises PASSED     [ 12%]
+tests/test_feature_store.py::test_holdout_access_is_blocked_for_training PASSED [ 16%]
+tests/test_feature_store.py::test_feature_filter_by_name PASSED          [ 20%]
+tests/test_ingest.py::test_gate_cloud_rejects_high_cloud PASSED          [ 25%]
+tests/test_ingest.py::test_gate_cloud_rejects_null_cloud PASSED          [ 29%]
+tests/test_ingest.py::test_gate_license_blocks_noncommercial PASSED      [ 33%]
+tests/test_ingest.py::test_gate_checksum_quarantines_corrupted_file PASSED [ 37%]
+tests/test_ingest.py::test_gate_schema_rejects_empty_tile_id PASSED      [ 41%]
+tests/test_ingest.py::test_gate_geolocation_rejects_invalid_coords PASSED [ 45%]
+tests/test_ingest.py::test_gate_geolocation_passes_valid_coords PASSED   [ 50%]
+tests/test_preprocess.py::test_dos_not_in_optical_source FAILED          [ 54%]
+tests/test_preprocess.py::test_correction_output_range FAILED            [ 58%]
+tests/test_preprocess.py::test_correction_output_shape_matches_input FAILED [ 62%]
+tests/test_preprocess.py::test_ndvi_range_is_valid FAILED                [ 66%]
+tests/test_risk_engine.py::test_gross_exposure_constant_is_150pct PASSED [ 70%]
+tests/test_risk_engine.py::test_gross_exposure_gate_blocks_breach PASSED [ 75%]
+tests/test_risk_engine.py::test_gross_exposure_gate_passes_within_limit PASSED [ 79%]
+tests/test_risk_engine.py::test_kill_switch_requires_two_different_operators PASSED [ 83%]
+tests/test_risk_engine.py::test_kill_switch_executes_with_two_operators PASSED [ 87%]
+tests/test_risk_engine.py::test_halted_system_rejects_all_orders PASSED  [ 91%]
+tests/test_risk_engine.py::test_stale_signal_blocks_order PASSED         [ 95%]
+tests/test_risk_engine.py::test_low_confidence_blocks_order PASSED       [100%]
+
+================================== FAILURES ===================================
+_______________________ test_dos_not_in_optical_source ________________________
+
+    def test_dos_not_in_optical_source():
+        """DOS (Dark Object Subtraction) is forbidden. If this test fails, remove DOS."""
+>       source = Path("src/preprocess/optical.py").read_text()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_preprocess.py:10: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Program Files\Python311\Lib\pathlib.py:1058: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = WindowsPath('src/preprocess/optical.py'), mode = 'r', buffering = -1
+encoding = 'locale', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: 'src\\preprocess\\optical.py'
+
+C:\Program Files\Python311\Lib\pathlib.py:1044: FileNotFoundError
+________________________ test_correction_output_range _________________________
+
+    def test_correction_output_range():
+        """Surface reflectance must be in [0.0, 1.0] for all pixels."""
+        pytest.importorskip("rasterio")
+        pytest.importorskip("Py6S")
+        import rasterio
+        from rasterio.transform import from_bounds
+    
+>       from src.preprocess.optical import correct_atmospheric_6s
+E       SyntaxError: source code string cannot contain null bytes
+
+tests\test_preprocess.py:24: SyntaxError
+_________________ test_correction_output_shape_matches_input __________________
+
+    def test_correction_output_shape_matches_input():
+        pytest.importorskip("rasterio")
+        pytest.importorskip("Py6S")
+        import rasterio
+        from rasterio.transform import from_bounds
+    
+>       from src.preprocess.optical import correct_atmospheric_6s
+E       SyntaxError: source code string cannot contain null bytes
+
+tests\test_preprocess.py:65: SyntaxError
+__________________________ test_ndvi_range_is_valid ___________________________
+
+    def test_ndvi_range_is_valid():
+        pytest.importorskip("rasterio")
+        import rasterio
+        from rasterio.transform import from_bounds
+    
+>       from src.preprocess.optical import compute_ndvi
+E       SyntaxError: source code string cannot contain null bytes
+
+tests\test_preprocess.py:98: SyntaxError
+=============================== tests coverage ================================
+_______________ coverage: platform win32, python 3.11.9-final-0 _______________
+
+Name                                   Stmts   Miss  Cover
+----------------------------------------------------------
+src\__init__.py                            0      0   100%
+src\analysis\__init__.py                   0      0   100%
+src\analysis\ic.py                        30     30     0%
+src\annotate\__init__.py                   0      0   100%
+src\annotate\coco_export.py               50     50     0%
+src\annotate\quality.py                  154    154     0%
+src\annotate\taxonomy.py                  42     42     0%
+src\backtest\__init__.py                   0      0   100%
+src\backtest\engine.py                    49     49     0%
+src\backtest\regime_analysis.py          124    124     0%
+src\backtest\walk_forward.py             116    116     0%
+src\common\__init__.py                     0      0   100%
+src\common\config.py                      74     74     0%
+src\common\mappings.py                     7      7     0%
+src\common\rollback.py                    36     36     0%
+src\common\schemas.py                     38      0   100%
+src\execution\__init__.py                  0      0   100%
+src\execution\backtest.py                 28     28     0%
+src\execution\broker.py                   74     74     0%
+src\execution\broker_connect.py           24     24     0%
+src\execution\live_reconciliation.py      20     20     0%
+src\execution\order_manager.py           178    178     0%
+src\execution\position_sizing.py          92     92     0%
+src\execution\ramp_manager.py             34     34     0%
+src\execution\risk_engine.py             162      7    96%
+src\execution\signal_scoring.py           87     87     0%
+src\execution\simulator.py               120    120     0%
+src\features\__init__.py                   0      0   100%
+src\features\ais_fusion.py               125    125     0%
+src\features\change_detection.py         124    124     0%
+src\features\detector.py                  54     54     0%
+src\features\feature_store.py             46      2    96%
+src\features\lineage.py                   32     32     0%
+src\features\store.py                     21     21     0%
+src\ingest\__init__.py                     0      0   100%
+src\ingest\ais.py                        138    138     0%
+src\ingest\events.py                      93     93     0%
+src\ingest\landsat.py                     85     85     0%
+src\ingest\quality_gates.py               58     20    66%
+src\ingest\sentinel.py                   126    126     0%
+src\ingest\source_registry.py             92     92     0%
+src\monitoring\__init__.py                 0      0   100%
+src\monitoring\dashboard.py              103    103     0%
+src\monitoring\execution_quality.py       14     14     0%
+src\monitoring\retrain.py                114    114     0%
+src\preprocess\sar.py                    101    101     0%
+src\preprocess\thermal.py                113    113     0%
+src\preprocessing\__init__.py              0      0   100%
+src\preprocessing\corrector.py            27     27     0%
+src\runtime_orchestrator.py               55     55     0%
+src\signals\__init__.py                    0      0   100%
+src\signals\attribution.py                42     42     0%
+src\signals\economic_proxy.py            105    105     0%
+src\signals\ensemble.py                   59     59     0%
+src\signals\facility_mapper.py            28     28     0%
+src\signals\ic_analysis.py                67     67     0%
+src\signals\price_impact.py              165    165     0%
+src\signals\tft_model.py                 181    181     0%
+----------------------------------------------------------
+TOTAL                                   3707   3432     7%
+=========================== short test summary info ===========================
+FAILED tests/test_preprocess.py::test_dos_not_in_optical_source - FileNotFoun...
+FAILED tests/test_preprocess.py::test_correction_output_range - SyntaxError: ...
+FAILED tests/test_preprocess.py::test_correction_output_shape_matches_input
+FAILED tests/test_preprocess.py::test_ndvi_range_is_valid - SyntaxError: sour...
+======================== 4 failed, 20 passed in 1.85s =========================

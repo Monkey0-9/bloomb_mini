@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +25,10 @@ PREPROCESSING_VERSION = "0.1.0"
 @dataclass
 class SARPreprocessingResult:
     """Result of SAR preprocessing pipeline run."""
+
     tile_id: str
     success: bool
-    output_path: Optional[str] = None
+    output_path: str | None = None
     preprocessing_version: str = PREPROCESSING_VERSION
     steps_completed: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
@@ -37,7 +38,7 @@ class SARPreprocessingResult:
 class SARPipeline:
     """
     Sentinel-1 / Capella SAR preprocessing pipeline.
-    
+
     Uses ESA SNAP GPT (Graph Processing Tool) under the hood for
     Sentinel-1 processing. Capella Space data uses a separate
     calibration path.
@@ -49,7 +50,7 @@ class SARPipeline:
     def __init__(
         self,
         dem_path: Path,
-        optical_grid_path: Optional[Path] = None,
+        optical_grid_path: Path | None = None,
         output_dir: Path = Path("processed"),
     ) -> None:
         self._dem_path = dem_path
@@ -60,6 +61,7 @@ class SARPipeline:
     def process(self, tile_id: str, input_path: Path) -> SARPreprocessingResult:
         """Run the full SAR preprocessing pipeline."""
         import time
+
         start = time.time()
         result = SARPreprocessingResult(tile_id=tile_id, success=False)
 
@@ -77,8 +79,10 @@ class SARPipeline:
             # Step 3: Speckle filtering (Refined Lee, 5×5)
             filtered = self.speckle_filtering(calibrated)
             result.steps_completed.append("speckle_filtering")
-            logger.info(f"[{tile_id}] Step 3/6: Speckle filtering complete "
-                       f"({self.SPECKLE_FILTER}, {self.SPECKLE_WINDOW}×{self.SPECKLE_WINDOW})")
+            logger.info(
+                f"[{tile_id}] Step 3/6: Speckle filtering complete "
+                f"({self.SPECKLE_FILTER}, {self.SPECKLE_WINDOW}×{self.SPECKLE_WINDOW})"
+            )
 
             # Step 4: Terrain correction (Range-Doppler + DEM)
             corrected = self.terrain_correction(filtered)
@@ -95,8 +99,9 @@ class SARPipeline:
 
         except Exception as e:
             result.errors.append(str(e))
-            logger.error(f"[{tile_id}] SAR pipeline failed at step "
-                        f"{len(result.steps_completed) + 1}: {e}")
+            logger.error(
+                f"[{tile_id}] SAR pipeline failed at step {len(result.steps_completed) + 1}: {e}"
+            )
 
         result.processing_time_seconds = time.time() - start
         return result
@@ -109,7 +114,7 @@ class SARPipeline:
     ) -> dict[str, Any]:
         """
         Step 6: Multi-temporal stack — register N scenes to single reference date.
-        
+
         This is a separate method because it operates on multiple scenes
         rather than a single tile.
         """
@@ -128,20 +133,23 @@ class SARPipeline:
         out_path = input_path.with_suffix(".denoised.tif")
         try:
             import rasterio
+
             with rasterio.open(input_path) as src:
                 data = src.read()
                 meta = src.meta
-            data = data - 0.001 * np.mean(data) # naive mock denoise formulation
+            data = data - 0.001 * np.mean(data)  # naive mock denoise formulation
             with rasterio.open(out_path, "w", **meta) as dst:
                 dst.write(data)
         except Exception:
-            with open(out_path, "wb") as f: f.write(b"mock_sar")
+            with open(out_path, "wb") as f:
+                f.write(b"mock_sar")
         return {"output_path": out_path}
 
     def radiometric_calibration(self, denoised: dict[str, Any]) -> dict[str, Any]:
         out_path = Path(str(denoised["output_path"]).replace(".denoised.", ".sigma0."))
         try:
             import rasterio
+
             with rasterio.open(denoised["output_path"]) as src:
                 data = src.read()
                 meta = src.meta
@@ -158,6 +166,7 @@ class SARPipeline:
         try:
             import rasterio
             from scipy.ndimage import median_filter
+
             with rasterio.open(calibrated["output_path"]) as src:
                 data = src.read()
                 meta = src.meta

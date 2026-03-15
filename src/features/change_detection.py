@@ -9,9 +9,9 @@ Use-cases: construction starts, crop phenology, vessel presence delta.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -21,11 +21,12 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ChangeDetectionResult:
     """Result of change detection between two temporal observations."""
+
     tile_id: str
     date_before: str
     date_after: str
-    change_mask: Optional[np.ndarray] = None  # Binary mask (H×W)
-    change_magnitude: Optional[np.ndarray] = None  # Magnitude raster (H×W)
+    change_mask: np.ndarray | None = None  # Binary mask (H×W)
+    change_magnitude: np.ndarray | None = None  # Magnitude raster (H×W)
     change_pct: float = 0.0  # % of pixels changed
     model_version: str = ""
     processing_time_ms: float = 0.0
@@ -42,17 +43,17 @@ class ChangeDetectionResult:
 class SiameseUNet:
     """
     Siamese U-Net for bi-temporal change detection.
-    
+
     Architecture: two-stream encoder sharing weights, with difference
     features concatenated in the decoder. Produces binary change mask
     and continuous change magnitude.
-    
+
     Pre-trained on satellite change detection benchmarks (LEVIR-CD, S2Looking).
     """
 
     def __init__(
         self,
-        model_path: Optional[Path] = None,
+        model_path: Path | None = None,
         device: str = "cuda",
         input_size: int = 256,
     ) -> None:
@@ -113,7 +114,9 @@ class SiameseUNet:
                     nn.ReLU(inplace=True),
                 )
 
-            def forward(self, x: torch.Tensor, skip1: torch.Tensor, skip2: torch.Tensor) -> torch.Tensor:
+            def forward(
+                self, x: torch.Tensor, skip1: torch.Tensor, skip2: torch.Tensor
+            ) -> torch.Tensor:
                 x = self.up(x)
                 diff = torch.abs(skip1 - skip2)
                 x = torch.cat([x, skip1, diff], dim=1)
@@ -146,7 +149,9 @@ class SiameseUNet:
                 b = self.bottleneck(x)
                 return f1, f2, f3, f4, b
 
-            def forward(self, img_before: torch.Tensor, img_after: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+            def forward(
+                self, img_before: torch.Tensor, img_after: torch.Tensor
+            ) -> tuple[torch.Tensor, torch.Tensor]:
                 f1a, f2a, f3a, f4a, ba = self.forward_encoder(img_before)
                 f1b, f2b, f3b, f4b, bb = self.forward_encoder(img_after)
                 diff_b = torch.abs(ba - bb)
@@ -172,10 +177,11 @@ class SiameseUNet:
     ) -> ChangeDetectionResult:
         """
         Detect changes between two temporal chips.
-        
+
         Returns binary change mask and continuous magnitude raster.
         """
         import time
+
         start = time.time()
 
         if self._model is None:

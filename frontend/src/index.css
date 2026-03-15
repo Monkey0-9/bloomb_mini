@@ -2,32 +2,32 @@
 @import "tailwindcss";
 
 @theme {
-  --color-void: #020408;
-  --color-surface-0: #050A14;
-  --color-surface-1: #08101E;
-  --color-surface-2: #0C1628;
-  --color-surface-3: #111E34;
-  --color-surface-4: #172540;
-  --color-surface-5: #1D2E4E;
+  --color-void: #000000;
+  --color-surface-0: #050505;
+  --color-surface-1: #0A0A0A;
+  --color-surface-2: #0F0F0F;
+  --color-surface-3: #151515;
+  --color-surface-4: #202020;
+  --color-surface-5: #2A2A2A;
 
-  --color-bull: #00FF9D;
+  --color-bull: #00FF00;
   --color-bear: #FF3D3D;
-  --color-neutral: #6B7E99;
-  --color-accent-primary: #00C8FF;
-  --color-accent-secondary: #00FF9D;
-  --color-accent-tertiary: #FFB020;
+  --color-neutral: #808080;
+  --color-accent-primary: #FFB900;
+  --color-accent-secondary: #00FFFF;
+  --color-accent-tertiary: #FFFFFF;
 
   --color-text-0: #FFFFFF;
-  --color-text-1: #EDF2FB;
-  --color-text-2: #A8BDD4;
-  --color-text-3: #667A95;
-  --color-text-4: #3E5066;
-  --color-text-5: #243040;
+  --color-text-1: #FFB900;
+  --color-text-2: #00FF00;
+  --color-text-3: #00FFFF;
+  --color-text-4: #808080;
+  --color-text-5: #404040;
 
-  --font-bebas: "Bebas Neue", sans-serif;
-  --font-dm: "DM Sans", sans-serif;
+  --font-bebas: "IBM Plex Mono", monospace;
+  --font-dm: "IBM Plex Mono", monospace;
   --font-mono: "IBM Plex Mono", monospace;
-  --font-lora: "Lora", serif;
+  --font-lora: "IBM Plex Mono", monospace;
 }
 
 @layer base {

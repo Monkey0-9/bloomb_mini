@@ -4,17 +4,28 @@ Unified Live Monitoring & Fill-Quality Dashboard — Phase 12
 Tracks real-time execution quality and system health during soft-launch.
 """
 
-from prometheus_client import Gauge, Counter, Summary
+from prometheus_client import Counter, Gauge, Summary
 
 # Execution Monitoring metrics
-FILL_PRICE_ERROR_BPS = Gauge('execution_fill_price_error_bps', 'Difference between expected and actual fill price', ['symbol'])
-ORDER_ROUTE_LATENCY = Summary('execution_order_route_latency_ms', 'Time from signal to broker submission')
-POSITION_RECON_MISMATCH = Counter('execution_recon_mismatch_total', 'Number of times internal and broker ledgers disagreed')
-RAMP_PERCENTAGE = Gauge('execution_ramp_percentage', 'Current NAV allocation percentage of the strategy')
+FILL_PRICE_ERROR_BPS = Gauge(
+    "execution_fill_price_error_bps",
+    "Difference between expected and actual fill price",
+    ["symbol"],
+)
+ORDER_ROUTE_LATENCY = Summary(
+    "execution_order_route_latency_ms", "Time from signal to broker submission"
+)
+POSITION_RECON_MISMATCH = Counter(
+    "execution_recon_mismatch_total", "Number of times internal and broker ledgers disagreed"
+)
+RAMP_PERCENTAGE = Gauge(
+    "execution_ramp_percentage", "Current NAV allocation percentage of the strategy"
+)
+
 
 class ExecutionMonitor:
     def __init__(self):
-        RAMP_PERCENTAGE.set(10.0) # Start at 10%
+        RAMP_PERCENTAGE.set(10.0)  # Start at 10%
 
     def record_fill_error(self, symbol: str, error_bps: float):
         FILL_PRICE_ERROR_BPS.labels(symbol=symbol).set(error_bps)

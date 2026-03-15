@@ -27,7 +27,7 @@ def make_tile(**kwargs) -> TileMetadata:
         commercial_use_ok=True,
         checksum_sha256="abc123" * 10,
         preprocessing_ver="0.0.0",
-        ingest_timestamp_utc=datetime.utcnow(),
+        ingest_timestamp_utc=datetime.now(timezone.utc),
         file_path="/tmp/test_tile.tif",
         location_key="rotterdam",
     )
@@ -53,43 +53,66 @@ def test_gate_cloud_passes_low_cloud():
 
 
 def test_gate_license_blocks_noncommercial():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        db = f"{tmpdir}/catalog.db"
-        with sqlite3.connect(db) as conn:
-            conn.execute(
-                "CREATE TABLE compliance_log "
-                "(id INTEGER PRIMARY KEY, tile_id TEXT, event TEXT, "
-                "timestamp TEXT, reason TEXT)"
-            )
-            conn.commit()
+    import os
+    import tempfile as tf
+    fd, db = tf.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        conn = sqlite3.connect(db)
+        conn.execute(
+            "CREATE TABLE compliance_log "
+            "(id INTEGER PRIMARY KEY, tile_id TEXT, event TEXT, "
+            "timestamp TEXT, reason TEXT)"
+        )
+        conn.commit()
+        conn.close()
+
         result = gate_license(make_tile(commercial_use_ok=False), db)
         assert result.status == "BLOCK"
-        with sqlite3.connect(db) as conn:
-            row = conn.execute(
-                "SELECT * FROM compliance_log WHERE tile_id='test-tile-001'"
-            ).fetchone()
+
+        conn = sqlite3.connect(db)
+        row = conn.execute(
+            "SELECT * FROM compliance_log WHERE tile_id='test-tile-001'"
+        ).fetchone()
+        conn.close()
         assert row is not None, "Compliance log must record blocked tiles"
+    finally:
+        try:
+            os.remove(db)
+        except Exception:
+            pass
 
 
 def test_gate_checksum_quarantines_corrupted_file():
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".tif") as f:
+    import os
+    fd, path = tempfile.mkstemp(suffix=".tif")
+    with os.fdopen(fd, "wb") as f:
         f.write(b"original content")
-        path = f.name
-    correct_hash = hashlib.sha256(b"original content").hexdigest()
-    wrong_hash = hashlib.sha256(b"different content").hexdigest()
-    result = gate_checksum("test-tile-001", path, wrong_hash)
-    assert result.status == "QUARANTINE"
-    Path(path).unlink(missing_ok=True)
+    try:
+        wrong_hash = hashlib.sha256(b"different content").hexdigest()
+        result = gate_checksum("test-tile-001", path, wrong_hash)
+        assert result.status == "QUARANTINE"
+    finally:
+        try:
+            os.remove(path)
+        except Exception:
+            pass
 
 
 def test_gate_checksum_passes_valid_file():
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".tif") as f:
+    import os
+    fd, path = tempfile.mkstemp(suffix=".tif")
+    with os.fdopen(fd, "wb") as f:
         f.write(b"valid satellite data")
-        path = f.name
-    correct_hash = hashlib.sha256(b"valid satellite data").hexdigest()
-    result = gate_checksum("test-tile-001", path, correct_hash)
-    assert result.status == "PASS"
-    Path(path).unlink(missing_ok=True)
+    try:
+        correct_hash = hashlib.sha256(b"valid satellite data").hexdigest()
+        result = gate_checksum("test-tile-001", path, correct_hash)
+        assert result.status == "PASS"
+    finally:
+        try:
+            os.remove(path)
+        except Exception:
+            pass
 
 
 def test_gate_schema_rejects_empty_tile_id():

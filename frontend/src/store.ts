@@ -33,14 +33,30 @@ interface TerminalState {
   signals: Signal[];
   indices: MarketIndex[];
   events: TerminalEvent[];
-  selectedView: 'world' | 'charts' | 'matrix' | 'feed' | 'portfolio' | 'terminal';
+  selectedView: 'world' | 'charts' | 'matrix' | 'feed' | 'portfolio' | 'terminal' | 'settings' | 'help' | 'research' | 'education';
+  activeLayers: string[];
+  zoomLevel: number;
   command: string;
+  currentTicker: string;
   setView: (view: TerminalState['selectedView']) => void;
   setSelectedView: (view: TerminalState['selectedView']) => void;
   setCommand: (cmd: string) => void;
+  setCurrentTicker: (ticker: string) => void;
+  toggleLayer: (layer: string) => void;
+  updateZoom: (delta: number) => void;
 }
 
 export const useTerminalStore = create<TerminalState>((set) => ({
+  activeLayers: ['PORTS', 'VESSELS', 'THERMAL'],
+  zoomLevel: 2,
+  toggleLayer: (layer) => set((state) => ({
+    activeLayers: state.activeLayers.includes(layer)
+      ? state.activeLayers.filter((l) => l !== layer)
+      : [...state.activeLayers, layer],
+  })),
+  updateZoom: (delta) => set((state) => ({
+    zoomLevel: Math.max(1, Math.min(5, state.zoomLevel + delta)),
+  })),
   indices: [
     { id: 'SPX', name: 'S&P 500', value: '5,123.42', change: '+1.22%', status: 'bullish' },
     { id: 'NDX', name: 'NASDAQ', value: '18,124.55', change: '+1.54%', status: 'bullish' },
@@ -79,8 +95,20 @@ export const useTerminalStore = create<TerminalState>((set) => ({
     { id: 'e1', timestamp: '14:31', message: 'Rotterdam port throughput +34%', type: 'satellite' }
   ],
   selectedView: 'world',
+  activeLayers: ['PORTS', 'VESSELS', 'THERMAL'],
+  zoomLevel: 2,
   command: '',
+  currentTicker: 'AMKBY US Equity',
   setView: (view) => set({ selectedView: view }),
   setSelectedView: (view) => set({ selectedView: view }),
   setCommand: (cmd) => set({ command: cmd }),
+  setCurrentTicker: (ticker) => set({ currentTicker: ticker }),
+  toggleLayer: (layer) => set((state) => ({
+    activeLayers: state.activeLayers.includes(layer)
+      ? state.activeLayers.filter((l) => l !== layer)
+      : [...state.activeLayers, layer],
+  })),
+  updateZoom: (delta) => set((state) => ({
+    zoomLevel: Math.max(1, Math.min(5, state.zoomLevel + delta)),
+  })),
 }));

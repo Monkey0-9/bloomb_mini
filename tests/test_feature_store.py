@@ -43,7 +43,7 @@ def test_look_ahead_bias_is_prevented():
 
     assert future_record.feature_id not in returned_ids, (
         "CRITICAL: Future feature was returned for a past query. "
-        "This is look-ahead bias — all backtest results are invalid."
+        "This is look-ahead bias -- all backtest results are invalid."
     )
 
 
@@ -82,8 +82,10 @@ def test_feature_filter_by_name():
     store = FeatureStore(":memory:")
     T = datetime(2023, 1, 15, 12, 0, 0)
     r1 = make_record(feature_name="vessel_count",
+                     event_dt=T - timedelta(hours=2),
                      created_dt=T - timedelta(hours=1))
     r2 = make_record(feature_name="crane_count",
+                     event_dt=T - timedelta(hours=2),
                      created_dt=T - timedelta(hours=1))
     store.write(r1)
     store.write(r2)

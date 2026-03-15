@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 
@@ -29,22 +28,23 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PositionTarget:
     """Target position for a single asset."""
+
     asset_id: str
     target_weight: float  # fraction of NAV, can be negative (short)
     target_shares: int
     target_dollar: float
     signal_score: float
     confidence: float
-    capped_by: Optional[str] = None  # which constraint limited the size
+    capped_by: str | None = None  # which constraint limited the size
 
 
 class PositionSizer:
     """
     Volatility-targeted position sizing with Kelly fraction cap.
-    
+
     Kelly criterion: f* = (p * b - q) / b
     Where: p = win probability, b = win/loss ratio, q = 1 - p
-    
+
     We cap at 0.25 * Kelly to reduce variance.
     """
 
@@ -63,11 +63,11 @@ class PositionSizer:
         asset_adtv: dict[str, float],
         asset_sectors: dict[str, str],
         asset_countries: dict[str, str],
-        existing_weights: Optional[dict[str, float]] = None,
+        existing_weights: dict[str, float] | None = None,
     ) -> list[PositionTarget]:
         """
         Compute target positions for all assets with active signals.
-        
+
         Steps:
         1. Compute unconstrained Kelly weights
         2. Scale to target portfolio volatility
@@ -90,7 +90,7 @@ class PositionSizer:
 
             # Simplified Kelly: weight proportional to signal / vol²
             # Capped at KELLY_CAP
-            kelly_weight = sig.scored_value * sig.confidence_weight / (vol ** 2)
+            kelly_weight = sig.scored_value * sig.confidence_weight / (vol**2)
             kelly_weight = np.clip(kelly_weight, -self.KELLY_CAP, self.KELLY_CAP)
             raw_weights[sig.asset_id] = kelly_weight
 
@@ -158,15 +158,17 @@ class PositionSizer:
             target_shares = int(target_dollar / price) if price > 0 else 0
 
             sig = next((s for s in signals if s.asset_id == asset_id), None)
-            targets.append(PositionTarget(
-                asset_id=asset_id,
-                target_weight=weight,
-                target_shares=target_shares,
-                target_dollar=target_dollar,
-                signal_score=sig.scored_value if sig else 0.0,
-                confidence=sig.confidence_weight if sig else 0.0,
-                capped_by=capped_by,
-            ))
+            targets.append(
+                PositionTarget(
+                    asset_id=asset_id,
+                    target_weight=weight,
+                    target_shares=target_shares,
+                    target_dollar=target_dollar,
+                    signal_score=sig.scored_value if sig else 0.0,
+                    confidence=sig.confidence_weight if sig else 0.0,
+                    capped_by=capped_by,
+                )
+            )
 
         # Step 4: Gross exposure check
         gross = sum(abs(t.target_weight) for t in targets)
@@ -178,9 +180,13 @@ class PositionSizer:
                 t.target_shares = int(t.target_dollar / asset_prices.get(t.asset_id, 1.0))
                 if t.capped_by is None:
                     t.capped_by = "gross_exposure_limit"
-            logger.warning(f"Gross exposure {gross:.2%} exceeds {max_gross:.2%} — scaled down by {scale_down:.2f}")
+            logger.warning(
+                f"Gross exposure {gross:.2%} exceeds {max_gross:.2%} — scaled down by {scale_down:.2f}"
+            )
 
-        logger.info(f"Position sizing complete: {len(targets)} targets, "
-                   f"gross={sum(abs(t.target_weight) for t in targets):.2%}")
+        logger.info(
+            f"Position sizing complete: {len(targets)} targets, "
+            f"gross={sum(abs(t.target_weight) for t in targets):.2%}"
+        )
 
         return targets

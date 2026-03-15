@@ -18,14 +18,13 @@ And drift detection:
 from __future__ import annotations
 
 import logging
-import math
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 import numpy as np
-from prometheus_client import Counter, Gauge, Histogram, Summary
+from prometheus_client import Counter, Gauge, Histogram
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +113,7 @@ LICENSE_EXPIRY_DAYS = Gauge(
 @dataclass
 class ICTracker:
     """Track rolling Information Coefficient for a signal."""
+
     signal_name: str
     window_days: int = 63
     alert_threshold_consecutive: int = 10
@@ -127,7 +127,7 @@ class ICTracker:
         if len(self._values) < self.window_days:
             return {"status": "warming_up", "values": len(self._values)}
 
-        recent = list(self._values)[-self.window_days:]
+        recent = list(self._values)[-self.window_days :]
         rolling_ic = float(np.mean(recent))
         historical_p10 = float(np.percentile(list(self._values), 10))
 
@@ -141,9 +141,9 @@ class ICTracker:
         else:
             self._below_p10_count = 0
 
-        IC_BELOW_P10_CONSECUTIVE_DAYS.labels(
-            signal_name=self.signal_name
-        ).set(self._below_p10_count)
+        IC_BELOW_P10_CONSECUTIVE_DAYS.labels(signal_name=self.signal_name).set(
+            self._below_p10_count
+        )
 
         alert = None
         if self._below_p10_count >= self.alert_threshold_consecutive:
@@ -252,8 +252,7 @@ class DriftDetector:
 
             if classification == "SIGNIFICANT_DRIFT":
                 logger.warning(
-                    f"DRIFT ALERT: Feature '{feature_name}' PSI={psi:.3f} "
-                    f"(>{0.2}) — {action}"
+                    f"DRIFT ALERT: Feature '{feature_name}' PSI={psi:.3f} (>{0.2}) — {action}"
                 )
 
         return results
@@ -261,38 +260,42 @@ class DriftDetector:
 
 class SignalQualityMonitor:
     """Monitor signal quality metrics like SNR."""
-    
+
     @staticmethod
     def update_snr(signal_name: str, signal_values: np.ndarray) -> float:
         """Compute and update SNR (Mean/Std)."""
         if signal_values.size < 2:
             return 0.0
-        
+
         mean_val = np.mean(signal_values)
         std_val = np.std(signal_values)
         snr = float(mean_val / std_val) if std_val > 0 else 0.0
-        
+
         SIGNAL_SNR.labels(signal_name=signal_name).set(snr)
         if snr < 0.5:
             logger.warning(f"SNR COLLAPSE: Signal {signal_name} SNR={snr:.3f} below 0.5 threshold")
-            
+
         return snr
 
 
 class LicenseMonitor:
     """Monitor data license expiry."""
-    
+
     @staticmethod
     def check_license(license_id: str, expiry_date: datetime) -> int:
         """Calculate days to expiry and update Prometheus."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         days_left = (expiry_date - now).days
-        
+
         LICENSE_EXPIRY_DAYS.labels(license_id=license_id).set(days_left)
-        
+
         if days_left < 30:
-            logger.critical(f"LICENSE EXPIRY ALERT: License {license_id} expires in {days_left} days!")
+            logger.critical(
+                f"LICENSE EXPIRY ALERT: License {license_id} expires in {days_left} days!"
+            )
         elif days_left < 90:
-            logger.warning(f"LICENSE EXPIRY WARNING: License {license_id} expires in {days_left} days")
-            
+            logger.warning(
+                f"LICENSE EXPIRY WARNING: License {license_id} expires in {days_left} days"
+            )
+
         return days_left

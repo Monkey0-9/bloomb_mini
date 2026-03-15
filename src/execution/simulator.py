@@ -13,13 +13,13 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 import numpy as np
 
 from src.execution.position_sizing import PositionTarget
-from src.execution.risk_engine import RiskEngine, PortfolioPosition, PreTradeCheckResult
+from src.execution.risk_engine import PortfolioPosition, PreTradeCheckResult, RiskEngine
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SimulatedOrder:
     """A simulated paper trade."""
+
     order_id: str
     asset_id: str
     side: str  # "buy" or "sell"
@@ -39,12 +40,13 @@ class SimulatedOrder:
     signal_timestamp: datetime
     signal_to_trade_latency_s: float
     risk_check_passed: bool
-    pre_trade_result: Optional[PreTradeCheckResult] = None
+    pre_trade_result: PreTradeCheckResult | None = None
 
 
 @dataclass
 class SimulatedPortfolio:
     """Current state of the paper portfolio."""
+
     cash: float
     positions: dict[str, PortfolioPosition] = field(default_factory=dict)
     nav: float = 0.0
@@ -75,7 +77,7 @@ class SimulatedPortfolio:
 class PaperTradingSimulator:
     """
     Paper trading engine for shadow-running the strategy against live data.
-    
+
     Every simulated trade passes through the full risk engine.
     Slippage model: spread (5 bps) + market impact (sqrt model).
     """
@@ -87,7 +89,7 @@ class PaperTradingSimulator:
     def __init__(
         self,
         initial_nav: float = 10_000_000.0,
-        risk_engine: Optional[RiskEngine] = None,
+        risk_engine: RiskEngine | None = None,
     ) -> None:
         self._risk_engine = risk_engine or RiskEngine()
         self._portfolio = SimulatedPortfolio(
@@ -109,13 +111,13 @@ class PaperTradingSimulator:
         asset_sectors: dict[str, str],
         asset_countries: dict[str, str],
         signal_timestamp: datetime,
-        current_time: Optional[datetime] = None,
+        current_time: datetime | None = None,
     ) -> list[SimulatedOrder]:
         """
         Execute position targets through the paper trading engine.
         All orders pass through pre-trade risk checks.
         """
-        now = current_time or datetime.now(timezone.utc)
+        now = current_time or datetime.now(UTC)
         orders: list[SimulatedOrder] = []
 
         for target in targets:
@@ -166,26 +168,31 @@ class PaperTradingSimulator:
                 logger.warning(
                     f"PAPER TRADE BLOCKED: {target.asset_id} — {risk_result.block_reason}"
                 )
-                orders.append(SimulatedOrder(
-                    order_id=risk_result.order_id,
-                    asset_id=target.asset_id,
-                    side=side,
-                    quantity=abs_qty,
-                    price=price,
-                    fill_price=0,
-                    slippage_bps=0,
-                    commission=0,
-                    timestamp_utc=now,
-                    signal_timestamp=signal_timestamp,
-                    signal_to_trade_latency_s=latency,
-                    risk_check_passed=False,
-                    pre_trade_result=risk_result,
-                ))
+                orders.append(
+                    SimulatedOrder(
+                        order_id=risk_result.order_id,
+                        asset_id=target.asset_id,
+                        side=side,
+                        quantity=abs_qty,
+                        price=price,
+                        fill_price=0,
+                        slippage_bps=0,
+                        commission=0,
+                        timestamp_utc=now,
+                        signal_timestamp=signal_timestamp,
+                        signal_to_trade_latency_s=latency,
+                        risk_check_passed=False,
+                        pre_trade_result=risk_result,
+                    )
+                )
                 continue
 
             # Compute execution price with slippage
             fill_price, slippage_bps = self._simulate_execution(
-                price, abs_qty, market_adtv.get(target.asset_id, 1_000_000), side,
+                price,
+                abs_qty,
+                market_adtv.get(target.asset_id, 1_000_000),
+                side,
             )
 
             commission = abs_qty * fill_price * self.DEFAULT_COMMISSION_BPS / 10000
@@ -251,7 +258,7 @@ class PaperTradingSimulator:
     ) -> tuple[float, float]:
         """
         Simulate execution with spread + market impact.
-        
+
         Market impact: Almgren-Chriss square-root model.
         Impact = σ × coeff × √(quantity / ADTV)
         """
@@ -280,7 +287,9 @@ class PaperTradingSimulator:
             return {"status": "insufficient_data"}
 
         returns = np.diff(nav_arr) / nav_arr[:-1]
-        sharpe = float(np.mean(returns) / np.std(returns) * np.sqrt(252)) if np.std(returns) > 0 else 0
+        sharpe = (
+            float(np.mean(returns) / np.std(returns) * np.sqrt(252)) if np.std(returns) > 0 else 0
+        )
 
         cum = np.cumprod(1 + returns)
         peak = np.maximum.accumulate(cum)
@@ -294,6 +303,14 @@ class PaperTradingSimulator:
             "sharpe_ratio": sharpe,
             "max_drawdown_pct": max_dd,
             "total_trades": len(self._portfolio.trade_history),
-            "blocked_trades": sum(1 for o in self._portfolio.trade_history if not o.risk_check_passed),
-            "avg_slippage_bps": float(np.mean([o.slippage_bps for o in self._portfolio.trade_history if o.risk_check_passed])) if self._portfolio.trade_history else 0,
+            "blocked_trades": sum(
+                1 for o in self._portfolio.trade_history if not o.risk_check_passed
+            ),
+            "avg_slippage_bps": float(
+                np.mean(
+                    [o.slippage_bps for o in self._portfolio.trade_history if o.risk_check_passed]
+                )
+            )
+            if self._portfolio.trade_history
+            else 0,
         }

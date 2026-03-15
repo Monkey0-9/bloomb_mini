@@ -12,9 +12,9 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Optional, Dict
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -45,27 +45,29 @@ class OrderSide(str, Enum):
 @dataclass
 class Order:
     """Immutable order record."""
+
     order_id: str
     asset_id: str
     side: OrderSide
     quantity: int
     order_type: OrderType
-    limit_price: Optional[float] = None
+    limit_price: float | None = None
     status: OrderStatus = OrderStatus.PENDING
     signal_score: float = 0.0
-    signal_timestamp: Optional[datetime] = None
-    creation_timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    fill_price: Optional[float] = None
+    signal_timestamp: datetime | None = None
+    creation_timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
+    fill_price: float | None = None
     fill_quantity: int = 0
-    fill_timestamp: Optional[datetime] = None
-    risk_check_id: Optional[str] = None
-    rejection_reason: Optional[str] = None
-    parent_order_id: Optional[str] = None  # For modifications
+    fill_timestamp: datetime | None = None
+    risk_check_id: str | None = None
+    rejection_reason: str | None = None
+    parent_order_id: str | None = None  # For modifications
 
 
 @dataclass
 class OrderBookSnapshot:
     """Point-in-time snapshot of the order book."""
+
     timestamp: datetime
     pending_orders: int
     filled_orders: int
@@ -77,7 +79,7 @@ class OrderBookSnapshot:
 class OrderManager:
     """
     Order lifecycle management.
-    
+
     Flow: create → risk check → submit → fill/reject → audit log
     All transitions are logged to QLDB in production.
     """
@@ -94,9 +96,9 @@ class OrderManager:
         side: OrderSide,
         quantity: int,
         order_type: OrderType = OrderType.MARKET,
-        limit_price: Optional[float] = None,
+        limit_price: float | None = None,
         signal_score: float = 0.0,
-        signal_timestamp: Optional[datetime] = None,
+        signal_timestamp: datetime | None = None,
     ) -> Order:
         """Create a new order. Returns pending order for risk check."""
         order = Order(
@@ -138,12 +140,12 @@ class OrderManager:
         self._log_transition(order, "submitted")
         return order
 
-    def fill(self, order_id: str, fill_price: float, fill_quantity: Optional[int] = None) -> Order:
+    def fill(self, order_id: str, fill_price: float, fill_quantity: int | None = None) -> Order:
         """Record order fill."""
         order = self._get_order(order_id)
         order.fill_price = fill_price
         order.fill_quantity = fill_quantity or order.quantity
-        order.fill_timestamp = datetime.now(timezone.utc)
+        order.fill_timestamp = datetime.now(UTC)
 
         if order.fill_quantity >= order.quantity:
             order.status = OrderStatus.FILLED
@@ -163,10 +165,14 @@ class OrderManager:
 
     def expire_stale_orders(self) -> list[Order]:
         """Expire orders older than MAX_ORDER_AGE_SECONDS."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expired = []
         for order in self._orders.values():
-            if order.status in (OrderStatus.PENDING, OrderStatus.RISK_APPROVED, OrderStatus.SUBMITTED):
+            if order.status in (
+                OrderStatus.PENDING,
+                OrderStatus.RISK_APPROVED,
+                OrderStatus.SUBMITTED,
+            ):
                 age = (now - order.creation_timestamp).total_seconds()
                 if age > self.MAX_ORDER_AGE_SECONDS:
                     order.status = OrderStatus.EXPIRED
@@ -174,15 +180,17 @@ class OrderManager:
                     expired.append(order)
         return expired
 
-    def get_order(self, order_id: str) -> Optional[Order]:
+    def get_order(self, order_id: str) -> Order | None:
         return self._orders.get(order_id)
 
     def get_open_orders(self) -> list[Order]:
-        return [o for o in self._orders.values() if o.status in (
-            OrderStatus.PENDING, OrderStatus.RISK_APPROVED, OrderStatus.SUBMITTED
-        )]
+        return [
+            o
+            for o in self._orders.values()
+            if o.status in (OrderStatus.PENDING, OrderStatus.RISK_APPROVED, OrderStatus.SUBMITTED)
+        ]
 
-    def get_filled_orders(self, since: Optional[datetime] = None) -> list[Order]:
+    def get_filled_orders(self, since: datetime | None = None) -> list[Order]:
         orders = [o for o in self._orders.values() if o.status == OrderStatus.FILLED]
         if since:
             orders = [o for o in orders if o.fill_timestamp and o.fill_timestamp >= since]
@@ -192,10 +200,12 @@ class OrderManager:
         """Get current order book snapshot."""
         filled = [o for o in self._orders.values() if o.status == OrderStatus.FILLED]
         return OrderBookSnapshot(
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             pending_orders=len(self.get_open_orders()),
             filled_orders=len(filled),
-            rejected_orders=len([o for o in self._orders.values() if o.status == OrderStatus.RISK_REJECTED]),
+            rejected_orders=len(
+                [o for o in self._orders.values() if o.status == OrderStatus.RISK_REJECTED]
+            ),
             total_fill_value=sum((o.fill_price or 0) * o.fill_quantity for o in filled),
             avg_slippage_bps=0.0,
         )
@@ -210,13 +220,15 @@ class OrderManager:
         return order
 
     def _log_transition(self, order: Order, event: str) -> None:
-        self._order_log.append({
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "order_id": order.order_id,
-            "asset_id": order.asset_id,
-            "event": event,
-            "status": order.status.value,
-        })
+        self._order_log.append(
+            {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "order_id": order.order_id,
+                "asset_id": order.asset_id,
+                "event": event,
+                "status": order.status.value,
+            }
+        )
 
 
 class AlpacaSimGateway:
@@ -227,6 +239,7 @@ class AlpacaSimGateway:
       - Partial Fills
       - Order status callbacks
     """
+
     def __init__(self, order_manager: OrderManager):
         self._om = order_manager
         self._active_submissions: list[str] = []
@@ -236,12 +249,13 @@ class AlpacaSimGateway:
         order = self._om.get_order(order_id)
         if not order:
             return False
-            
+
         logger.info(f"ALPACASIM: Submitting order {order_id} for {order.asset_id}")
         # Simulate local network latency
         import time
-        time.sleep(0.05) 
-        
+
+        time.sleep(0.05)
+
         self._om.submit(order_id)
         self._active_submissions.append(order_id)
         return True
@@ -249,15 +263,16 @@ class AlpacaSimGateway:
     def poll_broker_status(self) -> None:
         """Process active orders and simulate fills."""
         import random
+
         for order_id in list(self._active_submissions):
             order = self._om.get_order(order_id)
             if not order or order.status != OrderStatus.SUBMITTED:
                 self._active_submissions.remove(order_id)
                 continue
-            
+
             # Simulate a fill with random slippage and timing
             fill_rand = random.random()
-            if fill_rand > 0.1: # 90% chance of fill per poll
+            if fill_rand > 0.1:  # 90% chance of fill per poll
                 # Apply Almgren-Chriss style slippage simulation or just use market
                 fill_price = (order.limit_price or 100.0) * (1 + random.uniform(-0.001, 0.001))
                 self._om.fill(order_id, fill_price)
@@ -270,12 +285,14 @@ class LiveAlpacaGateway:
     Production Alpaca SDK integration gateway.
     Requires ALPACA_API_KEY and ALPACA_SECRET in environment.
     """
-    
-    def __init__(self, order_manager: OrderManager, base_url: str = "https://paper-api.alpaca.markets"):
+
+    def __init__(
+        self, order_manager: OrderManager, base_url: str = "https://paper-api.alpaca.markets"
+    ):
         self._om = order_manager
         self._base_url = base_url
-        self._api: Optional[Any] = None
-        self._is_live = False # Safety flag
+        self._api: Any | None = None
+        self._is_live = False  # Safety flag
 
     def connect(self, api_key: str, secret_key: str, live: bool = False):
         """Initialize connection to Alpaca API."""
@@ -295,7 +312,7 @@ class LiveAlpacaGateway:
             return False
 
         logger.info(f"ALPACALIVE: Routing order {order_id} to Alpaca API...")
-        
+
         # In production:
         # self._api.submit_order(
         #     symbol=order.asset_id,
@@ -305,11 +322,11 @@ class LiveAlpacaGateway:
         #     time_in_force='day',
         #     limit_price=order.limit_price
         # )
-        
+
         self._om.submit(order_id)
         return True
 
-    def sync_positions(self) -> list[Dict[str, Any]]:
+    def sync_positions(self) -> list[dict[str, Any]]:
         """Reconcile internal state with broker's open positions."""
         logger.info("ALPACALIVE: Syncing positions with broker...")
         # positions = self._api.list_positions()

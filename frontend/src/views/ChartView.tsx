@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { createChart, ColorType, IChartApi, ISeriesApi } from 'lightweight-charts';
+import { createChart, ColorType, IChartApi, ISeriesApi, AreaSeries, LineSeries } from 'lightweight-charts';
+import { useTerminalStore } from '../store';
 
 const ChartView = () => {
+  const { currentTicker } = useTerminalStore();
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const areaSeriesRef = useRef<ISeriesApi<"Area"> | null>(null);
@@ -37,15 +39,15 @@ const ChartView = () => {
         },
       });
 
-      const areaSeries = chart.addAreaSeries({
+      const areaSeries = chart.addSeries(AreaSeries, {
         lineColor: '#00C8FF',
         topColor: 'rgba(0, 200, 255, 0.15)',
         bottomColor: 'rgba(0, 200, 255, 0.01)',
         lineWidth: 2,
       });
 
-      const signalSeries = chart.addLineSeries({
-        lineColor: '#00C8FF', 
+      const signalSeries = chart.addSeries(LineSeries, {
+        color: '#00C8FF', 
         lineWidth: 2,
         title: 'SAT SIGNAL',
       });
@@ -113,7 +115,7 @@ const ChartView = () => {
         chart = null;
       }
     };
-  }, []);
+  }, [currentTicker]); // Re-run on ticker change
 
   return (
     <div className="flex-1 flex flex-col bg-void overflow-hidden">
@@ -121,8 +123,8 @@ const ChartView = () => {
       <div className="h-11 border-b border-white/5 flex items-center justify-between px-4 shrink-0 bg-surface-1/40">
          <div className="flex items-center gap-4">
             <div className="flex flex-col leading-tight">
-               <span className="type-data-hero text-[16px] text-accent-primary font-bold">AMKBY US Equity</span>
-               <span className="type-data-xs text-text-4 uppercase tracking-[0.2em]">Maersk — Sat-Monitoring: ACTIVE</span>
+               <span className="type-data-hero text-[16px] text-accent-primary font-bold">{currentTicker}</span>
+               <span className="type-data-xs text-text-4 uppercase tracking-[0.2em]">Sat-Monitoring: ACTIVE</span>
             </div>
             <div className="h-6 w-[1px] bg-white/5 mx-2"></div>
             <div className="flex items-baseline gap-2 tabular-nums">

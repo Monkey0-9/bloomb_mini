@@ -37,8 +37,15 @@ def test_gross_exposure_constant_is_150pct():
 
 def test_gross_exposure_gate_blocks_breach():
     engine = RiskEngine(":memory:")
-    portfolio = make_portfolio(nav=1_000_000, exposure_pct=1.49)
-    order = make_order(notional_usd=20_000)  # pushes over 150%
+    # 149% across 12 sectors (~12.4% each, under 15% sector limit)
+    sectors = [f"Sector{i}" for i in range(12)]
+    positions = [
+        Position(ticker=f"T{i}", notional_usd=(1_000_000 * 1.49) / 12,
+                 sector=s, country="US")
+        for i, s in enumerate(sectors)
+    ]
+    portfolio = Portfolio(nav=1_000_000, positions=positions)
+    order = make_order(notional_usd=20_000, sector="NewSector")  # pushes over 150%
     result = engine.check_all_gates(order, portfolio)
     assert not result.passed
     assert result.failed_gate == "gross_exposure"
@@ -47,7 +54,7 @@ def test_gross_exposure_gate_blocks_breach():
 def test_gross_exposure_gate_passes_within_limit():
     engine = RiskEngine(":memory:")
     portfolio = make_portfolio(nav=1_000_000, exposure_pct=0.5)
-    order = make_order(notional_usd=10_000)
+    order = make_order(notional_usd=10_000, sector="NewSector", country="AU")
     result = engine.check_all_gates(order, portfolio)
     assert result.passed
 

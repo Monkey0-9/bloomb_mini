@@ -9,6 +9,8 @@ import SignalMatrix from './views/SignalMatrix';
 import SatelliteFeed from './views/SatelliteFeed';
 import GlobalEquitiesView from './views/GlobalEquitiesView';
 import RawTerminalMode from './views/RawTerminalMode';
+import PlaceholderView from './views/PlaceholderView';
+import ResearchView from './views/ResearchView';
 
 // Components
 import Masthead from './components/Masthead';
@@ -18,6 +20,7 @@ import WatchlistPanel from './components/WatchlistPanel';
 import DataStrip from './components/DataStrip';
 import AlertHub from './components/AlertHub';
 import ExplainMode from './components/ExplainMode';
+import NewsTicker from './components/NewsTicker';
 
 const CommandLine = () => {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -91,11 +94,15 @@ const App = () => {
               {selectedView === 'feed' && <SatelliteFeed />}
               {selectedView === 'portfolio' && <GlobalEquitiesView />}
               {selectedView === 'terminal' && <RawTerminalMode />}
+              {selectedView === 'research' && <ResearchView />}
+              {selectedView === 'settings' && <PlaceholderView title="Terminal Settings" />}
+              {selectedView === 'help' && <PlaceholderView title="Documentation" />}
+              {selectedView === 'education' && <PlaceholderView title="SatTrade Academy" />}
               
               <ExplainMode 
                 isOpen={isExplainOpen} 
                 onClose={() => setIsExplainOpen(false)} 
-                view={selectedView} 
+                view={selectedView as any} 
               />
            </div>
            

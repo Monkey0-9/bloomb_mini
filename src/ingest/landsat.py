@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import requests
 
@@ -27,7 +27,6 @@ from src.common.schemas import (
     ProcessingLevel,
     SensorType,
     TileMetadata,
-    compute_file_checksum,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,6 +38,7 @@ LANDSAT_LICENSE_ID = "usgs_landsat_public_domain"
 @dataclass
 class LandsatSearchParams:
     """Parameters for Landsat scene search."""
+
     bbox: BoundingBox
     start_date: datetime
     end_date: datetime
@@ -53,7 +53,7 @@ class USGSAuth:
     def __init__(self, username: str, token: str) -> None:
         self._username = username
         self._token = token
-        self._api_key: Optional[str] = None
+        self._api_key: str | None = None
 
     def login(self) -> str:
         """Authenticate with USGS M2M API."""
@@ -86,7 +86,7 @@ class USGSAuth:
 class LandsatIngestor:
     """
     USGS Landsat data ingestor.
-    
+
     Handles search, validation, and download of Landsat Collection 2
     Level-2 products (surface reflectance + surface temperature).
     """
@@ -97,7 +97,7 @@ class LandsatIngestor:
         self,
         auth: USGSAuth,
         raw_storage_path: Path,
-        known_checksums: Optional[set[str]] = None,
+        known_checksums: set[str] | None = None,
     ) -> None:
         self._auth = auth
         self._raw_storage_path = raw_storage_path
@@ -151,7 +151,7 @@ class LandsatIngestor:
 
     def validate_and_ingest(self, scene: dict[str, Any]) -> IngestEvent:
         """Process a single Landsat scene through ingestion pipeline."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         entity_id = scene.get("entityId", "")
         display_id = scene.get("displayId", "")
 
@@ -196,7 +196,7 @@ class LandsatIngestor:
         # Parse acquisition date
         acq_date = scene.get("temporalCoverage", {}).get("startDate", "")
         if acq_date:
-            acquisition = datetime.strptime(acq_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            acquisition = datetime.strptime(acq_date, "%Y-%m-%d").replace(tzinfo=UTC)
         else:
             raise ValueError("Missing acquisition date")
 
@@ -213,8 +213,10 @@ class LandsatIngestor:
             sensor_type=SensorType.THERMAL if is_thermal else SensorType.OPTICAL,
             resolution_m=100.0 if is_thermal else 30.0,
             bounding_box_wgs84=BoundingBox(
-                west=min(lons), south=min(lats),
-                east=max(lons), north=max(lats),
+                west=min(lons),
+                south=min(lats),
+                east=max(lons),
+                north=max(lats),
             ),
             license_id=LANDSAT_LICENSE_ID,
             commercial_use_permitted=True,

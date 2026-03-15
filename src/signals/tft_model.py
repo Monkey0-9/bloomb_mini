@@ -15,8 +15,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -26,6 +25,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TFTConfig:
     """Temporal Fusion Transformer configuration."""
+
     # Architecture
     hidden_size: int = 64
     num_attention_heads: int = 4
@@ -42,7 +42,9 @@ class TFTConfig:
     # Data
     input_sequence_length: int = 52  # 52 weeks lookback
     forecast_horizon: int = 4  # 4 weeks ahead
-    known_categoricals: list[str] = field(default_factory=lambda: ["port_id", "day_of_week", "month"])
+    known_categoricals: list[str] = field(
+        default_factory=lambda: ["port_id", "day_of_week", "month"]
+    )
     # "time_since_last_obs" explicitly models irregular satellite acquisition steps
     known_reals: list[str] = field(default_factory=lambda: ["time_since_last_obs"])
     target: str = "forward_return"
@@ -54,23 +56,24 @@ class TFTConfig:
 @dataclass
 class TFTPrediction:
     """TFT model prediction output."""
+
     entity_id: str
     predictions: dict[int, float]  # horizon → predicted value
     prediction_intervals: dict[int, tuple[float, float]]  # horizon → (lower, upper)
-    attention_weights: Optional[np.ndarray] = None  # Interpretability
-    variable_selection_weights: Optional[dict[str, float]] = None
+    attention_weights: np.ndarray | None = None  # Interpretability
+    variable_selection_weights: dict[str, float] | None = None
     model_version: str = ""
 
 
 class TemporalFusionTransformerModel:
     """
     TFT model wrapper for multi-horizon signal forecasting.
-    
+
     In production: uses PyTorch Forecasting's TemporalFusionTransformer.
     For development: implements core TFT architecture.
     """
 
-    def __init__(self, config: Optional[TFTConfig] = None) -> None:
+    def __init__(self, config: TFTConfig | None = None) -> None:
         self._config = config or TFTConfig()
         self._model = None
         self._model_version = "0.1.0"
@@ -93,7 +96,10 @@ class TemporalFusionTransformerModel:
 
             class GatedResidualNetwork(nn.Module):
                 """Variable selection / gating mechanism."""
-                def __init__(self, input_size: int, hidden_size: int, output_size: int, dropout: float = 0.1):
+
+                def __init__(
+                    self, input_size: int, hidden_size: int, output_size: int, dropout: float = 0.1
+                ):
                     super().__init__()
                     self.fc1 = nn.Linear(input_size, hidden_size)
                     self.elu = nn.ELU()
@@ -102,7 +108,11 @@ class TemporalFusionTransformerModel:
                     self.sigmoid = nn.Sigmoid()
                     self.dropout = nn.Dropout(dropout)
                     self.layer_norm = nn.LayerNorm(output_size)
-                    self.skip = nn.Linear(input_size, output_size) if input_size != output_size else nn.Identity()
+                    self.skip = (
+                        nn.Linear(input_size, output_size)
+                        if input_size != output_size
+                        else nn.Identity()
+                    )
 
                 def forward(self, x: torch.Tensor) -> torch.Tensor:
                     h = self.elu(self.fc1(x))
@@ -115,12 +125,15 @@ class TemporalFusionTransformerModel:
 
             class VariableSelectionNetwork(nn.Module):
                 """Learn to select important features."""
+
                 def __init__(self, n_features: int, hidden_size: int, dropout: float = 0.1):
                     super().__init__()
-                    self.grns = nn.ModuleList([
-                        GatedResidualNetwork(1, hidden_size, hidden_size, dropout)
-                        for _ in range(n_features)
-                    ])
+                    self.grns = nn.ModuleList(
+                        [
+                            GatedResidualNetwork(1, hidden_size, hidden_size, dropout)
+                            for _ in range(n_features)
+                        ]
+                    )
                     self.softmax_grn = GatedResidualNetwork(
                         n_features * hidden_size, hidden_size, n_features, dropout
                     )
@@ -130,7 +143,7 @@ class TemporalFusionTransformerModel:
                     # x: (batch, time, features)
                     processed = []
                     for i, grn in enumerate(self.grns):
-                        processed.append(grn(x[:, :, i:i+1]))
+                        processed.append(grn(x[:, :, i : i + 1]))
                     processed = torch.stack(processed, dim=-1)  # (batch, time, hidden, n_features)
 
                     # Variable selection weights
@@ -143,28 +156,40 @@ class TemporalFusionTransformerModel:
 
             class TFTModel(nn.Module):
                 """Core TFT architecture."""
+
                 def __init__(self, config: TFTConfig, n_features: int):
                     super().__init__()
                     self.config = config
-                    self.vsn = VariableSelectionNetwork(n_features, config.hidden_size, config.dropout)
+                    self.vsn = VariableSelectionNetwork(
+                        n_features, config.hidden_size, config.dropout
+                    )
                     self.encoder = nn.LSTM(
-                        config.hidden_size, config.hidden_size,
+                        config.hidden_size,
+                        config.hidden_size,
                         num_layers=config.num_encoder_layers,
-                        batch_first=True, dropout=config.dropout,
+                        batch_first=True,
+                        dropout=config.dropout,
                     )
                     self.attention = nn.MultiheadAttention(
-                        config.hidden_size, config.num_attention_heads,
-                        dropout=config.dropout, batch_first=True,
+                        config.hidden_size,
+                        config.num_attention_heads,
+                        dropout=config.dropout,
+                        batch_first=True,
                     )
                     self.output_grn = GatedResidualNetwork(
-                        config.hidden_size, config.hidden_size, 1, config.dropout,
+                        config.hidden_size,
+                        config.hidden_size,
+                        1,
+                        config.dropout,
                     )
                     # Quantile outputs for prediction intervals
-                    self.quantile_heads = nn.ModuleList([
-                        nn.Linear(1, 1) for _ in [0.10, 0.50, 0.90]
-                    ])
+                    self.quantile_heads = nn.ModuleList(
+                        [nn.Linear(1, 1) for _ in [0.10, 0.50, 0.90]]
+                    )
 
-                def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+                def forward(
+                    self, x: torch.Tensor
+                ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
                     selected, var_weights = self.vsn(x)
                     encoded, _ = self.encoder(selected)
                     attended, attention_weights = self.attention(encoded, encoded, encoded)
@@ -177,7 +202,9 @@ class TemporalFusionTransformerModel:
             n_features = len(self._config.known_reals) + len(self._config.known_categoricals)
             n_features = max(n_features, 10)
             self._model = TFTModel(self._config, n_features)
-            logger.info(f"Built TFT model: {sum(p.numel() for p in self._model.parameters())} parameters")
+            logger.info(
+                f"Built TFT model: {sum(p.numel() for p in self._model.parameters())} parameters"
+            )
 
         except ImportError:
             logger.warning("PyTorch not available — TFT model not built")
@@ -218,7 +245,7 @@ class TemporalFusionTransformerModel:
                 n_batches = 0
 
                 for i in range(0, len(indices), self._config.batch_size):
-                    batch_idx = indices[i:i + self._config.batch_size]
+                    batch_idx = indices[i : i + self._config.batch_size]
                     x_batch = torch.from_numpy(X_train[batch_idx]).float().to(device)
                     y_batch = torch.from_numpy(y_train[batch_idx]).float().to(device)
 
@@ -297,9 +324,12 @@ class TemporalFusionTransformerModel:
         return predictions
 
     @staticmethod
-    def _quantile_loss(predictions: Any, targets: Any, quantiles: list[float] = [0.10, 0.50, 0.90]) -> Any:
+    def _quantile_loss(
+        predictions: Any, targets: Any, quantiles: list[float] = [0.10, 0.50, 0.90]
+    ) -> Any:
         """Compute combined quantile loss."""
         import torch
+
         losses = []
         for i, q in enumerate(quantiles):
             if predictions.dim() == 1:

@@ -7,7 +7,6 @@ result in the entire system.
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from uuid import uuid4
 
 from src.common.schemas import FeatureRecord
 
@@ -28,32 +27,44 @@ HOLDOUT_START_DATE = datetime(2023, 7, 1, 0, 0, 0)
 
 
 class FeatureStore:
-    def __init__(self, db_path: str = "data/features.db",
-                 is_holdout: bool = False) -> None:
+    def __init__(
+        self, db_path: str = "data/features.db", is_holdout: bool = False
+    ) -> None:
         self.db_path = db_path
         self.is_holdout = is_holdout
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        # For :memory: databases, keep a single persistent connection so the
+        # schema created in _init_db is visible to all subsequent operations.
+        if db_path == ":memory:":
+            self._conn: sqlite3.Connection | None = sqlite3.connect(":memory:")
+        else:
+            self._conn = None
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
+    def _connect(self) -> sqlite3.Connection:
+        if self._conn is not None:
+            return self._conn
+        return sqlite3.connect(self.db_path)
+
     def _init_db(self) -> None:
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS features (
-                    feature_id        TEXT PRIMARY KEY,
-                    entity_id         TEXT NOT NULL,
-                    feature_name      TEXT NOT NULL,
-                    feature_value     REAL NOT NULL,
-                    event_timestamp   TEXT NOT NULL,
-                    created_timestamp TEXT NOT NULL,
-                    source_tile_id    TEXT NOT NULL,
-                    model_version     TEXT NOT NULL DEFAULT '1.0.0'
-                )
-            """)
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_entity_created "
-                "ON features(entity_id, created_timestamp)"
+        conn = self._connect()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS features (
+                feature_id        TEXT PRIMARY KEY,
+                entity_id         TEXT NOT NULL,
+                feature_name      TEXT NOT NULL,
+                feature_value     REAL NOT NULL,
+                event_timestamp   TEXT NOT NULL,
+                created_timestamp TEXT NOT NULL,
+                source_tile_id    TEXT NOT NULL,
+                model_version     TEXT NOT NULL DEFAULT '1.0.0'
             )
-            conn.commit()
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_entity_created "
+            "ON features(entity_id, created_timestamp)"
+        )
+        conn.commit()
 
     def write(self, record: FeatureRecord) -> None:
         if record.created_timestamp < record.event_timestamp:
@@ -62,26 +73,26 @@ class FeatureStore:
                 f"event_timestamp {record.event_timestamp}. "
                 "A feature cannot be available before the event that produced it."
             )
-        with sqlite3.connect(self.db_path) as conn:
-            existing = conn.execute(
-                "SELECT feature_id FROM features WHERE feature_id = ?",
-                (record.feature_id,)
-            ).fetchone()
-            if existing:
-                raise DuplicateFeatureError(
-                    f"feature_id {record.feature_id} already exists"
-                )
-            conn.execute(
-                "INSERT INTO features VALUES (?,?,?,?,?,?,?,?)",
-                (
-                    record.feature_id, record.entity_id, record.feature_name,
-                    record.feature_value,
-                    record.event_timestamp.isoformat(),
-                    record.created_timestamp.isoformat(),
-                    record.source_tile_id, record.model_version,
-                ),
+        conn = self._connect()
+        existing = conn.execute(
+            "SELECT feature_id FROM features WHERE feature_id = ?",
+            (record.feature_id,)
+        ).fetchone()
+        if existing:
+            raise DuplicateFeatureError(
+                f"feature_id {record.feature_id} already exists"
             )
-            conn.commit()
+        conn.execute(
+            "INSERT INTO features VALUES (?,?,?,?,?,?,?,?)",
+            (
+                record.feature_id, record.entity_id, record.feature_name,
+                record.feature_value,
+                record.event_timestamp.isoformat(),
+                record.created_timestamp.isoformat(),
+                record.source_tile_id, record.model_version,
+            ),
+        )
+        conn.commit()
 
     def get_features_as_of(
         self,
@@ -92,24 +103,24 @@ class FeatureStore:
         # HOLDOUT PROTECTION: training code must never access holdout period
         if not self.is_holdout and as_of >= HOLDOUT_START_DATE:
             raise HoldoutAccessError(
-                f"as_of={as_of} is in the holdout period (>= {HOLDOUT_START_DATE}). "
-                "Training and backtesting code must not access holdout data. "
-                "Use the holdout FeatureStore only for final evaluation."
+                f"as_of={as_of} is in the holdout period (>={HOLDOUT_START_DATE})."
+                " Training and backtesting code must not access holdout data."
+                " Use the holdout FeatureStore only for final evaluation."
             )
 
-        with sqlite3.connect(self.db_path) as conn:
-            query = (
-                "SELECT feature_id, entity_id, feature_name, feature_value, "
-                "event_timestamp, created_timestamp, source_tile_id, model_version "
-                "FROM features "
-                "WHERE entity_id = ? AND created_timestamp <= ?"
-            )
-            params: list = [entity_id, as_of.isoformat()]
-            if feature_names:
-                placeholders = ",".join("?" * len(feature_names))
-                query += f" AND feature_name IN ({placeholders})"
-                params.extend(feature_names)
-            rows = conn.execute(query, params).fetchall()
+        conn = self._connect()
+        query = (
+            "SELECT feature_id, entity_id, feature_name, feature_value, "
+            "event_timestamp, created_timestamp, source_tile_id, model_version "
+            "FROM features "
+            "WHERE entity_id = ? AND created_timestamp <= ?"
+        )
+        params: list = [entity_id, as_of.isoformat()]
+        if feature_names:
+            placeholders = ",".join("?" * len(feature_names))
+            query += f" AND feature_name IN ({placeholders})"
+            params.extend(feature_names)
+        rows = conn.execute(query, params).fetchall()
 
         results = []
         for row in rows:

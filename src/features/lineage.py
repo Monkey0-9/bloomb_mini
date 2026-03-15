@@ -5,18 +5,18 @@ Ensures point-in-time correctness, trace validation, and multi-tier lineage grap
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
 class LineageNode:
     """A single tracking node for a feature or raw input over time."""
+
     feature_name: str
     feature_hash: str
     model_version: str
-    dependencies: list['LineageNode'] = field(default_factory=list)
+    dependencies: list[LineageNode] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert tree to dictionary recursively."""
@@ -24,7 +24,7 @@ class LineageNode:
             "feature_name": self.feature_name,
             "feature_hash": self.feature_hash,
             "model_version": self.model_version,
-            "dependencies": [d.to_dict() for d in self.dependencies]
+            "dependencies": [d.to_dict() for d in self.dependencies],
         }
 
 
@@ -48,9 +48,9 @@ class LineageTracker:
             return {
                 "feature_name": feature_name,
                 "feature_hash": feature_hash,
-                "error": "Node not found in lineage tracker."
+                "error": "Node not found in lineage tracker.",
             }
-        
+
         return node.to_dict()
 
     def validate_dependencies_exist(self, node: LineageNode) -> bool:

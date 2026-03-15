@@ -12,12 +12,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 import numpy as np
-
-from src.signals.price_impact import LinearModel, GBMModel, EnsembleModel
 
 logger = logging.getLogger(__name__)
 
@@ -25,25 +23,26 @@ logger = logging.getLogger(__name__)
 @dataclass
 class EnsemblePrediction:
     """Final ensemble prediction for an asset."""
+
     entity_id: str
     ensemble_value: float
     component_values: dict[str, float]
     component_weights: dict[str, float]
     confidence: float  # Weighted average of component confidences
-    prediction_timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    prediction_timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     model_versions: dict[str, str] = field(default_factory=dict)
-    shap_attributions: Optional[dict[str, float]] = None
+    shap_attributions: dict[str, float] | None = None
 
 
 class SignalEnsemble:
     """
     Production ensemble combiner for signal models.
-    
+
     Combines predictions from:
     1. Linear (OLS/WLS)
     2. GBM (LightGBM)
     3. TFT (Temporal Fusion Transformer) — optional, data-dependent
-    
+
     Weight allocation: inverse RMSE on validation set.
     """
 
@@ -58,7 +57,7 @@ class SignalEnsemble:
     ) -> dict[str, float]:
         """
         Compute ensemble weights from validation RMSEs.
-        
+
         Uses inverse RMSE weighting: lower RMSE → higher weight.
         """
         self._component_rmses = component_rmses
@@ -73,19 +72,19 @@ class SignalEnsemble:
 
         total_inv = sum(inverse_rmse.values())
         if total_inv > 0:
-            self._component_weights = {
-                name: inv / total_inv for name, inv in inverse_rmse.items()
-            }
+            self._component_weights = {name: inv / total_inv for name, inv in inverse_rmse.items()}
         else:
             # Equal weight fallback
             n = len(component_rmses)
             self._component_weights = {name: 1.0 / n for name in component_rmses}
 
-        self._reweight_history.append({
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "rmses": component_rmses,
-            "weights": self._component_weights.copy(),
-        })
+        self._reweight_history.append(
+            {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "rmses": component_rmses,
+                "weights": self._component_weights.copy(),
+            }
+        )
 
         logger.info(f"Ensemble weights updated: {self._component_weights}")
         return self._component_weights
@@ -94,7 +93,7 @@ class SignalEnsemble:
         self,
         entity_id: str,
         component_predictions: dict[str, float],
-        component_confidences: Optional[dict[str, float]] = None,
+        component_confidences: dict[str, float] | None = None,
     ) -> EnsemblePrediction:
         """
         Combine component predictions into ensemble output.
@@ -108,15 +107,13 @@ class SignalEnsemble:
 
         # Weighted average
         ensemble_value = sum(
-            weights.get(name, 0) * pred
-            for name, pred in component_predictions.items()
+            weights.get(name, 0) * pred for name, pred in component_predictions.items()
         )
 
         # Weighted confidence
         confidences = component_confidences or {name: 1.0 for name in component_predictions}
         ensemble_confidence = sum(
-            weights.get(name, 0) * confidences.get(name, 1.0)
-            for name in component_predictions
+            weights.get(name, 0) * confidences.get(name, 1.0) for name in component_predictions
         )
 
         return EnsemblePrediction(
@@ -135,7 +132,7 @@ class SignalEnsemble:
     ) -> dict[str, float]:
         """
         Quarterly reweighting on expanding validation window.
-        
+
         Spec requirement: retrain on expanding window, never shrink.
         """
         rmses = {}

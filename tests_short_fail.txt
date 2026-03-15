@@ -1,0 +1,64 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.11.9, pytest-9.0.2, pluggy-1.6.0 -- C:\Program Files\Python311\python.exe
+cachedir: .pytest_cache
+rootdir: C:\satellite_trade
+configfile: pyproject.toml
+plugins: anyio-4.12.0, asyncio-1.3.0, base-url-2.1.0, cov-7.0.0, playwright-0.7.2, typeguard-4.5.1
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 24 items
+
+tests/test_feature_store.py::test_look_ahead_bias_is_prevented PASSED    [  4%]
+tests/test_feature_store.py::test_past_features_are_returned PASSED      [  8%]
+tests/test_feature_store.py::test_duplicate_feature_id_raises PASSED     [ 12%]
+tests/test_feature_store.py::test_holdout_access_is_blocked_for_training PASSED [ 16%]
+tests/test_feature_store.py::test_feature_filter_by_name PASSED          [ 20%]
+tests/test_ingest.py::test_gate_cloud_rejects_high_cloud PASSED          [ 25%]
+tests/test_ingest.py::test_gate_cloud_rejects_null_cloud PASSED          [ 29%]
+tests/test_ingest.py::test_gate_license_blocks_noncommercial PASSED      [ 33%]
+tests/test_ingest.py::test_gate_checksum_quarantines_corrupted_file PASSED [ 37%]
+tests/test_ingest.py::test_gate_schema_rejects_empty_tile_id PASSED      [ 41%]
+tests/test_ingest.py::test_gate_geolocation_rejects_invalid_coords PASSED [ 45%]
+tests/test_ingest.py::test_gate_geolocation_passes_valid_coords PASSED   [ 50%]
+tests/test_preprocess.py::test_dos_not_in_optical_source FAILED          [ 54%]
+tests/test_preprocess.py::test_correction_output_range FAILED            [ 58%]
+tests/test_preprocess.py::test_correction_output_shape_matches_input FAILED [ 62%]
+tests/test_preprocess.py::test_ndvi_range_is_valid FAILED                [ 66%]
+tests/test_risk_engine.py::test_gross_exposure_constant_is_150pct PASSED [ 70%]
+tests/test_risk_engine.py::test_gross_exposure_gate_blocks_breach PASSED [ 75%]
+tests/test_risk_engine.py::test_gross_exposure_gate_passes_within_limit PASSED [ 79%]
+tests/test_risk_engine.py::test_kill_switch_requires_two_different_operators PASSED [ 83%]
+tests/test_risk_engine.py::test_kill_switch_executes_with_two_operators PASSED [ 87%]
+tests/test_risk_engine.py::test_halted_system_rejects_all_orders PASSED  [ 91%]
+tests/test_risk_engine.py::test_stale_signal_blocks_order PASSED         [ 95%]
+tests/test_risk_engine.py::test_low_confidence_blocks_order PASSED       [100%]
+
+================================== FAILURES ===================================
+_______________________ test_dos_not_in_optical_source ________________________
+tests\test_preprocess.py:10: in test_dos_not_in_optical_source
+    source = Path("src/preprocess/optical.py").read_text()
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Program Files\Python311\Lib\pathlib.py:1058: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Program Files\Python311\Lib\pathlib.py:1044: in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   FileNotFoundError: [Errno 2] No such file or directory: 'src\\preprocess\\optical.py'
+________________________ test_correction_output_range _________________________
+tests\test_preprocess.py:24: in test_correction_output_range
+    from src.preprocess.optical import correct_atmospheric_6s
+E   SyntaxError: source code string cannot contain null bytes
+_________________ test_correction_output_shape_matches_input __________________
+tests\test_preprocess.py:65: in test_correction_output_shape_matches_input
+    from src.preprocess.optical import correct_atmospheric_6s
+E   SyntaxError: source code string cannot contain null bytes
+__________________________ test_ndvi_range_is_valid ___________________________
+tests\test_preprocess.py:98: in test_ndvi_range_is_valid
+    from src.preprocess.optical import compute_ndvi
+E   SyntaxError: source code string cannot contain null bytes
+=========================== short test summary info ===========================
+FAILED tests/test_preprocess.py::test_dos_not_in_optical_source - FileNotFoun...
+FAILED tests/test_preprocess.py::test_correction_output_range - SyntaxError: ...
+FAILED tests/test_preprocess.py::test_correction_output_shape_matches_input
+FAILED tests/test_preprocess.py::test_ndvi_range_is_valid - SyntaxError: sour...
+======================== 4 failed, 20 passed in 1.08s =========================

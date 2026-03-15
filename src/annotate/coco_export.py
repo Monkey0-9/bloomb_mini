@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from src.annotate.quality import TileAnnotationResult, Annotation
+from src.annotate.quality import TileAnnotationResult
 from src.annotate.taxonomy import Taxonomy
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ class COCOExporter:
     ) -> dict[str, Any]:
         """
         Export accepted tiles as COCO JSON.
-        
+
         Format:
         {
             "info": {...},
@@ -51,7 +51,7 @@ class COCOExporter:
                 "version": self._taxonomy.version,
                 "year": datetime.now().year,
                 "contributor": "SatTrade Annotation Pipeline",
-                "date_created": datetime.now(timezone.utc).isoformat(),
+                "date_created": datetime.now(UTC).isoformat(),
                 "use_case": self._taxonomy.use_case.value,
             },
             "licenses": [
@@ -69,18 +69,20 @@ class COCOExporter:
         annotation_id = 1
         for img_idx, result in enumerate(accepted, start=1):
             # Image entry
-            coco["images"].append({
-                "id": img_idx,
-                "file_name": f"{result.tile_id}.tif",
-                "width": 256,   # Chip size from preprocessing
-                "height": 256,
-                "tile_id": result.tile_id,
-                "mean_iou": result.mean_iou,
-                "min_pairwise_iou": result.min_pairwise_iou,
-                "num_annotators": result.num_annotators,
-                "adjudicated": result.adjudicated,
-                "adjudicator_id": result.adjudicator_id,
-            })
+            coco["images"].append(
+                {
+                    "id": img_idx,
+                    "file_name": f"{result.tile_id}.tif",
+                    "width": 256,  # Chip size from preprocessing
+                    "height": 256,
+                    "tile_id": result.tile_id,
+                    "mean_iou": result.mean_iou,
+                    "min_pairwise_iou": result.min_pairwise_iou,
+                    "num_annotators": result.num_annotators,
+                    "adjudicated": result.adjudicated,
+                    "adjudicator_id": result.adjudicator_id,
+                }
+            )
 
             # Annotation entries
             for annot in result.annotations:
@@ -128,11 +130,12 @@ class COCOExporter:
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         """
         Split COCO dataset into train and blind validation sets.
-        
+
         The blind validation set (20%) is NEVER shown to annotators
         after labeling begins. It is used only for model evaluation.
         """
         import random
+
         random.seed(seed)
 
         images = coco_data["images"]

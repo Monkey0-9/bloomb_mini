@@ -18,10 +18,10 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,7 @@ class EventTopic(str, Enum):
 @dataclass
 class PipelineEvent:
     """Structured event for the pipeline event bus."""
+
     event_id: str
     topic: str
     timestamp_utc: str
@@ -59,11 +60,11 @@ class PipelineEvent:
         topic: EventTopic,
         source: str,
         payload: dict[str, Any],
-    ) -> "PipelineEvent":
+    ) -> PipelineEvent:
         return cls(
             event_id=str(uuid.uuid4()),
             topic=topic.value,
-            timestamp_utc=datetime.now(timezone.utc).isoformat(),
+            timestamp_utc=datetime.now(UTC).isoformat(),
             source=source,
             payload=payload,
         )
@@ -79,21 +80,23 @@ class EventEmitter:
 
     def __init__(
         self,
-        bootstrap_servers: Optional[str] = None,
+        bootstrap_servers: str | None = None,
         use_local: bool = True,
     ) -> None:
         self._use_local = use_local
         self._local_events: list[PipelineEvent] = []
-        self._local_queue: Optional[Any] = None
+        self._local_queue: Any | None = None
         self._producer = None
 
         if use_local:
             import queue
+
             self._local_queue = queue.Queue()
 
         if not use_local and bootstrap_servers:
             try:
                 from kafka import KafkaProducer
+
                 self._producer = KafkaProducer(
                     bootstrap_servers=bootstrap_servers,
                     value_serializer=lambda v: v.encode("utf-8"),
@@ -112,7 +115,7 @@ class EventEmitter:
             self._local_events.append(event)
             if self._local_queue is not None:
                 self._local_queue.put(event)
-            payload_id = event.payload.get('tile_id') or event.payload.get('asset_id') or 'N/A'
+            payload_id = event.payload.get("tile_id") or event.payload.get("asset_id") or "N/A"
             logger.info(f"[LOCAL EVENT] {event.topic}: {event.event_id} — {payload_id}")
         else:
             self._producer.send(event.topic, value=event.to_json())
@@ -150,7 +153,9 @@ class EventEmitter:
         )
         self.emit(event)
 
-    def emit_signal_scored(self, asset_id: str, signal_value: float, confidence: float, model_version: str) -> None:
+    def emit_signal_scored(
+        self, asset_id: str, signal_value: float, confidence: float, model_version: str
+    ) -> None:
         """Convenience: emit SIGNAL_SCORED event."""
         event = PipelineEvent.create(
             topic=EventTopic.SIGNAL_SCORED,
@@ -177,7 +182,7 @@ class EventEmitter:
         )
         self.emit(event)
 
-    def get_local_events(self, topic: Optional[str] = None) -> list[PipelineEvent]:
+    def get_local_events(self, topic: str | None = None) -> list[PipelineEvent]:
         """Get locally stored events (dev mode only)."""
         if topic:
             return [e for e in self._local_events if e.topic == topic]

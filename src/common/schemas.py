@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import uuid4
 
+
 @dataclass
 class TileMetadata:
     tile_id: str = field(default_factory=lambda: str(uuid4()))
@@ -21,6 +22,7 @@ class TileMetadata:
     file_path: str = ""
     location_key: str = ""
 
+
 @dataclass
 class QualityGateResult:
     gate_name: str
@@ -28,6 +30,7 @@ class QualityGateResult:
     tile_id: str
     reason: str | None = None
     metric_value: float | None = None
+
 
 @dataclass
 class FeatureRecord:

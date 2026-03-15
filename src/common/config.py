@@ -108,7 +108,7 @@ def load_constraints(path: Path | None = None) -> Constraints:
     if not path.exists():
         raise FileNotFoundError(f"Constraints file not found: {path}")
 
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         raw: dict[str, Any] = yaml.safe_load(f)
 
     return Constraints(
@@ -135,7 +135,7 @@ def get_constraints() -> Constraints:
 def validate_regulatory_gate(action: str) -> None:
     """
     Halt execution if the requested action violates the regulatory framework.
-    
+
     Example:
         validate_regulatory_gate("live_order_submission")
         # Raises if framework != SEC/MiFID and live_trading_permitted is False

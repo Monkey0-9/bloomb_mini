@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -41,25 +41,26 @@ class RetrainStatus(str, Enum):
 @dataclass
 class RetrainJob:
     """A single retraining job."""
+
     job_id: str
     trigger: RetrainTrigger
     model_name: str
     status: RetrainStatus = RetrainStatus.PENDING
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    completed_at: Optional[datetime] = None
-    train_data_start: Optional[datetime] = None
-    train_data_end: Optional[datetime] = None
-    baseline_sharpe: Optional[float] = None
-    new_sharpe: Optional[float] = None
-    improvement_delta: Optional[float] = None
-    drift_psi: Optional[float] = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    completed_at: datetime | None = None
+    train_data_start: datetime | None = None
+    train_data_end: datetime | None = None
+    baseline_sharpe: float | None = None
+    new_sharpe: float | None = None
+    improvement_delta: float | None = None
+    drift_psi: float | None = None
     notes: str = ""
 
 
 class RetrainingScheduler:
     """
     Orchestrates model retraining based on drift detection and schedules.
-    
+
     Key invariant: always uses expanding training window — never shrinks.
     New model must beat current production by ≥ 0.02 Sharpe to be promoted.
     """
@@ -70,17 +71,17 @@ class RetrainingScheduler:
 
     def __init__(self) -> None:
         self._jobs: list[RetrainJob] = []
-        self._last_quarterly_retrain: Optional[datetime] = None
-        self._training_data_start: datetime = datetime(2020, 1, 1, tzinfo=timezone.utc)
+        self._last_quarterly_retrain: datetime | None = None
+        self._training_data_start: datetime = datetime(2020, 1, 1, tzinfo=UTC)
 
     def check_triggers(
         self,
-        feature_drift_results: Optional[dict[str, dict[str, Any]]] = None,
+        feature_drift_results: dict[str, dict[str, Any]] | None = None,
         ic_below_p10_days: int = 0,
-        current_time: Optional[datetime] = None,
+        current_time: datetime | None = None,
     ) -> list[RetrainJob]:
         """Check all retrain triggers and create jobs as needed."""
-        now = current_time or datetime.now(timezone.utc)
+        now = current_time or datetime.now(UTC)
         new_jobs: list[RetrainJob] = []
 
         # 1. Quarterly scheduled retrain
@@ -151,7 +152,7 @@ class RetrainingScheduler:
         job.baseline_sharpe = baseline_sharpe
         job.new_sharpe = new_sharpe
         job.improvement_delta = new_sharpe - baseline_sharpe
-        job.completed_at = datetime.now(timezone.utc)
+        job.completed_at = datetime.now(UTC)
 
         if job.improvement_delta >= self.MIN_SHARPE_IMPROVEMENT:
             # Phase 7: Enforce hard 4-week A/B forward walk OOS
@@ -166,7 +167,9 @@ class RetrainingScheduler:
             else:
                 job.status = RetrainStatus.FAILED
                 job.notes += " | FAILED A/B OOS: Period < 4 weeks"
-                logger.error(f"RETRAIN FAILED: {job.model_name} did not satisfy 4-week A/B OOS requirement.")
+                logger.error(
+                    f"RETRAIN FAILED: {job.model_name} did not satisfy 4-week A/B OOS requirement."
+                )
                 return False
         else:
             job.status = RetrainStatus.REJECTED
@@ -181,14 +184,14 @@ class RetrainingScheduler:
         """Ensure the out-of-sample (OOS) validation period is exactly 4 weeks."""
         if not job.train_data_end or not job.completed_at:
             return False
-            
+
         oos_duration = job.completed_at - job.train_data_end
         # Requirement: At least 28 days of out-of-sample forward walk
         return oos_duration >= timedelta(weeks=4)
 
     def manual_trigger(self, operator_id: str, reason: str) -> RetrainJob:
         """Manual retrain trigger by research analyst."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         job = self._create_job(
             RetrainTrigger.MANUAL,
             f"Manual trigger by {operator_id}: {reason}",
@@ -205,6 +208,7 @@ class RetrainingScheduler:
 
     def _create_job(self, trigger: RetrainTrigger, notes: str, now: datetime) -> RetrainJob:
         import uuid
+
         job = RetrainJob(
             job_id=str(uuid.uuid4()),
             trigger=trigger,

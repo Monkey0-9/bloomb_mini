@@ -15,8 +15,7 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 import numpy as np
 
@@ -26,6 +25,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RawSignal:
     """Raw model output for a single asset."""
+
     asset_id: str
     signal_value: float
     confidence: float  # 0–1
@@ -38,6 +38,7 @@ class RawSignal:
 @dataclass
 class ScoredSignal:
     """Final scored signal ready for position sizing."""
+
     asset_id: str
     raw_value: float
     scored_value: float  # [-1, +1]
@@ -52,7 +53,7 @@ class ScoredSignal:
 class SignalScoringEngine:
     """
     Transforms raw signals into normalised, sector-neutral scores.
-    
+
     Output: normalised signal score ∈ [-1, +1] with confidence weight per asset.
     """
 
@@ -67,11 +68,11 @@ class SignalScoringEngine:
     def score_batch(
         self,
         raw_signals: list[RawSignal],
-        current_time: Optional[datetime] = None,
+        current_time: datetime | None = None,
     ) -> list[ScoredSignal]:
         """
         Score a batch of raw signals through the full pipeline.
-        
+
         Steps:
         1. Compute staleness decay
         2. Winsorise cross-sectionally
@@ -81,7 +82,7 @@ class SignalScoringEngine:
         if not raw_signals:
             return []
 
-        now = current_time or datetime.now(timezone.utc)
+        now = current_time or datetime.now(UTC)
 
         # Step 1: Compute staleness for each signal
         signals_with_staleness = []
@@ -121,7 +122,7 @@ class SignalScoringEngine:
 
             if is_stale:
                 logger.warning(
-                    f"Signal for {sig.asset_id} is STALE ({age_sec/86400:.1f} days) "
+                    f"Signal for {sig.asset_id} is STALE ({age_sec / 86400:.1f} days) "
                     f"— forced to zero"
                 )
 
@@ -130,7 +131,7 @@ class SignalScoringEngine:
     def _compute_staleness_decay(self, age_days: float) -> float:
         """
         Exponential decay with half-life = satellite revisit period.
-        
+
         decay = 0.5 ^ (age / half_life)
         Returns 1.0 for fresh signals, approaches 0 for old signals.
         """
@@ -156,9 +157,7 @@ class SignalScoringEngine:
         upper = mean + self.WINSORIZE_SIGMA * std
         return np.clip(values, lower, upper)
 
-    def _sector_neutralise(
-        self, values: np.ndarray, sectors: list[str]
-    ) -> np.ndarray:
+    def _sector_neutralise(self, values: np.ndarray, sectors: list[str]) -> np.ndarray:
         """
         Demean within GICS sector to remove sector effects.
         Ensures signals are cross-sectionally comparable.
@@ -177,7 +176,7 @@ class SignalScoringEngine:
     def _rank_normalise(self, values: np.ndarray) -> np.ndarray:
         """
         Scale to [-1, +1] using rank normalisation.
-        
+
         Assigns uniform scores based on rank ordering, making the
         output distribution-free and robust to outliers.
         """

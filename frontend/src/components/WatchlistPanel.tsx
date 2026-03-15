@@ -1,11 +1,19 @@
 import { Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useTerminalStore } from '../store';
 
 const WatchlistRow = ({ ticker, name, price, change, signal }: any) => {
   const isUp = change >= 0;
+  const { setView, setCurrentTicker } = useTerminalStore();
   
   return (
-    <div className="h-[60px] border-b border-border-0 hover:bg-surface-2 transition-all cursor-pointer group flex items-center px-3 relative">
+    <div 
+      onClick={() => {
+        setCurrentTicker(`${ticker} US Equity`);
+        setView('charts');
+      }}
+      className="h-[60px] border-b border-border-Subtle hover:bg-surface-2 transition-all cursor-pointer group flex items-center px-3 relative"
+    >
       <div className="flex-1 min-w-0 pr-4">
         <div className="flex items-baseline gap-2 mb-0.5">
           <span className="type-data-md font-bold text-accent-primary group-hover:text-text-0 tracking-tight uppercase">{ticker}</span>

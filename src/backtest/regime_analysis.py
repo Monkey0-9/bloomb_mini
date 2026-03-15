@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Optional
 
 import numpy as np
 
@@ -23,15 +22,15 @@ logger = logging.getLogger(__name__)
 
 
 class VIXRegime:
-    LOW = "low_vol"        # VIX < 15
+    LOW = "low_vol"  # VIX < 15
     MEDIUM = "medium_vol"  # 15 ≤ VIX < 25
-    HIGH = "high_vol"      # 25 ≤ VIX < 35
-    CRISIS = "crisis"      # VIX ≥ 35
+    HIGH = "high_vol"  # 25 ≤ VIX < 35
+    CRISIS = "crisis"  # VIX ≥ 35
 
 
 class MarketRegime:
-    BULL = "bull"     # trailing 63d return ≥ 0
-    BEAR = "bear"     # trailing 63d return < 0
+    BULL = "bull"  # trailing 63d return ≥ 0
+    BEAR = "bear"  # trailing 63d return < 0
 
 
 class RateRegime:
@@ -48,6 +47,7 @@ class SectorRegime:
 @dataclass
 class RegimePerformance:
     """Performance metrics within a specific market regime."""
+
     regime_name: str
     regime_value: str
     n_observations: int
@@ -62,6 +62,7 @@ class RegimePerformance:
 @dataclass
 class RegimeAnalysisResult:
     """Complete regime analysis across all regime dimensions."""
+
     vix_performance: list[RegimePerformance] = field(default_factory=list)
     market_performance: list[RegimePerformance] = field(default_factory=list)
     rate_performance: list[RegimePerformance] = field(default_factory=list)
@@ -74,7 +75,7 @@ class RegimeAnalysisResult:
 class RegimeAnalyzer:
     """
     Analyse signal performance across market regimes.
-    
+
     If a signal only works in one regime (e.g., only in bull markets),
     it is flagged as REGIME_DEPENDENT — likely a market beta exposure,
     not genuine alpha.
@@ -85,12 +86,12 @@ class RegimeAnalyzer:
     def analyse(
         self,
         portfolio_returns: np.ndarray,  # (T,)
-        vix_levels: Optional[np.ndarray] = None,
-        market_returns_63d: Optional[np.ndarray] = None,
-        rate_diff: Optional[np.ndarray] = None,
-        cyclical_relative_perf: Optional[np.ndarray] = None,
-        signals: Optional[np.ndarray] = None,
-        asset_returns: Optional[np.ndarray] = None,
+        vix_levels: np.ndarray | None = None,
+        market_returns_63d: np.ndarray | None = None,
+        rate_diff: np.ndarray | None = None,
+        cyclical_relative_perf: np.ndarray | None = None,
+        signals: np.ndarray | None = None,
+        asset_returns: np.ndarray | None = None,
     ) -> RegimeAnalysisResult:
         """Run full regime analysis."""
         result = RegimeAnalysisResult()
@@ -99,32 +100,53 @@ class RegimeAnalyzer:
         if vix_levels is not None:
             vix_regimes = self._classify_vix(vix_levels)
             result.vix_performance = self._compute_regime_performance(
-                portfolio_returns, vix_regimes, "VIX", signals, asset_returns,
+                portfolio_returns,
+                vix_regimes,
+                "VIX",
+                signals,
+                asset_returns,
             )
 
         # Market regime analysis
         if market_returns_63d is not None:
             market_regimes = self._classify_market(market_returns_63d)
             result.market_performance = self._compute_regime_performance(
-                portfolio_returns, market_regimes, "Market", signals, asset_returns,
+                portfolio_returns,
+                market_regimes,
+                "Market",
+                signals,
+                asset_returns,
             )
-            
+
         # Rate regime analysis
         if rate_diff is not None:
             rate_regimes = self._classify_rates(rate_diff)
             result.rate_performance = self._compute_regime_performance(
-                portfolio_returns, rate_regimes, "Rates", signals, asset_returns,
+                portfolio_returns,
+                rate_regimes,
+                "Rates",
+                signals,
+                asset_returns,
             )
-            
+
         # Sector rotation analysis
         if cyclical_relative_perf is not None:
             sector_regimes = self._classify_sectors(cyclical_relative_perf)
             result.sector_performance = self._compute_regime_performance(
-                portfolio_returns, sector_regimes, "Sectors", signals, asset_returns,
+                portfolio_returns,
+                sector_regimes,
+                "Sectors",
+                signals,
+                asset_returns,
             )
 
         # Stability assessment
-        all_rp = result.vix_performance + result.market_performance + result.rate_performance + result.sector_performance
+        all_rp = (
+            result.vix_performance
+            + result.market_performance
+            + result.rate_performance
+            + result.sector_performance
+        )
         all_sharpes = [rp.sharpe_ratio for rp in all_rp if rp.n_observations > 10]
         if all_sharpes:
             result.regime_stability = float(np.std(all_sharpes))
@@ -156,7 +178,7 @@ class RegimeAnalyzer:
         regimes[trailing_returns >= 0] = MarketRegime.BULL
         regimes[trailing_returns < 0] = MarketRegime.BEAR
         return regimes
-        
+
     def _classify_rates(self, rate_diff: np.ndarray) -> np.ndarray:
         """Classify rate regime from basis point changes."""
         regimes = np.empty(len(rate_diff), dtype=object)
@@ -164,7 +186,7 @@ class RegimeAnalyzer:
         regimes[rate_diff < -10] = RateRegime.CUTTING
         regimes[(rate_diff >= -10) & (rate_diff <= 10)] = RateRegime.HOLDING
         return regimes
-        
+
     def _classify_sectors(self, cyclical_relative_perf: np.ndarray) -> np.ndarray:
         """Classify sector leadership from cyclical vs defensive relative returns."""
         regimes = np.empty(len(cyclical_relative_perf), dtype=object)
@@ -177,8 +199,8 @@ class RegimeAnalyzer:
         returns: np.ndarray,
         regimes: np.ndarray,
         dimension_name: str,
-        signals: Optional[np.ndarray] = None,
-        asset_returns: Optional[np.ndarray] = None,
+        signals: np.ndarray | None = None,
+        asset_returns: np.ndarray | None = None,
     ) -> list[RegimePerformance]:
         """Compute performance metrics for each regime level."""
         unique_regimes = [r for r in np.unique(regimes) if r is not None]
@@ -210,6 +232,7 @@ class RegimeAnalyzer:
             ic_mean = 0.0
             if signals is not None and asset_returns is not None:
                 from scipy import stats
+
                 regime_signals = signals[mask]
                 regime_asset_returns = asset_returns[mask]
                 ics = []
@@ -223,16 +246,18 @@ class RegimeAnalyzer:
                             ics.append(ic)
                 ic_mean = float(np.mean(ics)) if ics else 0
 
-            performance.append(RegimePerformance(
-                regime_name=dimension_name,
-                regime_value=str(regime),
-                n_observations=n,
-                sharpe_ratio=sharpe,
-                annualised_return=mean_ret * 52,
-                ic_mean=ic_mean,
-                max_drawdown=max_dd,
-                hit_rate=hit_rate,
-                pct_of_total=n / total * 100,
-            ))
+            performance.append(
+                RegimePerformance(
+                    regime_name=dimension_name,
+                    regime_value=str(regime),
+                    n_observations=n,
+                    sharpe_ratio=sharpe,
+                    annualised_return=mean_ret * 52,
+                    ic_mean=ic_mean,
+                    max_drawdown=max_dd,
+                    hit_rate=hit_rate,
+                    pct_of_total=n / total * 100,
+                )
+            )
 
         return performance

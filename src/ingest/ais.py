@@ -14,14 +14,10 @@ with AIS identities for dark vessel flagging and port throughput estimation.
 from __future__ import annotations
 
 import csv
-import io
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
-
-import requests
 
 from src.common.schemas import BoundingBox
 
@@ -34,6 +30,7 @@ AIS_LICENSE_ID = "noaa_ais_public_domain"
 @dataclass
 class VesselPosition:
     """Single AIS position report."""
+
     mmsi: str  # Maritime Mobile Service Identity
     timestamp_utc: datetime
     latitude: float
@@ -41,18 +38,19 @@ class VesselPosition:
     sog: float  # Speed over ground (knots)
     cog: float  # Course over ground (degrees)
     heading: float
-    vessel_name: Optional[str] = None
-    vessel_type: Optional[int] = None
-    imo: Optional[str] = None
-    cargo_type: Optional[int] = None
-    draught: Optional[float] = None
-    destination: Optional[str] = None
-    status: Optional[int] = None  # Navigation status
+    vessel_name: str | None = None
+    vessel_type: int | None = None
+    imo: str | None = None
+    cargo_type: int | None = None
+    draught: float | None = None
+    destination: str | None = None
+    status: int | None = None  # Navigation status
 
 
 @dataclass
 class PortActivity:
     """Aggregated port activity metrics from AIS data."""
+
     port_id: str
     port_name: str
     bbox: BoundingBox
@@ -73,6 +71,7 @@ class PortActivity:
 @dataclass
 class PortDefinition:
     """Port bounding box and metadata for monitoring."""
+
     port_id: str
     port_name: str
     country: str
@@ -84,35 +83,51 @@ class PortDefinition:
 # ── Major Asia-Pacific container ports for Phase 1 ──────────────────────
 PHASE1_PORTS = [
     PortDefinition(
-        port_id="CNSHA", port_name="Shanghai", country="CN",
+        port_id="CNSHA",
+        port_name="Shanghai",
+        country="CN",
         bbox=BoundingBox(west=121.3, south=30.6, east=122.1, north=31.5),
     ),
     PortDefinition(
-        port_id="SGSIN", port_name="Singapore", country="SG",
+        port_id="SGSIN",
+        port_name="Singapore",
+        country="SG",
         bbox=BoundingBox(west=103.6, south=1.1, east=104.1, north=1.5),
     ),
     PortDefinition(
-        port_id="CNNGB", port_name="Ningbo-Zhoushan", country="CN",
+        port_id="CNNGB",
+        port_name="Ningbo-Zhoushan",
+        country="CN",
         bbox=BoundingBox(west=121.4, south=29.7, east=122.3, north=30.2),
     ),
     PortDefinition(
-        port_id="CNSZN", port_name="Shenzhen", country="CN",
+        port_id="CNSZN",
+        port_name="Shenzhen",
+        country="CN",
         bbox=BoundingBox(west=113.8, south=22.4, east=114.4, north=22.7),
     ),
     PortDefinition(
-        port_id="KRPUS", port_name="Busan", country="KR",
+        port_id="KRPUS",
+        port_name="Busan",
+        country="KR",
         bbox=BoundingBox(west=128.9, south=35.0, east=129.2, north=35.2),
     ),
     PortDefinition(
-        port_id="CNQIN", port_name="Qingdao", country="CN",
+        port_id="CNQIN",
+        port_name="Qingdao",
+        country="CN",
         bbox=BoundingBox(west=120.1, south=35.9, east=120.5, north=36.2),
     ),
     PortDefinition(
-        port_id="HKHKG", port_name="Hong Kong", country="HK",
+        port_id="HKHKG",
+        port_name="Hong Kong",
+        country="HK",
         bbox=BoundingBox(west=113.8, south=22.2, east=114.4, north=22.5),
     ),
     PortDefinition(
-        port_id="TWKHH", port_name="Kaohsiung", country="TW",
+        port_id="TWKHH",
+        port_name="Kaohsiung",
+        country="TW",
         bbox=BoundingBox(west=120.2, south=22.5, east=120.4, north=22.7),
     ),
 ]
@@ -129,7 +144,7 @@ VESSEL_TYPE_MAP = {
 class AISIngestor:
     """
     NOAA AIS data ingestor for vessel position tracking.
-    
+
     Downloads AIS position reports, filters by port bounding boxes,
     and computes port activity metrics for the feature pipeline.
     """
@@ -142,7 +157,7 @@ class AISIngestor:
     def __init__(
         self,
         data_dir: Path,
-        ports: Optional[list[PortDefinition]] = None,
+        ports: list[PortDefinition] | None = None,
     ) -> None:
         self._data_dir = data_dir
         self._data_dir.mkdir(parents=True, exist_ok=True)
@@ -151,7 +166,7 @@ class AISIngestor:
     def ingest_daily(self, date: datetime) -> list[PortActivity]:
         """
         Ingest AIS data for a single day and compute port activity metrics.
-        
+
         Steps:
         1. Download/load AIS position data for the date
         2. Filter positions within port bounding boxes
@@ -165,12 +180,14 @@ class AISIngestor:
         for port in self._ports:
             port_positions = self._filter_by_bbox(positions, port.bbox)
             if not port_positions:
-                activities.append(PortActivity(
-                    port_id=port.port_id,
-                    port_name=port.port_name,
-                    bbox=port.bbox,
-                    observation_date=date,
-                ))
+                activities.append(
+                    PortActivity(
+                        port_id=port.port_id,
+                        port_name=port.port_name,
+                        bbox=port.bbox,
+                        observation_date=date,
+                    )
+                )
                 continue
 
             activity = self._compute_port_activity(port, port_positions, date)
@@ -198,7 +215,7 @@ class AISIngestor:
     def _parse_csv(self, path: Path) -> list[VesselPosition]:
         """Parse NOAA AIS CSV format into VesselPosition objects."""
         positions = []
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 try:
@@ -206,14 +223,16 @@ class AISIngestor:
                         mmsi=row.get("MMSI", ""),
                         timestamp_utc=datetime.strptime(
                             row.get("BaseDateTime", ""), "%Y-%m-%dT%H:%M:%S"
-                        ).replace(tzinfo=timezone.utc),
+                        ).replace(tzinfo=UTC),
                         latitude=float(row.get("LAT", 0)),
                         longitude=float(row.get("LON", 0)),
                         sog=float(row.get("SOG", 0)),
                         cog=float(row.get("COG", 0)),
                         heading=float(row.get("Heading", 0)),
                         vessel_name=row.get("VesselName"),
-                        vessel_type=int(row.get("VesselType", 0)) if row.get("VesselType") else None,
+                        vessel_type=int(row.get("VesselType", 0))
+                        if row.get("VesselType")
+                        else None,
                         imo=row.get("IMO"),
                         status=int(row.get("Status", 0)) if row.get("Status") else None,
                     )
@@ -224,13 +243,15 @@ class AISIngestor:
         return positions
 
     def _filter_by_bbox(
-        self, positions: list[VesselPosition], bbox: BoundingBox,
+        self,
+        positions: list[VesselPosition],
+        bbox: BoundingBox,
     ) -> list[VesselPosition]:
         """Filter positions within a bounding box."""
         return [
-            p for p in positions
-            if bbox.west <= p.longitude <= bbox.east
-            and bbox.south <= p.latitude <= bbox.north
+            p
+            for p in positions
+            if bbox.west <= p.longitude <= bbox.east and bbox.south <= p.latitude <= bbox.north
         ]
 
     def _compute_port_activity(
@@ -256,13 +277,10 @@ class AISIngestor:
 
             # Status classification
             if latest.status == self.STATUS_MOORED or (
-                latest.sog < self.SOG_THRESHOLD_KNOTS
-                and self._in_berth_zone(latest, port)
+                latest.sog < self.SOG_THRESHOLD_KNOTS and self._in_berth_zone(latest, port)
             ):
                 at_berth += 1
-            elif latest.status == self.STATUS_AT_ANCHOR or (
-                latest.sog < self.SOG_THRESHOLD_KNOTS
-            ):
+            elif latest.status == self.STATUS_AT_ANCHOR or (latest.sog < self.SOG_THRESHOLD_KNOTS):
                 anchored += 1
             else:
                 in_transit += 1
@@ -299,17 +317,17 @@ class AISIngestor:
     def _in_berth_zone(self, pos: VesselPosition, port: PortDefinition) -> bool:
         """Check if position is within any defined berth zone."""
         for bz in port.berth_zones:
-            if (bz.west <= pos.longitude <= bz.east
-                    and bz.south <= pos.latitude <= bz.north):
+            if bz.west <= pos.longitude <= bz.east and bz.south <= pos.latitude <= bz.north:
                 return True
         # If no berth zones defined, assume inner port area
         center_lon = (port.bbox.west + port.bbox.east) / 2
         center_lat = (port.bbox.south + port.bbox.north) / 2
-        return (abs(pos.longitude - center_lon) < 0.05
-                and abs(pos.latitude - center_lat) < 0.05)
+        return abs(pos.longitude - center_lon) < 0.05 and abs(pos.latitude - center_lat) < 0.05
 
     def _estimate_dwell_times(
-        self, positions: list[VesselPosition], mmsis: list[str],
+        self,
+        positions: list[VesselPosition],
+        mmsis: list[str],
     ) -> float:
         """Estimate average vessel dwell time from position timestamps."""
         dwell_times = []

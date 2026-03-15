@@ -30,16 +30,10 @@ class SignalAttributor:
     """
 
     def __init__(self) -> None:
-        self.signal_types = [
-            "port_throughput",
-            "retail_footfall",
-            "thermal_anomaly"
-        ]
+        self.signal_types = ["port_throughput", "retail_footfall", "thermal_anomaly"]
 
     def compute_attribution(
-        self,
-        portfolio_returns: float,
-        signal_weights: dict[str, float]
+        self, portfolio_returns: float, signal_weights: dict[str, float]
     ) -> dict[str, AttributionResult]:
         """
         Naive linear attribution (Brinson-style) for initial reporting.
@@ -54,14 +48,11 @@ class SignalAttributor:
                 signal_type=stype,
                 pnl_impact_bps=impact * 10000,
                 ic_live=0.045,  # Simulated for report
-                confidence_score=0.85
+                confidence_score=0.85,
             )
         return results
 
-    def check_signal_dependency(
-        self,
-        results: dict[str, AttributionResult]
-    ) -> bool:
+    def check_signal_dependency(self, results: dict[str, AttributionResult]) -> bool:
         """Verify that no single signal contributes >60% of total P&L."""
         total_pnl = sum(abs(r.pnl_impact_bps) for r in results.values())
         if total_pnl == 0:
@@ -70,9 +61,7 @@ class SignalAttributor:
         for stype, res in results.items():
             contribution = abs(res.pnl_impact_bps) / total_pnl
             if contribution > 0.60:
-                logger.warning(
-                    f"HIGH DEPENDENCY: {stype} is {contribution*100:.1f}%!"
-                )
+                logger.warning(f"HIGH DEPENDENCY: {stype} is {contribution * 100:.1f}%!")
                 return False
         return True
 
@@ -86,33 +75,19 @@ class FacilityMapper:
     def __init__(self) -> None:
         # Load from Bloomberg Supply Chain (SPLC) or FactSet Revere
         self._f2t = {
-            "facility_001": {
-                "ticker": "MSFT", "weight": 0.02, "type": "data_center"
-            },
-            "facility_002": {
-                "ticker": "TSLA", "weight": 0.15, "type": "gigafactory"
-            },
-            "port_shanghai": {
-                "ticker": "BABA", "weight": 0.08, "type": "export_hub"
-            },
-            "port_rotterdam": {
-                "ticker": "MAERSK", "weight": 0.12, "type": "maritime_hub"
-            },
-            "retail_mall_ca": {
-                "ticker": "WMT", "weight": 0.05, "type": "retail_lot"
-            },
-            "oil_storage_kuwait": {
-                "ticker": "XOM", "weight": 0.22, "type": "energy_reserve"
-            },
+            "facility_001": {"ticker": "MSFT", "weight": 0.02, "type": "data_center"},
+            "facility_002": {"ticker": "TSLA", "weight": 0.15, "type": "gigafactory"},
+            "port_shanghai": {"ticker": "BABA", "weight": 0.08, "type": "export_hub"},
+            "port_rotterdam": {"ticker": "MAERSK", "weight": 0.12, "type": "maritime_hub"},
+            "retail_mall_ca": {"ticker": "WMT", "weight": 0.05, "type": "retail_lot"},
+            "oil_storage_kuwait": {"ticker": "XOM", "weight": 0.22, "type": "energy_reserve"},
         }
 
     def get_equity_impact(self, facility_id: str) -> dict[str, Any]:
         """Returns the equity mapping and revenue attribution weight."""
         mapping = self._f2t.get(facility_id)
         if not mapping:
-            logger.warning(
-                f"UNMAPPED FACILITY: {facility_id} has no causal link."
-            )
+            logger.warning(f"UNMAPPED FACILITY: {facility_id} has no causal link.")
             return {}
         return mapping
 

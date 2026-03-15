@@ -1,7 +1,9 @@
-import { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 
 const SatelliteFeed = () => {
+  const [search, setSearch] = React.useState('');
+  
   const images = useMemo(() => [
     { 
       id: 1, 
@@ -49,6 +51,18 @@ const SatelliteFeed = () => {
     },
   ], []);
 
+  const filteredImages = useMemo(() => {
+    if (!search) {
+      return images;
+    }
+    const lowercasedSearch = search.toLowerCase();
+    return images.filter(img => 
+      img.location.toLowerCase().includes(lowercasedSearch) ||
+      img.detail.toLowerCase().includes(lowercasedSearch) ||
+      img.type.toLowerCase().includes(lowercasedSearch)
+    );
+  }, [images, search]);
+
   return (
     <div className="flex-1 flex flex-col bg-surface-0 overflow-hidden">
       {/* FEED HEADER: ALLX STYLE */}
@@ -59,9 +73,17 @@ const SatelliteFeed = () => {
                <div className="w-1.5 h-1.5 rounded-full bg-bull dot-live"></div>
             </div>
             <div className="h-6 w-[1px] bg-border-ghost"></div>
-            <span className="type-data-xs text-text-4 uppercase tracking-widest leading-none">
-              Source: <span className="text-text-1">Copernicus Sentinel Hub | Maxar WorldView-3</span>
-            </span>
+            
+            {/* SEARCH FILTER */}
+            <div className="flex items-center bg-surface-2/60 border border-white/5 px-3 py-1 rounded-sm group focus-within:border-accent-primary transition-all ml-4">
+               <input 
+                  type="text" 
+                  placeholder="SEARCH LOCATIONS..." 
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="bg-transparent outline-none type-data-xs text-text-1 placeholder:text-text-5 w-40"
+               />
+            </div>
          </div>
          
          <div className="flex gap-2">
@@ -72,7 +94,7 @@ const SatelliteFeed = () => {
 
       <div className="flex-1 p-sp-4 overflow-y-auto custom-scrollbar bg-void/20">
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-sp-4">
-          {images.map((img) => (
+          {filteredImages.map((img) => (
             <motion.div 
               key={img.id}
               className="bg-surface-1 border border-border-1 rounded-sm overflow-hidden group cursor-pointer flex h-[180px]"

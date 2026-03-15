@@ -8,31 +8,30 @@ VaR 99% gate mandatory for all institutional orders.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
-
-import numpy as np
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class RiskGateResult:
     """Result of a single risk gate check."""
+
     gate_name: str
     passed: bool
     value: float
     threshold: float
     message: str = ""
 
+
 class RiskEngine:
     """
     Synchronous Risk Engine for SatTrade.
-    
+
     Gates:
     1. Maximum Order Size (Notional)
     2. Maximum Instrument Exposure
-    3. Maximum Sector Exposure 
+    3. Maximum Sector Exposure
     4. Maximum Portfolio Gross Exposure (150% limit)
     5. Maximum Portfolio Net Exposure
     6. Minimum Liquidity (ADV based)
@@ -63,44 +62,49 @@ class RiskEngine:
     def run_pre_trade_audit(self, order: dict, portfolio: dict) -> list[RiskGateResult]:
         """Run all 9 synchronous gates before order submission."""
         results = []
-        
+
         if self._kill_switch_active:
-            results.append(RiskGateResult("kill_switch", False, 1.0, 0.0, "Global kill-switch active"))
+            results.append(
+                RiskGateResult("kill_switch", False, 1.0, 0.0, "Global kill-switch active")
+            )
             return results
 
         # 1. Max Gross Exposure
         current_gross = portfolio.get("gross_exposure", 0.0)
         new_gross = current_gross + order.get("notional", 0.0) / portfolio.get("equity", 1.0)
-        results.append(RiskGateResult(
-            "max_gross_exposure",
-            new_gross <= self.MAX_GROSS,
-            new_gross,
-            self.MAX_GROSS,
-            f"Gross exposure {new_gross:.2%} would exceed {self.MAX_GROSS:.2%}"
-        ))
+        results.append(
+            RiskGateResult(
+                "max_gross_exposure",
+                new_gross <= self.MAX_GROSS,
+                new_gross,
+                self.MAX_GROSS,
+                f"Gross exposure {new_gross:.2%} would exceed {self.MAX_GROSS:.2%}",
+            )
+        )
 
         # 2. Max Order Notional
         notional = order.get("notional", 0.0)
-        results.append(RiskGateResult(
-            "max_order_notional",
-            notional <= self.MAX_ORDER_NOTIONAL,
-            notional,
-            self.MAX_ORDER_NOTIONAL
-        ))
+        results.append(
+            RiskGateResult(
+                "max_order_notional",
+                notional <= self.MAX_ORDER_NOTIONAL,
+                notional,
+                self.MAX_ORDER_NOTIONAL,
+            )
+        )
 
         # 8. Value at Risk (VaR) 99%
         var_delta = order.get("marginal_var", 0.0)
-        results.append(RiskGateResult(
-            "var_99_gate",
-            var_delta <= self.VAR_99_LIMIT,
-            var_delta,
-            self.VAR_99_LIMIT
-        ))
+        results.append(
+            RiskGateResult(
+                "var_99_gate", var_delta <= self.VAR_99_LIMIT, var_delta, self.VAR_99_LIMIT
+            )
+        )
 
         # (Additional gates implemented in full production suite)
-        
+
         passed = all(r.passed for r in results)
         if not passed:
             logger.warning(f"PRE-TRADE REJECTION: {[r.gate_name for r in results if not r.passed]}")
-            
+
         return results

@@ -1,5 +1,7 @@
 """Real Alpaca Markets API integration. Paper trading only."""
+
 from __future__ import annotations
+
 import os
 import time
 from dataclasses import dataclass
@@ -53,7 +55,7 @@ class AlpacaGateway:
         api_key = os.environ.get("ALPACA_API_KEY", "")
         secret_key = os.environ.get("ALPACA_SECRET_KEY", "")
         if not api_key or not secret_key:
-            raise EnvironmentError(
+            raise OSError(
                 "ALPACA_API_KEY and ALPACA_SECRET_KEY must be set in environment. "
                 "Register for free at alpaca.markets"
             )
@@ -61,15 +63,13 @@ class AlpacaGateway:
             "APCA-API-KEY-ID": api_key,
             "APCA-API-SECRET-KEY": secret_key,
         }
-        self._client = httpx.Client(
-            headers=self._headers, timeout=30, follow_redirects=True
-        )
+        self._client = httpx.Client(headers=self._headers, timeout=30, follow_redirects=True)
 
     def _request(self, method: str, url: str, **kwargs) -> dict:
         for attempt in range(3):
             resp = self._client.request(method, url, **kwargs)
             if resp.status_code == 429:
-                time.sleep(2 ** attempt * 2)
+                time.sleep(2**attempt * 2)
                 continue
             resp.raise_for_status()
             return resp.json()
@@ -86,11 +86,11 @@ class AlpacaGateway:
         )
 
     def place_limit_order(
-        self, symbol: str, qty: float, limit_price: float,
-        side: Literal["buy", "sell"]
+        self, symbol: str, qty: float, limit_price: float, side: Literal["buy", "sell"]
     ) -> BrokerOrder:
         data = self._request(
-            "POST", f"{self.base_url}/v2/orders",
+            "POST",
+            f"{self.base_url}/v2/orders",
             json={
                 "symbol": symbol,
                 "qty": str(qty),
@@ -122,9 +122,7 @@ class AlpacaGateway:
         return self._request("GET", f"{self.base_url}/v2/positions")
 
     def get_quote(self, symbol: str) -> Quote:
-        data = self._request(
-            "GET", f"{self.data_url}/v2/stocks/{symbol}/quotes/latest"
-        )
+        data = self._request("GET", f"{self.data_url}/v2/stocks/{symbol}/quotes/latest")
         q = data.get("quote", {})
         return Quote(
             ticker=symbol,

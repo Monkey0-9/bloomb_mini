@@ -7,18 +7,20 @@ to tradeable equity tickers or sector ETFs.
 
 # Facility to Company Database (Bloomberg/FactSet Revere Proxy Tier)
 FACILITY_TICKER_MAP = {
-    "port_of_long_beach": ["MATX", "DSX", "BDRY"], # Shipping/Dry Bulk proxies
+    "port_of_long_beach": ["MATX", "DSX", "BDRY"],  # Shipping/Dry Bulk proxies
     "port_of_singapore": ["ZIM", "GLNG"],
     "tesla_shanghai_gigafactory": ["TSLA"],
     "retail_parking_lots_global": ["WMT", "TGT", "COST"],
     "industrial_thermal_cluster_ruhr": ["BAS.DE", "SIE.DE"],
 }
 
+
 def get_tickers_for_facility(facility_id: str) -> list[str]:
     """
     Return the list of tickers whose supply chain is proxied by the facility.
     """
     return FACILITY_TICKER_MAP.get(facility_id.lower(), [])
+
 
 def get_economic_weight(facility_id: str, ticker: str) -> float:
     """

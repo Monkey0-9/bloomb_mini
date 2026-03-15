@@ -6,26 +6,31 @@ from pathlib import Path
 
 def test_dos_not_in_optical_source():
     """DOS (Dark Object Subtraction) is forbidden. If this test fails, remove DOS."""
-    source = Path("src/preprocess/optical.py").read_text()
+    source = Path("src/preprocess/optical.py").read_text(encoding="utf-8")
     assert "dark_object" not in source.lower(), (
-        "DOS method found in optical.py — remove it. Use py6S only."
+        "DOS method found in optical.py -- remove it. Use py6S only."
     )
-    assert "def DOS" not in source, "DOS function found — remove it."
+    assert "def DOS" not in source, "DOS function found -- remove it."
 
 
-def test_correction_output_range():
+def test_correction_output_range(monkeypatch):
     """Surface reflectance must be in [0.0, 1.0] for all pixels."""
     pytest.importorskip("rasterio")
     pytest.importorskip("Py6S")
     import rasterio
     from rasterio.transform import from_bounds
     from src.preprocess.optical import correct_atmospheric_6s
+    import Py6S
+
+    # Mock Py6S execution so it doesn't need the Fortran binary
+    def mock_run(self):
+        self.outputs = type('Outputs', (), {'coef_xa': 0.002, 'coef_xb': 0.01, 'coef_xc': 0.05})()
+    monkeypatch.setattr(Py6S.SixS, "run", mock_run)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         input_path = f"{tmpdir}/test_input.tif"
         output_path = f"{tmpdir}/test_output_sr.tif"
 
-        # Create a synthetic Sentinel-2 style GeoTIFF
         data = np.random.randint(0, 3000, (6, 64, 64), dtype=np.uint16)
         transform = from_bounds(3.9, 51.85, 4.6, 52.05, 64, 64)
         with rasterio.open(input_path, "w", driver="GTiff", height=64, width=64,
@@ -48,12 +53,17 @@ def test_correction_output_range():
                 )
 
 
-def test_correction_output_shape_matches_input():
+def test_correction_output_shape_matches_input(monkeypatch):
     pytest.importorskip("rasterio")
     pytest.importorskip("Py6S")
     import rasterio
     from rasterio.transform import from_bounds
     from src.preprocess.optical import correct_atmospheric_6s
+    import Py6S
+
+    def mock_run(self):
+        self.outputs = type('Outputs', (), {'coef_xa': 0.002, 'coef_xb': 0.01, 'coef_xc': 0.05})()
+    monkeypatch.setattr(Py6S.SixS, "run", mock_run)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         input_path = f"{tmpdir}/test_input.tif"
@@ -82,7 +92,6 @@ def test_ndvi_range_is_valid():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         sr_path = f"{tmpdir}/test_sr.tif"
-        # Create SR data with valid reflectance values
         sr_data = np.random.uniform(0.0, 0.8, (6, 64, 64)).astype(np.float32)
         transform = from_bounds(3.9, 51.85, 4.6, 52.05, 64, 64)
         with rasterio.open(sr_path, "w", driver="GTiff", height=64, width=64,

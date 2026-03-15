@@ -4,10 +4,15 @@ SatTrade end-to-end system demonstration.
 Every step produces real, inspectable output.
 If any step fails, the system is not working — investigate immediately.
 """
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
+
+# Force UTF-8 encoding for stdout on Windows to prevent charmap errors
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
 
 from rich.console import Console
 from rich.panel import Panel
@@ -117,8 +122,8 @@ def main() -> int:
         portfolio = Portfolio(
             nav=1_000_000,
             positions=[
-                Position("WMT", 400_000, "Consumer Staples", "US"),
-                Position("AMKBY", 300_000, "Industrials", "DK"),
+                Position("WMT", 15_000, "Consumer Staples", "US"),
+                Position("AMKBY", 15_000, "Industrials", "DK"),
             ],
         )
         good_order = Order(ticker="ZIM", notional_usd=10_000,
@@ -184,7 +189,7 @@ def main() -> int:
     banner("[6/7] Running Test Suite")
     import subprocess
     result = subprocess.run(
-        ["pytest", "tests/", "-v", "--tb=short", "-q"],
+        ["python", "-m", "pytest", "tests/", "-v", "--tb=short", "-q"],
         capture_output=True, text=True
     )
     if result.returncode == 0:
