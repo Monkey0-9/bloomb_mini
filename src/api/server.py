@@ -22,6 +22,14 @@ load_dotenv()
 from src.maritime.vessel_tracker import VesselTracker
 from src.maritime.flight_tracker import FlightTracker
 from src.signals.engine import SignalEngine
+from src.data.market_data import get_stock_price, get_options_chain, get_earnings_calendar
+from src.data.news_feed import get_news_feed
+from src.data.economic_data import get_macro_dashboard, get_series
+from src.data.port_statistics import get_port_statistics, compute_congestion_signal
+from src.satellite.thermal import scan_industrial_facilities
+from src.signals.earnings_calendar import get_upcoming_earnings, get_earnings_with_satellite_signal
+from src.signals.composite_score import compute_composite
+from src.scheduler.jobs import run_scheduler, get_cache
 
 import yfinance as yf
 
@@ -62,6 +70,7 @@ async def background_sync():
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(background_sync())
+    asyncio.create_task(run_scheduler())
 
 connected_clients: list[WebSocket] = []
 
@@ -122,9 +131,99 @@ async def get_vessel_detail(mmsi: str):
         "route": v.waypoints,
     }
 
+@app.get("/api/market/price/{ticker}")
+async def get_price(ticker: str):
+    return get_stock_price(ticker)
+
+@app.get("/api/market/options/{ticker}")
+async def get_options(ticker: str):
+    return get_options_chain(ticker)
+
+@app.get("/api/market/earnings/{ticker}")
+async def get_earnings(ticker: str):
+    return get_earnings_calendar(ticker)
+
+
 @app.get("/api/flights")
 async def get_flights():
     return flight_tracker.to_geojson_feature_collection()
+
+
+# ─────────────────────────────────────────────
+# Bloomberg-Beating Alpha Endpoints
+# ─────────────────────────────────────────────
+
+@app.get("/api/alpha/thermal")
+async def get_thermal_signals():
+    """
+    NASA FIRMS industrial thermal anomaly scan.
+    Returns heat signatures from tracked steel mills, LNG terminals, refineries.
+    THE signal Bloomberg doesn't have.
+    """
+    cached = get_cache("thermal")
+    if cached.get("data"):
+        return {"data": cached["data"], "cached_at": cached.get("updated_at"), "source": "NASA-FIRMS-VIIRS"}
+    data = scan_industrial_facilities(day_range=2)
+    return {"data": data, "source": "NASA-FIRMS-VIIRS"}
+
+
+@app.get("/api/alpha/news")
+async def get_news():
+    """Live news from Reuters, Maritime Executive, SEC EDGAR + NewsAPI."""
+    cached = get_cache("news")
+    if cached.get("data"):
+        return {"articles": cached["data"], "cached_at": cached.get("updated_at")}
+    data = get_news_feed(limit_per_source=5)
+    return {"articles": data, "count": len(data)}
+
+
+@app.get("/api/alpha/earnings")
+async def get_earnings_calendar():
+    """Upcoming earnings for all maritime/commodity-linked tickers with satellite signal overlay."""
+    cached = get_cache("earnings")
+    base = cached.get("data") or get_upcoming_earnings()
+    return {"earnings": get_earnings_with_satellite_signal(), "count": len(base)}
+
+
+@app.get("/api/alpha/macro")
+async def get_macro():
+    """FRED macro dashboard: CPI, PPI, Baltic Dry, WTI, Steel, Natural Gas."""
+    return get_macro_dashboard()
+
+
+@app.get("/api/alpha/macro/{series_id}")
+async def get_macro_series(series_id: str, limit: int = 90):
+    """Fetch a specific FRED series by ID (e.g. DGS10, CPIAUCSL)."""
+    return get_series(series_id, limit=limit)
+
+
+@app.get("/api/alpha/ports")
+async def get_ports():
+    """Port throughput statistics for major global ports."""
+    return {"ports": get_port_statistics()}
+
+
+@app.get("/api/alpha/composite/{ticker}")
+async def get_composite_score(ticker: str):
+    """
+    Compute weighted composite alpha signal for a ticker.
+    Combines thermal + vessel + flight + options signals.
+    """
+    options = get_options_chain(ticker)
+    score = compute_composite(
+        ticker=ticker,
+        options_signal=options if "error" not in options else None,
+    )
+    return {
+        "ticker": ticker,
+        "score": score.final_score,
+        "direction": score.direction,
+        "confidence": score.confidence,
+        "contributing_signals": score.contributing_signals,
+        "signal_count": score.signal_count,
+        "as_of": score.as_of,
+    }
+
 
 @app.get("/api/flights/{callsign}")
 async def get_flight_detail(callsign: str):
