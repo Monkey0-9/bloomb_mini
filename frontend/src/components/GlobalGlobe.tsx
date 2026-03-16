@@ -1,29 +1,28 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 import Globe from 'react-globe.gl';
 import * as THREE from 'three';
-import { useTerminalStore } from '../store';
+import { useTerminalStore, useVesselStore, useFlightStore } from '../store';
 import { countryLabels } from '../data/countries';
+import { getVesselHTML } from './VesselPopup';
+import { getFlightHTML } from './FlightPopup';
+import { getPortHTML } from './PortPopup';
 
 const GlobalGlobe: React.FC = () => {
   const { activeLayers, zoomLevel } = useTerminalStore();
+  const { vessels, fetchVessels } = useVesselStore();
+  const { flights, fetchFlights } = useFlightStore();
   const globeEl = useRef<any>(null);
-  const [movements, setMovements] = React.useState<any>({ vessels: [], flights: [] });
 
-  // Fetch movements from API
+  // Initial fetch and polling
   useEffect(() => {
-    const fetchMovements = async () => {
-      try {
-        const res = await fetch('http://localhost:8000/api/geo/movements');
-        const data = await res.json();
-        setMovements(data);
-      } catch (err) {
-        console.error('Failed to fetch movements:', err);
-      }
-    };
-    fetchMovements();
-    const interval = setInterval(fetchMovements, 10000);
+    fetchVessels();
+    fetchFlights();
+    const interval = setInterval(() => {
+      fetchVessels();
+      fetchFlights();
+    }, 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchVessels, fetchFlights]);
 
   // Update camera on zoom/view change
   useEffect(() => {
@@ -44,12 +43,23 @@ const GlobalGlobe: React.FC = () => {
   ], []);
 
   const filteredPlaces = useMemo(() => 
-    places.filter(p => activeLayers.includes(p.type || 'PORTS')), 
-  [activeLayers, places]);
+    places.filter(p => activeLayers.includes(p.type || 'PORTS')).map(port => {
+      const portCode = port.name.toUpperCase().replace(' PORT', '');
+      const inboundVessels = vessels.filter((v: any) => 
+        v.destination?.toUpperCase().includes(portCode) || 
+        v.dest_locode === portCode
+      );
+      return { ...port, inboundVessels };
+    }), 
+  [activeLayers, places, vessels]);
 
   const filteredVessels = useMemo(() => 
-    (movements.vessels || []).filter(() => activeLayers.includes('VESSELS')), 
-  [activeLayers, movements.vessels]);
+    vessels.filter(() => activeLayers.includes('VESSELS')), 
+  [activeLayers, vessels]);
+
+  const filteredFlights = useMemo(() => 
+    flights.filter(() => activeLayers.includes('FLIGHTS')), 
+  [activeLayers, flights]);
 
   // Combined arcs (Satellite + Flights)
   const arcsData = useMemo(() => {
@@ -58,20 +68,18 @@ const GlobalGlobe: React.FC = () => {
       { startLat: 31.2, startLng: 121.5, endLat: 33.7, endLng: -118.3, color: ['#00C8FF', '#FF3D3D'], label: 'Sentinel-2B Orbit' }
     ];
 
-    const flightArcs = activeLayers.includes('RETAIL') ? (movements.flights || []).map((f: any) => ({
-      startLat: f.startLat,
-      startLng: f.startLng,
-      endLat: f.endLat,
-      endLng: f.endLng,
-      color: ['#FFFFFF', '#FFD700'],
-      label: `${f.callsign} (${f.airline})`,
-      country: f.country,
-      eta: f.eta,
-      origin_country: f.origin_country
+    const flightArcs = activeLayers.includes('FLIGHTS') ? filteredFlights.map((f: any) => ({
+      startLat: f.origin_lat || 0,
+      startLng: f.origin_lon || 0,
+      endLat: f.dest_lat || 0,
+      endLng: f.dest_lon || 0,
+      color: f.signal === 'BULLISH' ? ['#00FF9D', '#FFFFFF'] : ['#FFFFFF', '#FFB900'],
+      label: `${f.callsign} (${f.operator})`,
+      ...f
     })) : [];
 
     return [...satelliteArcs, ...flightArcs];
-  }, [movements.flights, activeLayers]);
+  }, [filteredFlights, activeLayers]);
 
   useEffect(() => {
     if (globeEl.current) {
@@ -89,6 +97,40 @@ const GlobalGlobe: React.FC = () => {
     }
   }, []);
 
+  const htmlElements = useMemo(() => {
+    const vesselEls = filteredVessels.map((v: any) => ({
+      ...v,
+      lat: v.position.lat,
+      lng: v.position.lon,
+      size: 20,
+      isVessel: true,
+      html: `
+        <div class="asset-marker" style="color: ${v.color || '#6B7E99'}; transform: rotate(${v.heading_deg || 0}deg);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="filter: drop-shadow(0 0 4px currentColor);">
+            <path d="M4,15C4,15 5,19 12,19C19,19 20,15 20,15V13L12,14L4,13V15M12,2L5,5V11C5,11 5,14 12,14C19,14 19,11 19,11V5L12,2Z" />
+          </svg>
+        </div>
+      `
+    }));
+
+    const flightEls = filteredFlights.map((f: any) => ({
+      ...f,
+      lat: f.position.lat,
+      lng: f.position.lon,
+      size: 20,
+      isFlight: true,
+      html: `
+        <div class="asset-marker" style="color: ${f.color || '#6B7E99'}; transform: rotate(${f.heading || 0}deg);">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="filter: drop-shadow(0 0 4px currentColor);">
+            <path d="M21,16L22,19H15V22H13V19H10L9,15H2V13H9L10,9V2H12V9L13,13H20V15H13L15,18H21V16Z" />
+          </svg>
+        </div>
+      `
+    }));
+
+    return [...vesselEls, ...flightEls];
+  }, [filteredVessels, filteredFlights]);
+
   return (
     <div className={`w-full h-full relative group translate-x-[-22%] transition-transform duration-1000 scale-110 ${activeLayers.includes('CLOUDS') ? 'opacity-90' : 'opacity-100'}`}>
       <Globe
@@ -101,71 +143,62 @@ const GlobalGlobe: React.FC = () => {
         atmosphereColor="#00C8FF"
         atmosphereAltitude={activeLayers.includes('CLOUDS') ? 0.25 : 0.18}
         
-        // Points (Vessels and Ports)
-        pointsData={[...filteredPlaces, ...filteredVessels.map((v: any) => ({ ...v, size: 0.05, color: '#00C8FF', isVessel: true }))]}
+        // Custom HTML Markers (Vessels & Flights)
+        htmlElementsData={htmlElements}
+        htmlElement={(d: any) => {
+          const el = document.createElement('div');
+          el.innerHTML = d.html;
+          el.style.width = `${d.size}px`;
+          el.style.pointerEvents = 'auto';
+          el.style.cursor = 'pointer';
+          return el;
+        }}
+        htmlLat="lat"
+        htmlLng="lng"
+
+        // Points (Ports and Satellites)
+        pointsData={[
+          ...filteredPlaces, 
+          { lat: 51.9, lng: 4.5, name: 'Sentinel-2A', color: '#00C8FF', size: 0.15, isSatellite: true },
+          { lat: 31.2, lng: 121.5, name: 'Sentinel-2B', color: '#00C8FF', size: 0.15, isSatellite: true }
+        ]}
         pointLat="lat"
         pointLng="lng"
         pointColor="color"
         pointRadius="size"
         pointAltitude={0.01}
-        pointLabel={(d: any) => `
-          <div class="glass-panel p-3 min-w-[220px]">
-            <div class="flex justify-between items-center mb-1">
-               <span class="type-h2">${d.name}</span>
-               ${d.isVessel ? `<span class="type-data-xs px-1.5 py-0.5 bg-accent-primary/20 rounded border border-accent-primary/30 text-accent-primary">VESSEL</span>` : 
-                `<span class="type-data-xs px-1.5 py-0.5 bg-void rounded border border-white/10 ${d.signal === 'BULLISH' ? 'text-bull' : 'text-bear'}">${d.signal}</span>`}
-            </div>
-            ${d.isVessel ? `
-              <div class="flex flex-col gap-1 mt-2">
-                <div class="flex justify-between text-text-4 uppercase text-[10px]"><span>Origin</span><span class="text-bull font-bold">${d.origin_country || 'Unknown'}</span></div>
-                <div class="flex justify-between text-text-4 uppercase text-[10px]"><span>Flag State</span><span class="text-text-1 font-bold">${d.country}</span></div>
-                <div class="flex justify-between text-text-4 uppercase text-[10px]"><span>Destination</span><span class="text-accent-primary underline italic">${d.dest}</span></div>
-                <div class="flex justify-between text-text-4 uppercase text-[10px]"><span>ETA</span><span class="text-bull font-bold">${d.eta}</span></div>
-                <div class="flex justify-between text-text-4 uppercase text-[10px] mt-2 border-t border-white/10 pt-1"><span>Cargo</span><span class="text-text-1 font-bold">${d.cargo || 'N/A'}</span></div>
-                <div class="flex justify-between text-text-4 uppercase text-[10px]"><span>Amount</span><span class="text-accent-primary font-bold">${d.amount || 'N/A'}</span></div>
-              </div>
-            ` : `
-              <div class="type-data-md mb-2">Throughput: ${(d.throughput * 100).toFixed(1)}%</div>
-              <div class="segment-bar">
-                 ${Array.from({length: 10}).map((_, i) => `
-                   <div class="segment ${i < (d.throughput * 10) ? (d.signal === 'BULLISH' ? 'active-bull' : 'active-bear') : ''}"></div>
-                 `).join('')}
-              </div>
-            `}
-          </div>
-        `}
+        pointLabel={(d: any) => d.isSatellite ? `Satellite: ${d.name}` : getPortHTML(d)}
         
-        // Pulsing Rings
-        ringsData={[...places, ...(movements.vessels || []).filter((v:any) => v.cargo && v.cargo.includes('Fertilizer')).map((v: any) => ({ ...v, color: '#FFD700' }))]}
+        // Pulsing Rings (Signal Intensity)
+        ringsData={[
+          ...places.filter(p => p.signal === 'BULLISH'), 
+          ...filteredVessels.filter((v:any) => v.signal === 'BULLISH' && v.position).map((v: any) => ({ 
+            lat: v.position.lat, 
+            lng: v.position.lon, 
+            color: '#00FF9D' 
+          })),
+          ...filteredFlights.filter((f:any) => f.signal === 'BULLISH' && f.position).map((f: any) => ({
+            lat: f.position.lat,
+            lng: f.position.lon,
+            color: '#00C8FF'
+          }))
+        ]}
         ringLat="lat"
         ringLng="lng"
         ringColor={(d: any) => d.color}
-        ringMaxRadius={3.5}
-        ringPropagationSpeed={2}
-        ringRepeatPeriod={2000}
+        ringMaxRadius={2.5}
+        ringPropagationSpeed={3}
+        ringRepeatPeriod={1500}
 
-        // Arcs (Satellite & Flights)
+        // Arcs (Satellite & Flight Paths)
         arcsData={arcsData}
         arcColor="color"
-        arcDashLength={0.6}
-        arcDashGap={1.5}
-        arcDashAnimateTime={3500}
-        arcAltitudeAutoScale={0.7}
-        arcStroke={0.8}
-        arcLabel={(d: any) => `
-          <div class="glass-panel p-3 min-w-[200px]">
-            <div class="type-h2 mb-1">${d.label}</div>
-            ${d.eta ? `
-              <div class="flex flex-col gap-1 mt-1">
-                <div class="flex justify-between text-text-4 uppercase text-[10px]"><span>Origin</span><span class="text-text-2 font-bold">${d.origin_country || 'Unknown'}</span></div>
-                <div class="flex justify-between text-text-4 uppercase text-[10px]"><span>Dest Country</span><span class="text-bull font-bold">${d.country}</span></div>
-                <div class="flex justify-between text-text-4 uppercase text-[10px]"><span>Arrival</span><span class="text-bull font-bold">${d.eta}</span></div>
-                <div class="flex justify-between text-text-4 uppercase text-[10px] mt-2 border-t border-white/10 pt-1"><span>Cargo</span><span class="text-text-1 font-bold">${d.cargo || 'N/A'}</span></div>
-                <div class="flex justify-between text-text-4 uppercase text-[10px]"><span>Amount</span><span class="text-accent-primary font-bold">${d.amount || 'N/A'}</span></div>
-              </div>
-            ` : ''}
-          </div>
-        `}
+        arcDashLength={0.5}
+        arcDashGap={1.2}
+        arcDashAnimateTime={2500}
+        arcAltitudeAutoScale={0.4}
+        arcStroke={0.6}
+        arcLabel={(d: any) => d.callsign ? getFlightHTML(d) : d.mmsi ? getVesselHTML(d) : `Path: ${d.label}`}
 
         // Country Labels
         labelsData={countryLabels}
@@ -184,7 +217,7 @@ const GlobalGlobe: React.FC = () => {
           <h2 className="type-h1 text-accent-primary glow-text-primary">Orbital Telemetry</h2>
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-bull dot-live"></span>
-            <p className="type-data-xs text-text-3 uppercase tracking-[0.2em]">6 Active Sentinel-2 Ingests</p>
+            <p className="type-data-xs text-text-3 uppercase tracking-[0.2em]">Live Vessel & Flight Intelligence Feed</p>
           </div>
         </div>
       </div>
