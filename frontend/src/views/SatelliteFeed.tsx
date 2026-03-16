@@ -1,62 +1,60 @@
 import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
+import { useSignalStore } from '../store';
 
 const SatelliteFeed = () => {
   const [search, setSearch] = React.useState('');
+  const { signals } = useSignalStore();
   
-  const images = useMemo(() => [
-    { 
-      id: 1, 
-      location: 'Rotterdam Europort', 
-      time: '5h 42m ago', 
-      cloud: '8%', 
-      res: '10m', 
-      type: 'SENTINEL-2', 
-      signal: 'BULLISH', 
-      detail: 'Visual confirmation of 12 VLCC vessels at berthing sector 4. Significant gantry movement.',
-      url: 'https://images.unsplash.com/photo-1590214840332-60cc328f645a?auto=format&fit=crop&w=800&q=80' 
-    },
-    { 
-      id: 2, 
-      location: 'Singapore Jurong Island', 
-      time: '3h 12m ago', 
-      cloud: '12%', 
-      res: '10m', 
-      type: 'SENTINEL-2', 
-      signal: 'STABLE', 
-      detail: 'Thermal storage tanks at 84% capacity. Consistent with seasonal export patterns.',
-      url: 'https://images.unsplash.com/photo-1566847438217-76e82d383f84?auto=format&fit=crop&w=800&q=80' 
-    },
-    { 
-      id: 3, 
-      location: 'Port of Long Beach', 
-      time: '8h 22m ago', 
-      cloud: '2%', 
-      res: '0.5m', 
-      type: 'WORLDVIEW-3', 
-      signal: 'BEARISH', 
-      detail: 'Empty container stacks increasing. Anchorage congestion at 48-month high.',
-      url: 'https://images.unsplash.com/photo-1541829070764-84a7d30dee6b?auto=format&fit=crop&w=800&q=80' 
-    },
-    { 
-      id: 4, 
-      location: 'Shanghai Yangshan', 
-      time: '2h 47m ago', 
-      cloud: '15%', 
-      res: '10m', 
-      type: 'SENTINEL-2', 
-      signal: 'BULLISH', 
-      detail: 'Intense nighttime thermal activity in assembly zone 3. Production ramping ahead of schedule.',
-      url: 'https://images.unsplash.com/photo-1570535560965-09559e4d4669?auto=format&fit=crop&w=800&q=80' 
-    },
-  ], []);
+  const images = useMemo(() => {
+    // Start with curated base imagery
+    const baseImagery = [
+      { 
+        id: 'b1', 
+        location: 'Rotterdam Europort', 
+        time: '5h 42m ago', 
+        cloud: '8%', 
+        res: '10m', 
+        type: 'SENTINEL-2', 
+        signal: 'BULLISH', 
+        detail: 'Visual confirmation of 12 VLCC vessels at berthing sector 4. Significant gantry movement.',
+        url: 'https://images.unsplash.com/photo-1590214840332-60cc328f645a?auto=format&fit=crop&w=800&q=80' 
+      },
+      { 
+        id: 'b2', 
+        location: 'Singapore Jurong Island', 
+        time: '3h 12m ago', 
+        cloud: '12%', 
+        res: '10m', 
+        type: 'SENTINEL-2', 
+        signal: 'STABLE', 
+        detail: 'Thermal storage tanks at 84% capacity. Consistent with seasonal export patterns.',
+        url: 'https://images.unsplash.com/photo-1566847438217-76e82d383f84?auto=format&fit=crop&w=800&q=80' 
+      },
+    ];
+
+    // Map live signals to high-fidelity feed items
+    const liveItems = signals.slice(0, 10).map((s: any) => ({
+      id: s.id,
+      location: s.name,
+      time: 'LIVE',
+      cloud: '0%',
+      res: '0.5m',
+      type: 'WORLDVIEW-3',
+      signal: s.status.toUpperCase(),
+      detail: s.headline + '. ' + s.implication,
+      url: s.status === 'bullish' 
+        ? 'https://images.unsplash.com/photo-1570535560965-09559e4d4669?auto=format&fit=crop&w=800&q=80'
+        : 'https://images.unsplash.com/photo-1541829070764-84a7d30dee6b?auto=format&fit=crop&w=800&q=80'
+    }));
+
+    return [...liveItems, ...baseImagery];
+  }, [signals]);
 
   const filteredImages = useMemo(() => {
-    if (!search) {
-      return images;
-    }
+    if (!search) return images;
     const lowercasedSearch = search.toLowerCase();
-    return images.filter(img => 
+    return images.filter((img: any) => 
       img.location.toLowerCase().includes(lowercasedSearch) ||
       img.detail.toLowerCase().includes(lowercasedSearch) ||
       img.type.toLowerCase().includes(lowercasedSearch)
@@ -94,7 +92,7 @@ const SatelliteFeed = () => {
 
       <div className="flex-1 p-sp-4 overflow-y-auto custom-scrollbar bg-void/20">
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-sp-4">
-          {filteredImages.map((img) => (
+          {filteredImages.map((img: any) => (
             <motion.div 
               key={img.id}
               className="bg-surface-1 border border-border-1 rounded-sm overflow-hidden group cursor-pointer flex h-[180px]"

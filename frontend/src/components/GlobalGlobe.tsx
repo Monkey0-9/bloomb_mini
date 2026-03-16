@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 import Globe from 'react-globe.gl';
 import * as THREE from 'three';
-import { useTerminalStore, useVesselStore, useFlightStore } from '../store';
+import { useTerminalStore, useVesselStore, useFlightStore, useSatelliteStore, Satellite } from '../store';
 import { countryLabels } from '../data/countries';
 import { getVesselHTML } from './VesselPopup';
 import { getFlightHTML } from './FlightPopup';
@@ -11,18 +11,31 @@ const GlobalGlobe: React.FC = () => {
   const { activeLayers, zoomLevel } = useTerminalStore();
   const { vessels, fetchVessels } = useVesselStore();
   const { flights, fetchFlights } = useFlightStore();
+  const { satellites, fetchSatellites } = useSatelliteStore();
   const globeEl = useRef<any>(null);
+
+  interface GlobeMarker {
+    lat: number;
+    lng: number;
+    size: number;
+    html: string;
+    isVessel?: boolean;
+    isFlight?: boolean;
+    color?: string;
+  }
 
   // Initial fetch and polling
   useEffect(() => {
     fetchVessels();
     fetchFlights();
+    fetchSatellites();
     const interval = setInterval(() => {
       fetchVessels();
       fetchFlights();
+      fetchSatellites();
     }, 15000);
     return () => clearInterval(interval);
-  }, [fetchVessels, fetchFlights]);
+  }, [fetchVessels, fetchFlights, fetchSatellites]);
 
   // Update camera on zoom/view change
   useEffect(() => {
@@ -102,12 +115,12 @@ const GlobalGlobe: React.FC = () => {
       ...v,
       lat: v.position.lat,
       lng: v.position.lon,
-      size: 20,
+      size: 24,
       isVessel: true,
       html: `
-        <div class="asset-marker" style="color: ${v.color || '#6B7E99'}; transform: rotate(${v.heading_deg || 0}deg);">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="filter: drop-shadow(0 0 4px currentColor);">
-            <path d="M4,15C4,15 5,19 12,19C19,19 20,15 20,15V13L12,14L4,13V15M12,2L5,5V11C5,11 5,14 12,14C19,14 19,11 19,11V5L12,2Z" />
+        <div class="asset-marker" style="color: ${v.color || '#00FF9D'}; transform: rotate(${(v.position.heading_degrees || 0) - 90}deg);">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style="filter: drop-shadow(0 0 6px ${v.color || '#00FF9D'}); opacity: 0.9;">
+            <path d="M21,16.5C21,16.88 20.79,17.21 20.47,17.38L12.57,21.82C12.41,21.94 12.21,22 12,22C11.79,22 11.59,21.94 11.43,21.82L3.53,17.38C3.21,17.21 3,16.88 3,16.5V7.5C3,7.12 3.21,6.79 3.53,6.62L11.43,2.18C11.59,2.06 11.79,2 12,2C12.21,2 12.41,2.06 12.57,2.18L20.47,6.62C20.79,6.79 21,7.12 21,7.5V16.5Z" />
           </svg>
         </div>
       `
@@ -115,24 +128,38 @@ const GlobalGlobe: React.FC = () => {
 
     const flightEls = filteredFlights.map((f: any) => ({
       ...f,
-      lat: f.position.lat,
-      lng: f.position.lon,
-      size: 20,
+      lat: f.current_position.lat,
+      lng: f.current_position.lon,
+      size: 24,
       isFlight: true,
       html: `
-        <div class="asset-marker" style="color: ${f.color || '#6B7E99'}; transform: rotate(${f.heading || 0}deg);">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="filter: drop-shadow(0 0 4px currentColor);">
+        <div class="asset-marker" style="color: ${f.color || '#C084FC'}; transform: rotate(${(f.current_position.heading_degrees || 0) - 90}deg);">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="filter: drop-shadow(0 0 6px ${f.color || '#C084FC'});">
             <path d="M21,16L22,19H15V22H13V19H10L9,15H2V13H9L10,9V2H12V9L13,13H20V15H13L15,18H21V16Z" />
           </svg>
         </div>
       `
     }));
 
-    return [...vesselEls, ...flightEls];
+    return [...vesselEls, ...flightEls] as GlobeMarker[];
+  }, [filteredVessels, filteredFlights]);
+
+  const pathsData = useMemo(() => {
+    const vesselPaths = filteredVessels.map((v: any) => ({
+      coords: (v.historical_track || []).map((p: any) => [p.lon, p.lat, 0.005]),
+      color: v.color || '#00FF9D'
+    }));
+
+    const flightPaths = filteredFlights.map((f: any) => ({
+      coords: (f.historical_track || []).map((p: any) => [p.lon, p.lat, 0.02]),
+      color: f.color || '#C084FC'
+    }));
+
+    return [...vesselPaths, ...flightPaths];
   }, [filteredVessels, filteredFlights]);
 
   return (
-    <div className={`w-full h-full relative group translate-x-[-22%] transition-transform duration-1000 scale-110 ${activeLayers.includes('CLOUDS') ? 'opacity-90' : 'opacity-100'}`}>
+    <div className={`w-full h-full relative group translate-x-[-35%] transition-transform duration-1000 scale-110 ${activeLayers.includes('CLOUDS') ? 'opacity-90' : 'opacity-100'}`}>
       <Globe
         ref={globeEl}
         globeImageUrl="//unpkg.com/three-globe/example/img/earth-dark.jpg"
@@ -145,10 +172,11 @@ const GlobalGlobe: React.FC = () => {
         
         // Custom HTML Markers (Vessels & Flights)
         htmlElementsData={htmlElements}
-        htmlElement={(d: any) => {
+        htmlElement={(d: object) => {
+          const marker = d as GlobeMarker;
           const el = document.createElement('div');
-          el.innerHTML = d.html;
-          el.style.width = `${d.size}px`;
+          el.innerHTML = marker.html;
+          el.style.width = `${marker.size}px`;
           el.style.pointerEvents = 'auto';
           el.style.cursor = 'pointer';
           return el;
@@ -156,18 +184,29 @@ const GlobalGlobe: React.FC = () => {
         htmlLat="lat"
         htmlLng="lng"
 
-        // Points (Ports and Satellites)
+        // Points (Ports and High-Density Satellites)
         pointsData={[
           ...filteredPlaces, 
-          { lat: 51.9, lng: 4.5, name: 'Sentinel-2A', color: '#00C8FF', size: 0.15, isSatellite: true },
-          { lat: 31.2, lng: 121.5, name: 'Sentinel-2B', color: '#00C8FF', size: 0.15, isSatellite: true }
+          ...(activeLayers.includes('SATELLITES') ? satellites.map((s: Satellite) => ({ ...s, size: 0.03, color: s.color || '#00C8FF', type: 'SATELLITE' })) : [])
         ]}
         pointLat="lat"
         pointLng="lng"
         pointColor="color"
         pointRadius="size"
-        pointAltitude={0.01}
-        pointLabel={(d: any) => d.isSatellite ? `Satellite: ${d.name}` : getPortHTML(d)}
+        pointAltitude={(d: any) => d.type === 'SATELLITE' ? 0.08 : 0.01}
+        pointLabel={(d: any) => `
+            <div style="background: rgba(0,0,0,0.85); padding: 10px; border: 1px solid ${d.color}; font-family: 'JetBrains Mono', monospace; border-radius: 4px; box-shadow: 0 0 15px ${d.color}44;">
+                <div style="color: ${d.color}; font-weight: bold; font-size: 12px; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                    <span style="width: 8px; h-8px; border-radius: 50%; background: ${d.color}; display: inline-block;"></span>
+                    ${d.name || 'SATELLITE TRK'}
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 10px;">
+                    <span style="color: #6B7E99;">CATEGORY</span><span style="color: #fff; text-align: right;">${d.category || 'SIGNAL'}</span>
+                    <span style="color: #6B7E99;">ALTITUDE</span><span style="color: #fff; text-align: right;">${d.altitude || '350km'}</span>
+                    <span style="color: #6B7E99;">OWNER</span><span style="color: #fff; text-align: right;">${d.owner || 'Copernicus'}</span>
+                </div>
+            </div>
+        `}
         
         // Pulsing Rings (Signal Intensity)
         ringsData={[
@@ -190,15 +229,26 @@ const GlobalGlobe: React.FC = () => {
         ringPropagationSpeed={3}
         ringRepeatPeriod={1500}
 
-        // Arcs (Satellite & Flight Paths)
+        // Historical Paths (24h Track)
+        pathsData={pathsData}
+        pathPoints="coords"
+        pathPointLat={(p: any) => p[1]}
+        pathPointLng={(p: any) => p[0]}
+        pathPointAlt={(p: any) => p[2]}
+        pathColor={(d: any) => d.color}
+        pathDashLength={0.1}
+        pathDashGap={0.05}
+        pathDashAnimateTime={10000}
+        pathStroke={1.5}
+
+        // Arcs (Satellite & Active Flight Vectors)
         arcsData={arcsData}
-        arcColor="color"
+        arcColor={(d: any) => d.color}
         arcDashLength={0.5}
         arcDashGap={1.2}
-        arcDashAnimateTime={2500}
-        arcAltitudeAutoScale={0.4}
-        arcStroke={0.6}
-        arcLabel={(d: any) => d.callsign ? getFlightHTML(d) : d.mmsi ? getVesselHTML(d) : `Path: ${d.label}`}
+        arcDashAnimateTime={3000}
+        arcStroke={0.5}
+        arcAltitudeAutoScale={0.3}
 
         // Country Labels
         labelsData={countryLabels}
@@ -217,7 +267,7 @@ const GlobalGlobe: React.FC = () => {
           <h2 className="type-h1 text-accent-primary glow-text-primary">Orbital Telemetry</h2>
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-bull dot-live"></span>
-            <p className="type-data-xs text-text-3 uppercase tracking-[0.2em]">Live Vessel & Flight Intelligence Feed</p>
+            <p className="type-data-xs text-text-3 uppercase tracking-[0.2em]">Institutional Engine Active</p>
           </div>
         </div>
       </div>

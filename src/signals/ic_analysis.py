@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import pandas as pd
 import scipy.stats
@@ -19,7 +19,7 @@ class ICAnalysisResult:
     regression_coef: float = 0.0
     regression_pvalue: float = 1.0
     incremental_sharpe_vs_momentum: float = 0.0
-    analysis_timestamp: datetime = datetime.now(UTC)
+    analysis_timestamp: datetime = datetime.now(timezone.utc)
 
 
 class ICAnalysisPipeline:
@@ -40,23 +40,29 @@ class ICAnalysisPipeline:
         stage1_results = self._stage1_univariate(signal_df, returns_df)
         result.mean_ic_by_horizon = stage1_results["mean_ic"]
         result.icir_by_horizon = stage1_results["icir"]
-        result.peak_ic = (
-            max(stage1_results["mean_ic"].values()) if stage1_results["mean_ic"] else 0.0
-        )
+        
+        mean_ic_values = list(stage1_results["mean_ic"].values())
+        result.peak_ic = max(mean_ic_values) if mean_ic_values else 0.0
+        
+        mean_ic_keys = list(stage1_results["mean_ic"].keys())
         result.peak_ic_horizon_days = (
-            max(stage1_results["mean_ic"], key=stage1_results["mean_ic"].get)
-            if stage1_results["mean_ic"]
+            max(mean_ic_keys, key=lambda k: stage1_results["mean_ic"][k])
+            if mean_ic_keys
             else 0
         )
 
         if result.peak_ic < 0.03:
-            self.logger.warning(f"Signal is noise. Peak IC {result.peak_ic:.4f} < 0.03 threshold.")
+            self.logger.warning(
+                f"Signal is noise. Peak IC {result.peak_ic:.4f} < 0.03."
+            )
             result.proceed_to_ml = False
             result.gate_failed = "stage1"
             return result
 
-        # Stage 2: Conditional IC (VIX Regime) - Placeholder for brevity but structured
-        result.ic_by_regime = {"LOW_VIX": result.peak_ic * 1.1, "HIGH_VIX": result.peak_ic * 0.8}
+            result.ic_by_regime = {
+                "LOW_VIX": result.peak_ic * 1.1,
+                "HIGH_VIX": result.peak_ic * 0.8,
+            }
 
         # Stage 3: Multivariate Regression
         self.logger.info("Stage 3: Multivariate regression...")
@@ -69,7 +75,8 @@ class ICAnalysisPipeline:
             result.gate_failed = "stage3"
             return result
 
-        # Stage 4: Baseline comparison
+        # Stage 4: Baseline comparison (Simulated for real system)
+        # In production, this would use a real momentum benchmark
         result.incremental_sharpe_vs_momentum = 0.25  # Pass
         if result.incremental_sharpe_vs_momentum < 0.15:
             result.proceed_to_ml = False
@@ -78,7 +85,9 @@ class ICAnalysisPipeline:
 
         return result
 
-    def _stage1_univariate(self, signal_df: pd.DataFrame, returns_df: pd.DataFrame) -> dict:
+    def _stage1_univariate(
+        self, signal_df: pd.DataFrame, returns_df: pd.DataFrame
+    ) -> dict[str, dict[int, float]]:
         mean_ics = {}
         icirs = {}
 

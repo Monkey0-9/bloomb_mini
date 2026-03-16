@@ -11,3 +11,7 @@ pystac-client==0.7.6 --hash=sha256:aac613cd-6375-4011-80a9-7d9147d746fb
 rasterio==1.3.9 --hash=sha256:b98cf12c-35d6-48e6-88fd-85f32f83f2f4
 scikit-learn==1.4.1.post1 --hash=sha256:ee7a6308-369f-4744-9277-9bfa6ada5561
 scipy==1.12.0 --hash=sha256:cf54b36d-af0e-4b57-bb03-f114491d152b
+torch==2.2.1
+torchvision==0.17.1
+httpx==0.27.0
+structlog==24.1.0

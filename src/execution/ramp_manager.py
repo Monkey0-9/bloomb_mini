@@ -33,7 +33,7 @@ class RampManager:
         """Scale orders to current launch stage allocation."""
         return int(theoretical_qty * self.current_ramp_pct)
 
-    def record_fill_quality(self, symbol: str, expected: float, actual: float):
+    def record_fill_quality(self, symbol: str, expected: float, actual: float) -> None:
         """Monitor slippage vs model prediction."""
         slippage = (actual - expected) / expected * 10000
         evaluation = FillEvaluation(symbol, expected, actual, slippage)
@@ -50,7 +50,7 @@ class RampManager:
             return 0.0
         return sum(f.slippage_bps for f in self.fill_history) / len(self.fill_history)
 
-    def promote_ramp(self):
+    def promote_ramp(self) -> None:
         """Increment ramp stage (10% -> 25% -> 50% -> 100%)."""
         if self.current_ramp_pct == 0.10:
             self.current_ramp_pct = 0.25

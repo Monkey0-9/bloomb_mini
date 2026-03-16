@@ -109,6 +109,23 @@ def compute_composite(
             "reason": flight_signal.get("reason", ""),
         })
 
+    # Dark Vessel signal (SAR Validated)
+    # We prioritize these even over baseline vessel density if confirmed
+    if vessel_signal and vessel_signal.get("signal_type") == "dark_vessel":
+        direction_val = 1.0 if vessel_signal["signal"] == "BULLISH" else (-1.0 if vessel_signal["signal"] == "BEARISH" else 0.0)
+        is_sar = vessel_signal.get("sar_validated", False)
+        # SAR confirmation multiplier: Increases weight from 0.20 to 0.40 if confirmed
+        w = SIGNAL_WEIGHTS["dark_vessel"] * (2.0 if is_sar else 1.0)
+        weighted_sum += direction_val * w
+        total_weight += w
+        contributing.append({
+            "signal_type": "dark_vessel",
+            "direction": vessel_signal["signal"],
+            "weight": w,
+            "contribution": direction_val * w,
+            "reason": f"{vessel_signal.get('reason', '')} {'(SAR CONFIRMED)' if is_sar else '(UNVERIFIED)'}",
+        })
+
     # Options skew signal
     if options_signal:
         pcr = options_signal.get("put_call_ratio", 1.0)

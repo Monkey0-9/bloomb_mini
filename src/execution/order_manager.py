@@ -240,7 +240,7 @@ class AlpacaSimGateway:
       - Order status callbacks
     """
 
-    def __init__(self, order_manager: OrderManager):
+    def __init__(self, order_manager: OrderManager) -> None:
         self._om = order_manager
         self._active_submissions: list[str] = []
 
@@ -288,13 +288,13 @@ class LiveAlpacaGateway:
 
     def __init__(
         self, order_manager: OrderManager, base_url: str = "https://paper-api.alpaca.markets"
-    ):
+    ) -> None:
         self._om = order_manager
         self._base_url = base_url
         self._api: Any | None = None
         self._is_live = False  # Safety flag
 
-    def connect(self, api_key: str, secret_key: str, live: bool = False):
+    def connect(self, api_key: str, secret_key: str, live: bool = False) -> None:
         """Initialize connection to Alpaca API."""
         try:
             # import alpaca_trade_api as tradeapi

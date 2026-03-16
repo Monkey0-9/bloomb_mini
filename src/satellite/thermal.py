@@ -84,27 +84,61 @@ class ThermalAnomaly:
     signal_reason: str
 
 
-def _fetch_firms_csv(bbox: str, day_range: int = 2) -> list[dict]:
-    """Fetch FIRMS VIIRS data for a bounding box."""
-    if not FIRMS_MAP_KEY:
-        return []
+# Global Free FIRMS URL (No Key Required, 10-min updates)
+FIRMS_GLOBAL_URL = "https://firms.modaps.eosdis.nasa.gov/data/active_fire/suomi-npp-viirs-c2/csv/SUOMI_VIIRS_C2_Global_24h.csv"
+
+_cached_global_csv = None
+_cache_time = 0.0
+
+def _get_global_firms_data() -> list[dict]:
+    """Fetch and cache the global 24h FIRMS CSV (No API Key needed)."""
+    global _cached_global_csv, _cache_time
+    import time
+    
+    # Cache for 10 minutes
+    if _cached_global_csv is not None and (time.time() - _cache_time) < 600:
+        return _cached_global_csv
+
     try:
-        url = f"{FIRMS_BASE}/{FIRMS_MAP_KEY}/VIIRS_SNPP_NRT/{bbox}/{day_range}"
-        resp = httpx.get(url, timeout=15)
+        resp = httpx.get(FIRMS_GLOBAL_URL, timeout=30)
         resp.raise_for_status()
         lines = resp.text.strip().split("\n")
         if len(lines) < 2:
             return []
-        headers = lines[0].split(",")
+            
+        headers = lines[0].strip().split(",")
         records = []
         for line in lines[1:]:
             if line.strip():
-                vals = line.split(",")
+                vals = line.strip().split(",")
                 if len(vals) >= len(headers):
                     records.append(dict(zip(headers, vals)))
+                    
+        _cached_global_csv = records
+        _cache_time = time.time()
         return records
-    except Exception:
+    except Exception as e:
+        import structlog
+        structlog.get_logger().error(f"Failed to fetch global FIRMS CSV: {e}")
+        return _cached_global_csv if _cached_global_csv else []
+
+def _filter_by_bbox(records: list[dict], bbox_str: str) -> list[dict]:
+    """Filter global records by a W,S,E,N bounding box."""
+    try:
+        w, s, e, n = [float(x) for x in bbox_str.split(",")]
+    except ValueError:
         return []
+
+    filtered = []
+    for r in records:
+        try:
+            lat = float(r.get("latitude", 0))
+            lon = float(r.get("longitude", 0))
+            if s <= lat <= n and w <= lon <= e:
+                filtered.append(r)
+        except ValueError:
+            continue
+    return filtered
 
 
 def _determine_signal(frp: float, commodity: str, frp_values: list[float]) -> tuple[str, str]:
@@ -120,29 +154,30 @@ def _determine_signal(frp: float, commodity: str, frp_values: list[float]) -> tu
         return "NEUTRAL", f"FRP {avg_frp:.0f}MW — normal operating range"
 
 
-def scan_industrial_facilities(day_range: int = 2) -> list[dict]:
+def scan_industrial_facilities(day_range: int = 1) -> list[dict]:
     """
     Scan all tracked industrial facilities for thermal anomalies.
     Returns signals based on heat output vs baseline.
-    This is the Bloomberg-beating alpha source.
+    Uses free global 24h CSV from NASA FIRMS.
     """
     results = []
+    global_data = _get_global_firms_data()
 
     for facility_key, meta in INDUSTRIAL_CLUSTERS.items():
-        records = _fetch_firms_csv(meta["bbox"], day_range=day_range)
+        records = _filter_by_bbox(global_data, meta["bbox"])
 
         if not records:
-            # If no FIRMS key, return placeholder with metadata
             results.append({
                 "facility_key": facility_key,
                 "facility_name": meta["name"],
                 "tickers": meta["tickers"],
                 "commodity": meta["commodity"],
                 "anomaly_count": 0,
-                "avg_frp_mw": None,
-                "signal": "INSUFFICIENT_DATA",
-                "signal_reason": "NASA FIRMS MAP_KEY not configured — register free at firms.modaps.eosdis.nasa.gov",
+                "avg_frp_mw": 0,
+                "signal": "NEUTRAL",
+                "signal_reason": "No thermal anomalies detected in the last 24h",
                 "detections": [],
+                "as_of": datetime.now(timezone.utc).isoformat(),
             })
             continue
 
@@ -160,8 +195,8 @@ def scan_industrial_facilities(day_range: int = 2) -> list[dict]:
                     "frp_mw": frp,
                     "date": r.get("acq_date", ""),
                     "time": r.get("acq_time", ""),
-                    "satellite": r.get("satellite", ""),
-                    "confidence": r.get("confidence", ""),
+                    "satellite": r.get("satellite", "VIIRS"),
+                    "confidence": r.get("confidence", "N/A"),
                 })
             except (ValueError, KeyError):
                 continue

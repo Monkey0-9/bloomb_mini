@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -51,7 +51,7 @@ class COCOExporter:
                 "version": self._taxonomy.version,
                 "year": datetime.now().year,
                 "contributor": "SatTrade Annotation Pipeline",
-                "date_created": datetime.now(UTC).isoformat(),
+                "date_created": datetime.now(timezone.utc).isoformat(),
                 "use_case": self._taxonomy.use_case.value,
             },
             "licenses": [

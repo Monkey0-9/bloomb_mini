@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Any
 
 import httpx
 
@@ -65,7 +65,7 @@ class AlpacaGateway:
         }
         self._client = httpx.Client(headers=self._headers, timeout=30, follow_redirects=True)
 
-    def _request(self, method: str, url: str, **kwargs) -> dict:
+    def _request(self, method: str, url: str, **kwargs: Any) -> Any:
         for attempt in range(3):
             resp = self._client.request(method, url, **kwargs)
             if resp.status_code == 429:
@@ -78,8 +78,8 @@ class AlpacaGateway:
     def get_account(self) -> AccountInfo:
         data = self._request("GET", f"{self.base_url}/v2/account")
         return AccountInfo(
-            account_id=data["id"],
-            status=data["status"],
+            account_id=str(data["id"]),
+            status=str(data["status"]),
             cash=float(data["cash"]),
             equity=float(data["equity"]),
             buying_power=float(data["buying_power"]),
@@ -101,11 +101,11 @@ class AlpacaGateway:
             },
         )
         return BrokerOrder(
-            order_id=data["id"],
-            ticker=data["symbol"],
+            order_id=str(data["id"]),
+            ticker=str(data["symbol"]),
             qty=float(data["qty"]),
-            side=data["side"],
-            status=data["status"],
+            side=str(data["side"]),
+            status=str(data["status"]),
             limit_price=float(data.get("limit_price") or 0),
         )
 
@@ -118,8 +118,11 @@ class AlpacaGateway:
                 return CancelResult(order_id=order_id, status="already_filled")
             raise
 
-    def get_positions(self) -> list[dict]:
-        return self._request("GET", f"{self.base_url}/v2/positions")
+    def get_positions(self) -> list[dict[str, Any]]:
+        positions = self._request("GET", f"{self.base_url}/v2/positions")
+        if not isinstance(positions, list):
+            return []
+        return positions
 
     def get_quote(self, symbol: str) -> Quote:
         data = self._request("GET", f"{self.data_url}/v2/stocks/{symbol}/quotes/latest")
@@ -130,5 +133,5 @@ class AlpacaGateway:
             ask=float(q.get("ap", 0)),
             price=(float(q.get("bp", 0)) + float(q.get("ap", 0))) / 2,
             volume=int(q.get("s", 0)),
-            timestamp=q.get("t", ""),
+            timestamp=str(q.get("t", "")),
         )

@@ -1,6 +1,9 @@
+import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Mocking ultralytics for setup if not installed
 try:
@@ -81,7 +84,7 @@ class Detector:
 
         return DetectionResult(
             tile_id=tile_id,
-            detection_timestamp=datetime.now(UTC),
+            detection_timestamp=datetime.now(timezone.utc),
             model_version=self.model_version,
             class_counts=class_counts,
             confidence_scores=conf_avg,

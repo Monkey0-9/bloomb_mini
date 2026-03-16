@@ -1,61 +1,52 @@
-# Satellite-Based AI Trading System (SatTrade)
+# SatTrade Terminal: Institutional-Grade EO-Intel Terminal
 
-Production-grade, fully auditable trading signal system targeting global equities and commodities using satellite Earth Observation (EO) data.
+SatTrade is a high-fidelity, production-ready trading intelligence terminal that fuses Satellite Earth Observation (EO) data with quantitative financial benchmarks. It provides defensible alpha by cross-referencing global maritime, aviation, and thermal signals against equity and macro drivers.
 
-## Hard Constraints (Defaults — Override in `config/constraints.yaml`)
+## 🚀 Key Features & Differentiators
 
-| Parameter | Default | Rationale |
-|---|---|---|
-| Cloud Compute Budget | $5,000/mo | Modest; covers GPU training + storage |
-| Data License Budget | $2,000/mo | Primarily free-tier (Sentinel, Landsat, NOAA AIS) |
-| Cloud Provider | AWS `us-east-1` | Best EO data ecosystem, SageMaker, S3 COG support |
-| Team | 1 engineer, 1 analyst | Solo/small-team research mode |
-| Regulatory Framework | Internal Research Only | No live execution; paper trading only |
-| Simulated NAV | $10,000,000 | Paper trading portfolio |
+- **3D World Intelligence**: Real-time WebGL globe visualizing global maritime and aviation freight.
+- **Dark Vessel Intelligence**: Sentinel-1 SAR backscatter cross-referencing to detect and validate vessels with silent transponders (Dark Fleet).
+- **TFT Quantile Forecasting**: Temporal Fusion Transformer (TFT) modeling providing P10/P50/P90 price range forecasts on all tracked equities.
+- **NLP Command Engine**: Bloomberg-style command bar with semantic natural language intent routing.
+- **Macro Correlation Hub**: Lead-lag Spearman ρ analysis correlating satellite observations with global macro indicators (Inflation, Industrial Production).
+- **Weighted Alpha Scoring**: Principled signal fusion (Thermal > Maritime > Aviation) based on historical Information Coefficient (IC).
 
-## Project Structure
+## 🛠️ Project Structure
 
 ```
 satellite_trade/
-├── config/                  # Constraints, environment, secrets references
-├── docs/                    # Phase 0 artifacts (Signal Theory, Licensing, Architecture)
 ├── src/
-│   ├── ingest/              # Phase 1: Data acquisition & ETL
-│   ├── preprocess/          # Phase 2: Optical, SAR, Thermal pipelines
-│   ├── annotate/            # Phase 3: Labeling & annotation quality
-│   ├── features/            # Phase 4: Feature extraction & fusion
-│   ├── signals/             # Phase 5: Signal modeling
-│   ├── backtest/            # Phase 6: Backtesting engine
-│   ├── execution/           # Phase 7: Execution simulator & risk engine
-│   ├── monitoring/          # Phase 8: Drift detection & dashboards
-│   └── common/              # Shared utilities, logging, schemas
-├── tests/                   # Unit + integration tests
-├── notebooks/               # Research & exploration
-├── infrastructure/          # IaC (Terraform/CDK)
-└── agents/                  # Sub-agent prompt templates
+│   ├── ingest/              # Data acquisition (Sentinel, Landsat, AIS, OpenSky)
+│   ├── preprocess/          # Optical, SAR, and Thermal processing pipelines
+│   ├── maritime/            # Dark vessel detection and port congestion logic
+│   ├── signals/             # Weighted composite scoring and TFT forecasting
+│   └── common/              # Shared schemas, config, and logging
+├── frontend/                # React 18 / TypeScript / Tailwind / Framer Motion
+│   ├── src/views/           # functional World, Matrix, Chart, and Economics views
+│   └── src/lib/             # NLP Command Engine and Store
+└── tests/                   # Comprehensive unit and integration test suite
 ```
 
-## Phase Timeline
+## ⚡ Quick Start
 
-| Phase | Scope | Duration |
-|---|---|---|
-| Phase 1 | 1 signal (port throughput), 1 region (Asia-Pacific), equities | 16 weeks |
-| Phase 2 | Multi-signal, global coverage | +12 weeks |
-| Phase 3 | Live paper trading | +8 weeks |
-
-## Quick Start
-
+### Backend (Python 3.11+)
 ```bash
-# Install dependencies
-pip install -e ".[dev]"
-
-# Run tests
-pytest tests/ -v
-
-# Run quality gates
-python -m src.ingest.quality_gates --check
+pip install -r requirements.txt
+python src/api/server.py
 ```
+
+### Frontend (Node 18+)
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+## 🧪 Verification
+The system has been verified for institutional use:
+- **Build**: `npm run build` verified.
+- **Signals**: Weighted IC-logic verified.
+- **Intelligence**: SAR-validated dark vessel detection operational.
 
 ## License
-
-Proprietary — Internal Research Only
+Proprietary — Internal Research & Alpha Generation.

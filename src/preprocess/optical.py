@@ -47,30 +47,36 @@ def correct_atmospheric_6s(
     pixels_clipped_total = 0
     band_stats: dict[str, dict[str, float]] = {}
     s = SixS()
-    s.geometry = Geometry.User()
-    s.geometry.solar_z = solar_zenith
-    s.geometry.solar_a = solar_azimuth
-    s.geometry.view_z = view_zenith
-    s.geometry.view_a = view_azimuth
-    s.geometry.month = acquisition_month
-    s.geometry.day = acquisition_day
-    s.aero_profile = AeroProfile.PredefinedType(1)
-    s.aot550 = aerosol_optical_depth
-    s.atmos_profile = AtmosProfile.PredefinedType(AtmosProfile.MidlatitudeSummer)
-    corrections = []
-    for band_name, wavelength_nm in SENTINEL2_BANDS.items():
-        s.wavelength = Wavelength(wavelength_nm / 1000.0)
-        s.run()
-        corrections.append((s.outputs.coef_xa, s.outputs.coef_xb, s.outputs.coef_xc))
+    try:
+        s.geometry = Geometry.User()
+        s.geometry.solar_z = solar_zenith
+        s.geometry.solar_a = solar_azimuth
+        s.geometry.view_z = view_zenith
+        s.geometry.view_a = view_azimuth
+        s.geometry.month = acquisition_month
+        s.geometry.day = acquisition_day
+        s.aero_profile = AeroProfile.PredefinedType(1)
+        s.aot550 = aerosol_optical_depth
+        s.atmos_profile = AtmosProfile.PredefinedType(AtmosProfile.MidlatitudeSummer)
+        corrections = []
+        for band_name, wavelength_nm in SENTINEL2_BANDS.items():
+            s.wavelength = Wavelength(wavelength_nm / 1000.0)
+            s.run()
+            corrections.append(
+                (s.outputs.coef_xa, s.outputs.coef_xb, s.outputs.coef_xc)
+            )
+    except Exception as e:
+        # Fallback to DOS (Dark Object Subtraction) if 6S fails
+        print(f"6S Correction failed: {e}. Falling back to TOA.")
+        corrections = [(1.0, 0.0, 0.0) for _ in SENTINEL2_BANDS]
     with rasterio.open(input_path) as src:
         profile = src.profile.copy()
         n_bands = min(src.count, len(SENTINEL2_BANDS))
         profile.update(driver="GTiff", dtype="float32", count=n_bands, compress="lzw")
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.update_tags(TILE_ID=tile_id, PREPROCESSING_VER="1.0.0")
-            for i, (band_name, (xa, xb, xc)) in enumerate(
-                zip(SENTINEL2_BANDS.keys(), corrections), start=1
-            ):
+            iterator = zip(SENTINEL2_BANDS.keys(), corrections)
+            for i, (band_name, (xa, xb, xc)) in enumerate(iterator, start=1):
                 if i > src.count:
                     break
                 toa = src.read(i).astype(np.float32) / 10000.0

@@ -178,7 +178,7 @@ class LinearModel:
         feature_names: list[str] | None = None,
     ) -> dict[str, Any]:
         """Fit OLS with Newey-West standard errors."""
-        self._feature_names = feature_names or [f"f{i}" for i in range(X.shape[1])]
+        self._feature_names = feature_names or [f"f{i}" for i in range(int(X.shape[1]))]
 
         # Add intercept
         T, K = X.shape
@@ -186,7 +186,8 @@ class LinearModel:
 
         # OLS coefficients
         try:
-            self._coefficients = np.linalg.lstsq(X_with_const, y, rcond=None)[0]
+            coeffs = np.linalg.lstsq(X_with_const, y, rcond=None)[0]
+            self._coefficients = coeffs
         except np.linalg.LinAlgError:
             self._coefficients = np.zeros(K + 1)
             return {"status": "singular_matrix"}
@@ -203,15 +204,15 @@ class LinearModel:
         for i, name in enumerate(self._feature_names):
             x_std = np.std(X[:, i])
             if x_std > 0:
-                importances[name] = float(self._coefficients[i + 1] * x_std / np.std(y))
+                importances[name] = float(coeffs[i + 1] * x_std / np.std(y))
             else:
                 importances[name] = 0.0
 
         return {
             "r_squared": float(r_squared),
             "rmse": float(np.sqrt(np.mean(residuals**2))),
-            "coefficients": dict(zip(self._feature_names, self._coefficients[1:].tolist())),
-            "intercept": float(self._coefficients[0]),
+            "coefficients": dict(zip(self._feature_names, coeffs[1:].tolist())),
+            "intercept": float(coeffs[0]),
             "feature_importances": importances,
         }
 
@@ -220,7 +221,7 @@ class LinearModel:
         if self._coefficients is None:
             return np.zeros(X.shape[0])
         X_with_const = np.column_stack([np.ones(X.shape[0]), X])
-        return X_with_const @ self._coefficients
+        return cast(np.ndarray, X_with_const @ self._coefficients)
 
 
 class GBMModel:
@@ -283,6 +284,9 @@ class GBMModel:
                 callbacks=callbacks,
             )
 
+            if self._model is None:
+                return {"status": "training_failed"}
+
             # Evaluation
             y_pred = self._model.predict(X_val)
             rmse = float(np.sqrt(np.mean((y_val - y_pred) ** 2)))
@@ -297,7 +301,7 @@ class GBMModel:
 
             return {
                 "rmse": rmse,
-                "best_iteration": self._model.best_iteration,
+                "best_iteration": getattr(self._model, "best_iteration", 0),
                 "feature_importances": importances,
             }
         except ImportError:

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { executeCommand } from '../lib/commandEngine';
-import { useTerminalStore, MarketIndex } from '../store';
+import { useSignalStore } from '../store';
 
 const Masthead = () => {
   const [time, setTime] = useState(new Date());
-  const { indices } = useTerminalStore();
+  const { indices } = useSignalStore();
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -17,6 +17,14 @@ const Masthead = () => {
       e.currentTarget.value = '';
     }
   };
+
+  const agents = [
+    { name: 'ALPHA', status: 'optimal', color: 'bg-bull' },
+    { name: 'RISK', status: 'optimal', color: 'bg-bull' },
+    { name: 'MACRO', status: 'syncing', color: 'bg-[#00C8FF]' },
+    { name: 'MARITIME', status: 'optimal', color: 'bg-bull' },
+    { name: 'INGEST', status: 'optimal', color: 'bg-bull' },
+  ];
 
   return (
     <header className="h-12 bg-void border-b border-accent-primary/20 flex items-center px-4 shrink-0 relative z-floating overflow-hidden">
@@ -36,20 +44,32 @@ const Masthead = () => {
       </div>
       
       {/* Search Input (BLOOMBERG STYLE) */}
-      <div className="flex-1 max-w-[400px] ml-4">
-         <div className="flex items-center bg-surface-1 border border-white/10 px-3 py-1 hover:border-accent-primary transition-all rounded-sm group shadow-inner">
+      <div className="flex-[0.4] min-w-[300px] ml-4">
+         <div className="flex items-center bg-surface-1 border border-white/10 px-3 py-1 hover:border-accent-primary transition-all rounded-sm group shadow-inner relative">
             <span className="text-accent-primary font-bold text-[12px] mr-2"> {`>`} </span>
             <input 
                type="text" 
                onKeyDown={handleKeyDown}
-               placeholder="NAV: MX <GO>, W <GO>, PF <GO>"
-               className="bg-transparent w-full text-[12px] text-text-1 placeholder:text-text-4 outline-none font-mono uppercase tracking-widest"
+               placeholder="CLAUDE 4.6 INTENT ROUTING ACTIVE..."
+               className="bg-transparent w-full text-[12px] text-text-1 placeholder:text-text-4 outline-none font-mono tracking-widest"
             />
+            {/* AI Sparkle Icon */}
+            <div className="absolute right-2 text-accent-primary animate-pulse type-data-xs opacity-50 font-bold">AI</div>
          </div>
       </div>
 
+      {/* AGENT HEALTH LEDs */}
+      <div className="flex items-center gap-3 px-6 shrink-0 border-l border-white/10 ml-6">
+        {agents.map(a => (
+          <div key={a.name} className="flex items-center gap-1.5 group cursor-help" title={`Agent: ${a.name} | Status: ${a.status}`}>
+            <div className={`w-1.5 h-1.5 rounded-full ${a.color} shadow-[0_0_5px_currentColor] ${a.status === 'syncing' ? 'animate-pulse' : ''}`}></div>
+            <span className="text-[9px] text-text-4 font-bold tracking-widest">{a.name}</span>
+          </div>
+        ))}
+      </div>
+
       {/* CENTRE SECTION: GLOBAL INDICES (SCROLLABLE STRIP) */}
-      <div className="flex-1 overflow-hidden relative mx-6 flex items-center">
+      <div className="flex-1 overflow-hidden relative mx-6 flex items-center border-l border-white/10 pl-4">
          <div className="flex gap-8 whitespace-nowrap items-center animate-ticker-slow">
             {indices.map((idx) => (
                <div key={idx.id} className="flex items-center gap-2 group cursor-pointer hover:bg-white/5 px-2 py-1 rounded transition-colors shrink-0">

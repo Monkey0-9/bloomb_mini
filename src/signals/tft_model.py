@@ -254,7 +254,7 @@ class TemporalFusionTransformerModel:
 
                     optimizer.zero_grad()
                     quantiles, _, _ = self._model(x_batch)
-                    loss = self._quantile_loss(quantiles.squeeze(), y_batch)
+                    loss = TemporalFusionTransformerModel._quantile_loss(quantiles.squeeze(), y_batch)
                     loss.backward()
                     optimizer.step()
 

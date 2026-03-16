@@ -16,7 +16,7 @@ import logging
 import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
-
+from typing import Any, cast
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -35,19 +35,30 @@ class RawSignal:
     source_tile_ids: list[str]
 
 
-@dataclass
-class ScoredSignal:
+class FinalScoredSignal:
     """Final scored signal ready for position sizing."""
 
-    asset_id: str
-    raw_value: float
-    scored_value: float  # [-1, +1]
-    confidence_weight: float  # 0–1
-    staleness_factor: float  # 0–1 (1 = fresh, 0 = fully stale)
-    sector_neutral: bool
-    signal_age_seconds: int
-    model_version: str
-    is_stale: bool  # True if staleness > threshold
+    def __init__(
+        self,
+        asset_id: str,
+        raw_value: float,
+        scored_value: float,
+        confidence_weight: float,
+        staleness_factor: float,
+        sector_neutral: bool,
+        signal_age_seconds: int,
+        model_version: str,
+        is_stale: bool,
+    ) -> None:
+        self.asset_id = asset_id
+        self.raw_value = raw_value
+        self.scored_value = scored_value
+        self.confidence_weight = confidence_weight
+        self.staleness_factor = staleness_factor
+        self.sector_neutral = sector_neutral
+        self.signal_age_seconds = signal_age_seconds
+        self.model_version = model_version
+        self.is_stale = is_stale
 
 
 class SignalScoringEngine:
@@ -69,7 +80,7 @@ class SignalScoringEngine:
         self,
         raw_signals: list[RawSignal],
         current_time: datetime | None = None,
-    ) -> list[ScoredSignal]:
+    ) -> list[FinalScoredSignal]:
         """
         Score a batch of raw signals through the full pipeline.
 
@@ -107,7 +118,7 @@ class SignalScoringEngine:
         # Build results
         results = []
         for i, (sig, staleness, age_sec, is_stale) in enumerate(signals_with_staleness):
-            scored = ScoredSignal(
+            scored = FinalScoredSignal(
                 asset_id=sig.asset_id,
                 raw_value=sig.signal_value,
                 scored_value=0.0 if is_stale else float(normalised[i]),
@@ -151,11 +162,11 @@ class SignalScoringEngine:
         std = np.nanstd(values)
 
         if std < 1e-10:
-            return values - mean
+            return cast(np.ndarray, values - mean)
 
         lower = mean - self.WINSORIZE_SIGMA * std
         upper = mean + self.WINSORIZE_SIGMA * std
-        return np.clip(values, lower, upper)
+        return cast(np.ndarray, np.clip(values, lower, upper))
 
     def _sector_neutralise(self, values: np.ndarray, sectors: list[str]) -> np.ndarray:
         """
@@ -175,17 +186,13 @@ class SignalScoringEngine:
 
     def _rank_normalise(self, values: np.ndarray) -> np.ndarray:
         """
-        Scale to [-1, +1] using rank normalisation.
-
-        Assigns uniform scores based on rank ordering, making the
-        output distribution-free and robust to outliers.
+        Rank-normalise values to [-1, +1].
         """
         n = len(values)
         if n <= 1:
-            return np.zeros_like(values)
+            return values
 
-        # Rank the values (1-indexed)
         temp = values.argsort().argsort() + 1  # ranks from 1 to n
         # Scale to [-1, +1]
         normalised = 2.0 * (temp - 1) / (n - 1) - 1.0
-        return normalised
+        return cast(np.ndarray, normalised)

@@ -8,7 +8,7 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-from src.common.schemas import FeatureRecord
+from src.common.schemas import FeatureRecord, FeatureVector
 
 
 class FeatureLeakError(Exception):

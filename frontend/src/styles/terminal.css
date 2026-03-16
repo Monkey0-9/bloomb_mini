@@ -1,0 +1,75 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  /* Terminal Core Palette */
+  --color-bg-base: #0A0B0E;
+  --color-bg-surface: #14151A;
+  --color-bg-elevated: #1C1E24;
+  
+  --color-text-primary: #FFFFFF;
+  --color-text-secondary: #8E9196;
+  --color-text-dim: #4B4D54;
+  
+  /* Institutional Neon Accents */
+  --color-neon-bull: #00FF9D;
+  --color-neon-bear: #FF3D3D;
+  --color-neon-warn: #FFD600;
+  --color-neon-info: #00D1FF;
+  
+  /* Borders & Dividers */
+  --border-terminal: 1px solid rgba(255, 255, 255, 0.08);
+  --border-neon-bull: 1px solid var(--color-neon-bull);
+  --border-neon-bear: 1px solid var(--color-neon-bear);
+  
+  /* Tyography Layers */
+  --font-data: 'IBM Plex Mono', monospace;
+  --font-ui: 'Inter', sans-serif;
+  
+  /* Shadows & Glows */
+  --glow-bull: 0 0 10px rgba(0, 255, 157, 0.2);
+  --glow-bear: 0 0 10px rgba(255, 61, 61, 0.2);
+}
+
+body {
+  background-color: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-family: var(--font-ui);
+  margin: 0;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Data Layer Precision */
+.data-table, .price-display, .signal-score {
+  font-family: var(--font-data);
+  letter-spacing: -0.02em;
+}
+
+/* Global Transition Rules */
+* {
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-bg-elevated);
+  border-radius: 2px;
+}
+
+.terminal-border {
+  border: var(--border-terminal);
+  border-radius: 4px;
+}
+
+.neon-bull-text { color: var(--color-neon-bull); }
+.neon-bear-text { color: var(--color-neon-bear); }
+
+.conviction-highest { background: rgba(0, 255, 157, 0.15); border-left: 3px solid var(--color-neon-bull); }
+.conviction-lowest { background: rgba(255, 61, 61, 0.15); border-left: 3px solid var(--color-neon-bear); }

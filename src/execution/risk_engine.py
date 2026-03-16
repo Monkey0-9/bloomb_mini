@@ -10,7 +10,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Final, Literal
+from typing import Final, Literal, Optional, Callable
 from uuid import uuid4
 
 GROSS_EXPOSURE_LIMIT: Final[float] = 1.50
@@ -107,7 +107,7 @@ class RiskEngine:
         self._pending_kills: dict[str, KillRequest] = {}
         self.audit_db = audit_db
         if audit_db == ":memory:":
-            self._conn: sqlite3.Connection | None = sqlite3.connect(":memory:")
+            self._conn: Optional[sqlite3.Connection] = sqlite3.connect(":memory:")
         else:
             self._conn = None
             Path(audit_db).parent.mkdir(parents=True, exist_ok=True)
@@ -166,7 +166,7 @@ class RiskEngine:
             raise HaltedSystemError(
                 "System is HALTED. No orders permitted until restart is authorized."
             )
-        gates = [
+        gates: list[tuple[Callable[[Order, Portfolio], GateResult], str]] = [
             (self.gate_signal_staleness, "signal_staleness"),
             (self.gate_signal_confidence, "signal_confidence"),
             (self.gate_liquidity, "liquidity"),

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,8 @@ class RiskEngine:
             self._kill_switch_active = False
             logger.info("KILL-SWITCH RESET: Two-person protocol verified.")
 
-    def run_pre_trade_audit(self, order: dict, portfolio: dict) -> list[RiskGateResult]:
+    def run_pre_trade_audit(self, order: dict[str, Any],
+                            portfolio: dict[str, Any]) -> list[RiskGateResult]:
         """Run all 9 synchronous gates before order submission."""
         results = []
 

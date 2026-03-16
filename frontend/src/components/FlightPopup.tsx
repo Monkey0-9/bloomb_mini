@@ -21,11 +21,12 @@ export const getFlightHTML = (f: any) => {
     </div>
     <div class="popup-body p-3">
       <div class="space-y-1.5 font-mono text-[11px]">
-        <div class="data-row flex justify-between"><span class="data-label text-text-4 uppercase text-[9px]">Aircraft</span><span class="data-value">${f.type || 'Commercial'}</span></div>
-        <div class="data-row flex justify-between pt-1 border-t border-white/5"><span class="data-label text-text-4 uppercase text-[9px]">Origin</span><span class="data-value">${f.origin || 'N/A'}</span></div>
-        <div class="data-row flex justify-between"><span class="data-label text-text-4 uppercase text-[9px]">Dest</span><span class="data-value text-bull font-bold">${f.destination || 'N/A'}</span></div>
-        <div class="data-row flex justify-between pt-1 border-t border-white/5"><span class="data-label text-text-4 uppercase text-[9px]">Altitude</span><span class="data-value text-accent-secondary">${(f.altitude_ft || 0).toLocaleString()} FT</span></div>
-        <div class="data-row flex justify-between"><span class="data-label text-text-4 uppercase text-[9px]">Velocity</span><span class="data-value">${f.speed_knots || 0} KTS @ ${f.heading || 0}°</span></div>
+        <div class="data-row flex justify-between"><span class="data-label text-text-4 uppercase text-[9px]">Aircraft</span><span class="data-value">${f.aircraft?.model || 'Commercial'}</span></div>
+        <div class="data-row flex justify-between"><span class="data-label text-text-4 uppercase text-[9px]">ICAO24 / SQWNK</span><span class="data-value">${f.aircraft?.icao24 || 'N/A'} / <span class="text-bull font-bold">${f.current_position?.squawk || '0000'}</span></span></div>
+        <div class="data-row flex justify-between pt-1 border-t border-white/5"><span class="data-label text-text-4 uppercase text-[9px]">Origin</span><span class="data-value">${f.origin_iata || 'N/A'}</span></div>
+        <div class="data-row flex justify-between"><span class="data-label text-text-4 uppercase text-[9px]">Dest</span><span class="data-value text-bull font-bold">${f.destination_iata || 'N/A'}</span></div>
+        <div class="data-row flex justify-between pt-1 border-t border-white/5"><span class="data-label text-text-4 uppercase text-[9px]">Altitude</span><span class="data-value text-accent-secondary">${(f.current_position?.altitude_ft || 0).toLocaleString()} FT</span></div>
+        <div class="data-row flex justify-between"><span class="data-label text-text-4 uppercase text-[9px]">V-Rate / Velocity</span><span class="data-value">${f.current_position?.vertical_rate_fpm || 0} FPM | ${f.current_position?.speed_knots || 0} KTS</span></div>
       </div>
 
       <div class="mt-4 pt-3 border-t border-white/10">

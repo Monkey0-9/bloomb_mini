@@ -7,39 +7,50 @@ import {
   Search, 
   Settings, 
   Terminal,
-  HelpCircle,
-  GraduationCap
+  TrendingUp,
+  MapPin,
+  Compass,
+  Layout,
+  Newspaper
 } from 'lucide-react';
 import { useTerminalStore } from '../store';
 
 const NavButton = ({ item, isActive, onClick }: any) => (
   <button 
     onClick={onClick}
-    className={`w-full group relative flex flex-col items-center py-3 transition-all duration-200 border-l-2 ${
-      isActive 
-        ? 'bg-surface-2 border-accent-primary' 
-        : 'border-transparent hover:bg-surface-1'
-    }`}
+    className="w-14 h-14 group relative flex flex-col justify-center items-center shrink-0 transition-colors border-l-[3px] border-transparent"
+    style={{
+      backgroundColor: isActive ? 'var(--color-bg-surface-2)' : 'transparent',
+      borderLeftColor: isActive ? 'var(--color-neon-bull)' : 'transparent',
+    }}
   >
-    <div className={`transition-colors duration-200 ${
-        isActive ? 'text-accent-primary' : 'text-text-4 group-hover:text-text-2'
-      }`}>
+    <div 
+      className="transition-colors duration-200"
+      style={{ color: isActive ? 'var(--color-neon-bull)' : 'var(--color-text-dim)' }}
+    >
       {item.icon}
     </div>
-    <span className={`text-[8px] uppercase mt-1 font-bold tracking-tighter text-center px-1 ${
-      isActive ? 'text-accent-primary' : 'text-text-5 group-hover:text-text-4'
-    }`}>
-      {item.id.substring(0, 4)}
-    </span>
     
-    {/* Bloomberg Shortcut Tag */}
-    <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
-       <span className="text-[7px] text-text-5 bg-surface-3 px-0.5 rounded-sm">{item.shortcut}</span>
+    {/* MACRO KEY TAG (Bloomberg Style shortcut) */}
+    <div className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 transition-opacity">
+       <span 
+         className="text-[8px] font-bold font-mono px-0.5 border"
+         style={{ backgroundColor: 'var(--color-bg-surface)', borderColor: 'var(--color-text-dim)', color: 'var(--color-text-dim)' }}
+       >{item.shortcut}</span>
     </div>
 
-    {/* TOOLTIP */}
-    <div className="absolute left-full ml-2 px-2 py-1 bg-surface-3 border border-white/10 rounded-sm opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-floating text-[10px] text-text-1 uppercase tracking-widest shadow-xl">
-      {item.label}
+    {/* SEVERE TOOLTIP */}
+    <div 
+      className="absolute left-[64px] px-3 py-1.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 text-[10px] uppercase font-bold tracking-[0.15em] border shadow-[0_4px_24px_rgba(0,0,0,0.8)]"
+      style={{ 
+        backgroundColor: 'var(--color-bg-surface)', 
+        borderColor: 'var(--color-neon-bull)',
+        color: 'var(--color-text-primary)'
+      }}
+    >
+      <div className="flex items-center gap-2">
+         {item.label} <span className="text-[8px] text-text-dim px-1 bg-surface-2">CMD + {item.shortcut}</span>
+      </div>
     </div>
   </button>
 );
@@ -47,26 +58,51 @@ const NavButton = ({ item, isActive, onClick }: any) => (
 const NavRail = () => {
   const { selectedView, setView } = useTerminalStore();
 
-  const navItems = [
-    { id: 'world', icon: <Globe size={18} />, label: 'Global Map', shortcut: 'W' },
-    { id: 'matrix', icon: <Table size={18} />, label: 'Signal Matrix', shortcut: 'MX' },
-    { id: 'feed', icon: <Satellite size={18} />, label: 'Satellite Feed', shortcut: 'FD' },
-    { id: 'charts', icon: <BarChart3 size={18} />, label: 'Price Charts', shortcut: 'CH' },
-    { id: 'portfolio', icon: <Briefcase size={18} />, label: 'Portfolio', shortcut: 'PF' },
-    { id: 'research', icon: <Search size={18} />, label: 'Research', shortcut: 'RS' },
-    { id: 'education', icon: <GraduationCap size={18} />, label: 'SatTrade Academy', shortcut: 'ED' },
-    { id: 'terminal', icon: <Terminal size={18} />, label: 'Terminal Mode', shortcut: 'TM' },
+  const primaryNav = [
+    { id: 'world',     icon: <Globe size={20} strokeWidth={1.5} />,        label: 'Orbital Visualizer', shortcut: 'W' },
+    { id: 'matrix',    icon: <Table size={20} strokeWidth={1.5} />,        label: 'Signal Matrix',      shortcut: 'M' },
+    { id: 'charts',    icon: <BarChart3 size={20} strokeWidth={1.5} />,    label: 'Price Action',       shortcut: 'C' },
+    { id: 'portfolio', icon: <Briefcase size={20} strokeWidth={1.5} />,    label: 'Portfolio Engine',   shortcut: 'P' },
+    { id: 'economics', icon: <TrendingUp size={20} strokeWidth={1.5} />,   label: 'Macro Surveillance', shortcut: 'E' },
+    { id: 'launchpad', icon: <Layout size={20} strokeWidth={1.5} />,       label: 'Launchpad / LP',    shortcut: 'L' },
+    { id: 'research',  icon: <Search size={20} strokeWidth={1.5} />,       label: 'AI Copilot / RAG',   shortcut: 'R' },
   ];
 
-  const bottomItems = [
-    { id: 'help', icon: <HelpCircle size={18} />, label: 'Help', shortcut: 'H' },
-    { id: 'settings', icon: <Settings size={18} />, label: 'Settings', shortcut: 'ST' },
+  const secondaryNav = [
+    { id: 'news',      icon: <Newspaper size={18} strokeWidth={1.5} />,    label: 'Intelligence Hub',   shortcut: 'N' },
+    { id: 'feed',      icon: <Satellite size={18} strokeWidth={1.5} />,    label: 'Raw STAC Feed',      shortcut: 'F' },
+    { id: 'terminal',  icon: <Terminal size={18} strokeWidth={1.5} />,     label: 'Direct Kernel',      shortcut: 'K' },
+  ];
+
+  const bottomNav = [
+    { id: 'settings',  icon: <Settings size={18} strokeWidth={1.5} />,     label: 'Core Settings',      shortcut: 'S' },
   ];
 
   return (
-    <nav className="w-14 h-full bg-void border-r border-white/5 flex flex-col justify-between shrink-0 z-raised relative">
-      <div className="flex flex-col w-full">
-        {navItems.map((item) => (
+    <nav 
+      className="w-14 h-full flex flex-col justify-between shrink-0 z-50 relative pb-2 bg-void"
+      style={{ borderRight: '1px solid var(--border-terminal)' }}
+    >
+        {/* LOGO MARK */}
+        <div className="w-14 h-12 flex items-center justify-center shrink-0 border-b border-white/10 bg-surface-base cursor-pointer hover:bg-surface-1 transition-colors group">
+            <Compass size={22} className="text-text-2 group-hover:text-accent-primary transition-colors" strokeWidth={1.5} />
+        </div>
+
+      <div className="flex flex-col w-full flex-1 pt-2">
+        {primaryNav.map((item) => (
+          <NavButton
+            key={item.id}
+            item={item}
+            isActive={selectedView === item.id}
+            onClick={() => setView(item.id as any)}
+          />
+        ))}
+        
+        <div className="h-4 w-full flex items-center justify-center my-2">
+            <div className="w-6 h-[1px] bg-white/10"></div>
+        </div>
+
+        {secondaryNav.map((item) => (
           <NavButton
             key={item.id}
             item={item}
@@ -76,8 +112,8 @@ const NavRail = () => {
         ))}
       </div>
 
-      <div className="flex flex-col w-full border-t border-white/5">
-        {bottomItems.map((item) => (
+      <div className="flex flex-col w-full pt-2 border-t border-white/10">
+        {bottomNav.map((item) => (
           <NavButton
             key={item.id}
             item={item}

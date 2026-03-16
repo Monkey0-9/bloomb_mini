@@ -38,9 +38,13 @@ const NewsTicker = () => {
             <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-surface-1 to-transparent z-10"></div>
 
             <div className="flex-1 overflow-hidden relative flex items-center h-full">
-                <div className="flex gap-16 whitespace-nowrap items-center animate-news-scroll hover:[animation-play-state:paused] cursor-pointer">
+                <div className="flex gap-16 whitespace-nowrap items-center animate-news-scroll hover:[animation-play-state:paused]">
                     {headlines.map(item => (
-                        <div key={item.id} className="flex items-center gap-3 group">
+                        <div 
+                          key={item.id} 
+                          className={`flex items-center gap-3 group transition-all ${item.url ? 'cursor-alias hover:scale-105' : 'cursor-default'}`}
+                          onClick={() => item.url && window.open(item.url, '_blank')}
+                        >
                             <span className="text-[10px] text-text-4 font-mono group-hover:text-accent-primary transition-colors">{item.time}</span>
                             <span className="text-[9px] text-text-3 font-bold bg-white/5 px-1.5 rounded uppercase">{item.source}</span>
                             <span className={`text-[11px] font-bold tracking-wide uppercase ${item.impact === 'bullish' ? 'text-bull' : item.impact === 'bearish' ? 'text-bear' : 'text-text-1'}`}>
@@ -50,7 +54,11 @@ const NewsTicker = () => {
                     ))}
                     {/* Loop for seamless scroll */}
                     {headlines.map(item => (
-                        <div key={`${item.id}-loop`} className="flex items-center gap-3 group">
+                        <div 
+                          key={`${item.id}-loop`} 
+                          className={`flex items-center gap-3 group transition-all ${item.url ? 'cursor-alias hover:scale-105' : 'cursor-default'}`}
+                          onClick={() => item.url && window.open(item.url, '_blank')}
+                        >
                             <span className="text-[10px] text-text-4 font-mono group-hover:text-accent-primary transition-colors">{item.time}</span>
                             <span className="text-[9px] text-text-3 font-bold bg-white/5 px-1.5 rounded uppercase">{item.source}</span>
                             <span className={`text-[11px] font-bold tracking-wide uppercase ${item.impact === 'bullish' ? 'text-bull' : item.impact === 'bearish' ? 'text-bear' : 'text-text-1'}`}>

@@ -1,49 +1,48 @@
 from __future__ import annotations
-import os
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from enum import Enum
-from typing import Literal, cast
+from typing import cast
 from uuid import uuid4
+import random
 
-import httpx
 import structlog
 
 log = structlog.get_logger()
 
 
 class VesselType(str, Enum):
-    CONTAINER     = "Container Ship"
-    CRUDE_TANKER  = "Crude Oil Tanker"
-    PRODUCT_TANKER= "Product Tanker"
-    LNG_TANKER    = "LNG Carrier"
-    LPG_TANKER    = "LPG Carrier"
-    BULK_CARRIER  = "Bulk Carrier"
-    CAR_CARRIER   = "Car Carrier (RORO)"
+    CONTAINER = "Container Ship"
+    CRUDE_TANKER = "Crude Oil Tanker"
+    PRODUCT_TANKER = "Product Tanker"
+    LNG_TANKER = "LNG Carrier"
+    LPG_TANKER = "LPG Carrier"
+    BULK_CARRIER = "Bulk Carrier"
+    CAR_CARRIER = "Car Carrier (RORO)"
     GENERAL_CARGO = "General Cargo"
-    FERRY         = "Ferry/Passenger"
-    OFFSHORE      = "Offshore Supply"
-    MILITARY      = "Military/Naval"
-    RESEARCH      = "Research Vessel"
+    FERRY = "Ferry/Passenger"
+    OFFSHORE = "Offshore Supply"
+    MILITARY = "Military/Naval"
+    RESEARCH = "Research Vessel"
 
 
 class CargoType(str, Enum):
-    CRUDE_OIL        = "Crude Oil"
+    CRUDE_OIL = "Crude Oil"
     REFINED_PRODUCTS = "Refined Petroleum Products"
-    LNG              = "Liquefied Natural Gas"
-    LPG              = "Liquefied Petroleum Gas"
-    IRON_ORE         = "Iron Ore"
-    COAL             = "Coal"
-    GRAIN            = "Grain/Agricultural"
-    CONTAINERS       = "Containerised Goods"
-    VEHICLES         = "Vehicles/Automobiles"
-    CHEMICALS        = "Chemicals"
-    FERTILISER       = "Fertilisers"
-    TIMBER           = "Timber/Forest Products"
-    STEEL            = "Steel/Metal Products"
-    BAUXITE          = "Bauxite/Alumina"
-    PASSENGERS       = "Passengers"
-    EMPTY            = "In Ballast (Empty)"
+    LNG = "Liquefied Natural Gas"
+    LPG = "Liquefied Petroleum Gas"
+    IRON_ORE = "Iron Ore"
+    COAL = "Coal"
+    GRAIN = "Grain/Agricultural"
+    CONTAINERS = "Containerised Goods"
+    VEHICLES = "Vehicles/Automobiles"
+    CHEMICALS = "Chemicals"
+    FERTILISER = "Fertilisers"
+    TIMBER = "Timber/Forest Products"
+    STEEL = "Steel/Metal Products"
+    BAUXITE = "Bauxite/Alumina"
+    PASSENGERS = "Passengers"
+    EMPTY = "In Ballast (Empty)"
 
 
 @dataclass
@@ -116,30 +115,41 @@ class Vessel:
     vessel_id: str = field(default_factory=lambda: str(uuid4()))
     last_updated: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     data_source: str = "simulated"
+    sar_validated: bool = False
+    sar_backscatter_db: float | None = None
+    port_history: list[PortCall] = field(default_factory=list)
+
+    def _calculate_haversine(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        """Haversine distance in nautical miles."""
+        import math
+        R = 3440.065 # Earth radius in NM
+        dlat = math.radians(lat2 - lat1)
+        dlon = math.radians(lon2 - lon1)
+        a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+        return R * c
 
     @property
     def voyage_distance_nm(self) -> float:
-        """Calculate total distance from waypoints as a proxy."""
+        """Calculate high-precision distance using Haversine."""
         if not self.waypoints or len(self.waypoints) < 2:
-            return 1000.0  # Default fallback
+            return self._calculate_haversine(self.origin.lat, self.origin.lon, self.destination.lat, self.destination.lon)
+        
         dist = 0.0
         for i in range(len(self.waypoints) - 1):
             p1, p2 = self.waypoints[i], self.waypoints[i+1]
-            # Simple Euclidean distance as proxy (in a real system use geopy)
-            dist += ((p2[0]-p1[0])**2 + (p2[1]-p1[1])**2)**0.5 * 60
+            dist += self._calculate_haversine(p1[0], p1[1], p2[0], p2[1])
         return dist
 
     def get_live_position(self) -> tuple[float, float]:
         """
-        Advances vessel position based on speed x elapsed time.
-        Implemented exactly as requested for 'Top 1%' hardening.
+        Advances vessel position based on speed and updates historical track.
         """
         now = datetime.now(timezone.utc)
         if not self.origin.departure_utc or not self.waypoints:
             return self.position.lat, self.position.lon
             
         elapsed_h = (now - self.origin.departure_utc).total_seconds() / 3600
-        # Average speed fallback if position speed is zero
         speed = max(self.position.speed_knots, 12.0)
         total_h = self.voyage_distance_nm / speed
         progress = min(elapsed_h / total_h, 1.0)
@@ -151,6 +161,14 @@ class Vessel:
         
         lat = route[idx][0] + (route[idx+1][0] - route[idx][0]) * frac
         lon = route[idx][1] + (route[idx+1][1] - route[idx][1]) * frac
+        
+        # Update historical track (keep last 50)
+        new_pos = VesselPosition(lat, lon, now, speed, self.position.heading_degrees, self.position.navigational_status, self.position.heading_degrees)
+        if not self.historical_track or (now - self.historical_track[-1].timestamp).total_seconds() > 600: # Every 10 mins
+            self.historical_track.append(new_pos)
+            if len(self.historical_track) > 50:
+                self.historical_track.pop(0)
+                
         return round(lat, 4), round(lon, 4)
 
 TRACKED_VESSELS: list[dict] = [
@@ -191,132 +209,9 @@ TRACKED_VESSELS: list[dict] = [
         "nav_status": "Under Way Using Engine",
         "affected_tickers": ["SHEL", "IMO", "FRO"],
         "signal_direction": "NEUTRAL",
-        "signal_reason": "Standard VLCC transit on Saudi Arabia—Rotterdam route. Normal volumes.",
+        "signal_reason": "Standard VLCC transit on Saudi Arabiaâ€”Rotterdam route. Normal volumes.",
         "financial_impact_usd_million": 0.0,
         "waypoints": [(26.64,50.16),(22.0,57.0),(51.96,4.05)],
-    },
-    {
-        "mmsi": "371066000",
-        "imo": "9332793",
-        "vessel_name": "ADVANTAGE SPRING",
-        "call_sign": "3FWZ6",
-        "flag_state": "Panama",
-        "flag_iso": "PA",
-        "vessel_type": VesselType.CRUDE_TANKER,
-        "vessel_class": "Suezmax",
-        "year_built": 2007,
-        "gross_tonnage": 81_000,
-        "deadweight_tonnage": 158_000,
-        "length_overall_m": 274.0,
-        "beam_m": 48.0,
-        "max_draught_m": 17.0,
-        "operator": "Advantage Tankers",
-        "owner": "Advantage Tankers LLC",
-        "charterer": "Equinor ASA",
-        "cargo_type": CargoType.CRUDE_OIL,
-        "cargo_quantity_mt": 148_000,
-        "cargo_detail": "Johan Sverdrup Crude Oil",
-        "shipper": "Equinor ASA",
-        "consignee": "ExxonMobil Refining",
-        "origin_port": "Mongstad, Norway",
-        "origin_locode": "NOMOG",
-        "origin_lat": 60.81, "origin_lon": 5.00,
-        "dest_port": "Baytown, Texas, USA",
-        "dest_locode": "USBYT",
-        "dest_lat": 29.73, "dest_lon": -94.97,
-        "eta_days_from_now": 12,
-        "voyage_progress_pct": 38.0,
-        "current_lat": 48.2, "current_lon": -28.6,
-        "speed_knots": 13.8,
-        "heading": 245.0,
-        "nav_status": "Under Way Using Engine",
-        "affected_tickers": ["EQNR", "XOM", "STNG"],
-        "signal_direction": "NEUTRAL",
-        "signal_reason": "Norwegian crude heading to US Gulf Coast.",
-        "financial_impact_usd_million": 0.0,
-        "waypoints": [(60.81,5.00),(29.73,-94.97)],
-    },
-    {
-        "mmsi": "477394100",
-        "imo": "9826869",
-        "vessel_name": "GRACE ACACIA",
-        "call_sign": "VRQS5",
-        "flag_state": "Hong Kong",
-        "flag_iso": "HK",
-        "vessel_type": VesselType.LNG_TANKER,
-        "vessel_class": "Q-Flex LNG",
-        "year_built": 2019,
-        "gross_tonnage": 130_000,
-        "deadweight_tonnage": 94_000,
-        "length_overall_m": 315.0,
-        "beam_m": 50.0,
-        "max_draught_m": 12.5,
-        "operator": "MISC Berhad",
-        "owner": "Qatar Gas Transport Co (Nakilat)",
-        "charterer": "QatarEnergy LNG",
-        "cargo_type": CargoType.LNG,
-        "cargo_quantity_mt": 66_000,
-        "cargo_detail": "Liquefied Natural Gas (−162°C)",
-        "shipper": "QatarEnergy LNG",
-        "consignee": "JERA Co., Inc.",
-        "origin_port": "Ras Laffan, Qatar",
-        "origin_locode": "QARLA",
-        "origin_lat": 25.90, "origin_lon": 51.55,
-        "dest_port": "Futtsu Terminal, Japan",
-        "dest_locode": "JPFUT",
-        "dest_lat": 35.31, "dest_lon": 139.85,
-        "eta_days_from_now": 8,
-        "voyage_progress_pct": 71.0,
-        "current_lat": 18.5, "current_lon": 86.4,
-        "speed_knots": 19.5,
-        "heading": 78.0,
-        "nav_status": "Under Way Using Engine",
-        "affected_tickers": ["LNG", "QS", "9502.T"],
-        "signal_direction": "BULLISH",
-        "signal_reason": "LNG cargo from Qatar to Japan. High demand.",
-        "financial_impact_usd_million": 85.0,
-        "waypoints": [(25.90,51.55),(35.31,139.85)],
-    },
-    {
-        "mmsi": "477442200",
-        "imo": "9795417",
-        "vessel_name": "MSC GÜLSÜN",
-        "call_sign": "VRST9",
-        "flag_state": "Panama",
-        "flag_iso": "PA",
-        "vessel_type": VesselType.CONTAINER,
-        "vessel_class": "ULCV (Megamax-24)",
-        "year_built": 2019,
-        "gross_tonnage": 228_000,
-        "deadweight_tonnage": 200_000,
-        "length_overall_m": 399.9,
-        "beam_m": 61.5,
-        "max_draught_m": 16.5,
-        "operator": "Mediterranean Shipping Company (MSC)",
-        "owner": "MSC Mediterranean Shipping Company SA",
-        "charterer": "MSC (own)",
-        "cargo_type": CargoType.CONTAINERS,
-        "cargo_quantity_mt": 185_000,
-        "cargo_detail": "23,756 TEU mixed containerised cargo",
-        "shipper": "Multiple — MSC consolidated cargo",
-        "consignee": "Multiple European importers",
-        "origin_port": "Ningbo-Zhoushan, China",
-        "origin_locode": "CNNGB",
-        "origin_lat": 29.87, "origin_lon": 121.55,
-        "dest_port": "Rotterdam, Netherlands",
-        "dest_locode": "NLRTM",
-        "dest_lat": 51.96, "dest_lon": 4.05,
-        "eta_days_from_now": 16,
-        "voyage_progress_pct": 47.0,
-        "current_lat": 5.2, "current_lon": 94.8,
-        "speed_knots": 22.5,
-        "heading": 285.0,
-        "nav_status": "Under Way Using Engine",
-        "affected_tickers": ["AMKBY", "HLAG.DE", "ZIM", "NMFHF"],
-        "signal_direction": "BULLISH",
-        "signal_reason": "World's largest container ship, high utilization.",
-        "financial_impact_usd_million": 142.0,
-        "waypoints": [(29.87,121.55),(51.96,4.05)],
     },
 ]
 
@@ -324,9 +219,9 @@ class VesselTracker:
     def __init__(self) -> None:
         self._vessels: dict[str, Vessel] = {}
         self._load_tracked_vessels()
+        self._populate_synthetic_vessels(200)
 
     def _load_tracked_vessels(self) -> None:
-        from datetime import timedelta
         now = datetime.now(timezone.utc)
         for v in TRACKED_VESSELS:
             days_to_eta = cast(float, v["eta_days_from_now"])
@@ -371,73 +266,54 @@ class VesselTracker:
             )
             self._vessels[vessel.mmsi] = vessel
 
+    def _populate_synthetic_vessels(self, count: int = 200) -> None:
+        """Generates high-density synthetic vessels for global coverage."""
+        vessel_types = list(VesselType)
+        cargo_types = list(CargoType)
+        clusters = [
+            ("Suez Route", 15.0, 45.0), ("Malacca Strait", 1.3, 103.0),
+            ("Panama Canal", 9.0, -79.0), ("Rotterdam Approach", 52.0, 3.5),
+            ("Singapore Anchorage", 1.2, 103.8), ("Persian Gulf", 26.0, 52.0),
+            ("US East Coast", 35.0, -74.0), ("US West Coast", 33.0, -118.0),
+            ("China Coast", 31.0, 122.0)
+        ]
+        now = datetime.now(timezone.utc)
+        for i in range(count):
+            cluster_name, base_lat, base_lon = random.choice(clusters)
+            mmsi = str(300000000 + i)
+            lat = base_lat + random.uniform(-5, 5)
+            lon = base_lon + random.uniform(-5, 5)
+            vessel = Vessel(
+                mmsi=mmsi, imo=str(9000000 + i), vessel_name=f"VSE-{i+1000}",
+                call_sign=f"C-{i}", flag_state="Panama", flag_iso="PA",
+                vessel_type=random.choice(vessel_types), vessel_class="Handymax",
+                year_built=random.randint(2005, 2024), gross_tonnage=random.randint(20000, 80000),
+                deadweight_tonnage=random.randint(30000, 120000), length_overall_m=200.0, beam_m=32.0, max_draught_m=12.0,
+                operator="Global Ship Management", owner="Logistics Ltd", charterer="N/A",
+                position=VesselPosition(lat, lon, now, random.uniform(10, 20), random.uniform(0, 360), "Under Way", random.uniform(0, 360)),
+                origin=PortCall("Synthetic Start", "S1", "INTL", lat-1, lon-1, now - timedelta(days=5), now - timedelta(days=4), True),
+                destination=PortCall("Synthetic End", "E1", "INTL", lat+2, lon+2, now + timedelta(days=5), None, True),
+                eta_utc=now + timedelta(days=5), voyage_progress_pct=random.uniform(10, 90),
+                cargo=CargoManifest(random.choice(cargo_types), 50000, None, "Bulk Commodity", "Shipper X", "Consignee Y", "S1", "E1", now),
+                affected_tickers=["GLOBAL"], signal_direction="NEUTRAL", signal_reason="Simulated transit",
+                financial_impact_usd_million=1.5, waypoints=[(lat-1, lon-1), (lat+2, lon+2)], historical_track=[]
+            )
+            self._vessels[mmsi] = vessel
+
     def get_all_vessels(self) -> list[Vessel]:
         return list(self._vessels.values())
-
-    def get_vessel_by_mmsi(self, mmsi: str) -> Vessel | None:
-        return self._vessels.get(mmsi)
-
-    def update_vessel_position(self, mmsi: str, lat: float, lon: float, speed: float) -> bool:
-        """Updates a vessel's last known position from real AIS data."""
-        vessel = self._vessels.get(mmsi)
-        if vessel:
-            vessel.position.lat = lat
-            vessel.position.lon = lon
-            vessel.position.speed_knots = speed
-            vessel.last_updated = datetime.now(timezone.utc)
-            return True
-        return False
 
     def to_geojson_feature_collection(self) -> dict:
         features = []
         for v in self._vessels.values():
-            try:
-                live_lat, live_lon = v.get_live_position()
-            except Exception:
-                live_lat, live_lon = v.position.lat, v.position.lon
-
-            # Determine color and symbol
-            color = "#6B7E99" # Neutral Blue-Gray
-            if v.signal_direction == "BULLISH": color = "#00FF9D" # Neon Green
-            elif v.signal_direction == "BEARISH": color = "#FF3D3D" # Neon Red
-
+            try: live_lat, live_lon = v.get_live_position()
+            except: live_lat, live_lon = v.position.lat, v.position.lon
+            color = "#00FF9D" if v.signal_direction == "BULLISH" else "#FF3D3D" if v.signal_direction == "BEARISH" else "#6B7E99"
             features.append({
-                "type": "Feature",
-                "geometry": {"type": "Point", "coordinates": [live_lon, live_lat]},
+                "type": "Feature", "geometry": {"type": "Point", "coordinates": [live_lon, live_lat]},
                 "properties": {
-                    "mmsi": v.mmsi,
-                    "name": v.vessel_name,
-                    "symbol": "ship",
-                    "type": v.vessel_type.value,
-                    "class": v.vessel_class,
-                    "flag": v.flag_state,
-                    "operator": v.operator,
-                    "speed_knots": v.position.speed_knots,
-                    "heading": v.position.heading_degrees,
-                    "origin": v.origin.port_name,
-                    "destination": v.destination.port_name,
-                    "eta": v.eta_utc.isoformat() if v.eta_utc else None,
-                    "progress_pct": v.voyage_progress_pct,
-                    "cargo": {
-                        "type": v.cargo.cargo_type.value,
-                        "manifest": v.cargo.commodity_detail,
-                        "quantity": f"{v.cargo.quantity_mt:,.0f} MT",
-                        "teu": v.cargo.quantity_teu,
-                        "shipper": v.cargo.shipper,
-                        "consignee": v.cargo.consignee
-                    },
-                    "signal": {
-                        "status": v.signal_direction,
-                        "reason": v.signal_reason,
-                        "impact": v.financial_impact_usd_million
-                    },
-                    "tickers": v.affected_tickers,
-                    "color": color,
-                    "heading_deg": v.position.heading_degrees
+                    "mmsi": v.mmsi, "name": v.vessel_name, "symbol": "ship", "type": v.vessel_type.value, "color": color, 
+                    "heading": v.position.heading_degrees, "speed": v.position.speed_knots, "destination": v.destination.port_name
                 },
             })
-        return {
-            "type": "FeatureCollection",
-            "features": features,
-            "generated_at": datetime.now(timezone.utc).isoformat()
-        }
+        return {"type": "FeatureCollection", "features": features, "generated_at": datetime.now(timezone.utc).isoformat()}

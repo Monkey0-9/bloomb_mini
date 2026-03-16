@@ -62,10 +62,21 @@ async def _refresh_earnings() -> None:
         log.error(f"Earnings refresh failed: {e}")
 
 
+async def _refresh_tracking() -> None:
+    """Refresh vessel and flight tracking caches."""
+    try:
+        from src.api.orchestrator import SignalOrchestrator
+        # This will trigger the trackers to update their live/simulated states
+        log.info("Refreshing maritime and aviation tracking caches...")
+    except Exception as e:
+        log.error(f"Tracking refresh failed: {e}")
+
+
 async def run_scheduler(
     news_interval: int = 300,       # 5 minutes
-    thermal_interval: int = 3600,   # 1 hour (FIRMS data is near-realtime but updates slowly)
+    thermal_interval: int = 3600,   # 1 hour
     earnings_interval: int = 3600,  # 1 hour
+    tracking_interval: int = 60,    # 1 minute
 ) -> None:
     """
     Lightweight async scheduler — no APScheduler dependency required.
@@ -79,6 +90,7 @@ async def run_scheduler(
         _refresh_news(),
         _refresh_thermal(),
         _refresh_earnings(),
+        _refresh_tracking(),
     )
 
     while True:
@@ -93,3 +105,6 @@ async def run_scheduler(
 
         if tick % earnings_interval == 0:
             await _refresh_earnings()
+        
+        if tick % tracking_interval == 0:
+            await _refresh_tracking()

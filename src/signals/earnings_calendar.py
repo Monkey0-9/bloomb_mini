@@ -75,21 +75,48 @@ def get_earnings_with_satellite_signal(satellite_signals: dict | None = None) ->
     """
     Join upcoming earnings with satellite/vessel signal data
     to produce the full alpha overlay.
-
-    satellite_signals: dict of {ticker: {"signal": "BULLISH"/"BEARISH", "reason": str}}
     """
     upcoming = get_upcoming_earnings()
-    satellite_signals = satellite_signals or {}
+    
+    # If no signals provided, try to fetch live ones (demo fallback)
+    if satellite_signals is None:
+        try:
+            from src.maritime.vessel_tracker import VesselTracker
+            from src.maritime.flight_tracker import FlightTracker
+            from src.signals.engine import SignalEngine
+            se = SignalEngine(VesselTracker(), FlightTracker())
+            live_signals = se.get_live_signals()
+            # Mapping live signals to ticker-indexed dictionary
+            satellite_signals = {}
+            for sig in live_signals.values():
+                for t in sig["tickers"]:
+                    satellite_signals[t] = {
+                        "signal": sig["direction"],
+                        "reason": sig["description"],
+                        "score": sig["score"]
+                    }
+        except ImportError:
+            satellite_signals = {}
 
     enriched = []
     for item in upcoming:
         ticker = item["ticker"]
         sat = satellite_signals.get(ticker, {})
-        item["satellite_signal"] = sat.get("signal", "NO_SIGNAL")
-        item["satellite_reason"] = sat.get("reason", "No satellite coverage for this ticker")
-        item["alpha_opportunity"] = (
-            sat.get("signal") in ("BULLISH", "BEARISH")
-        )
+        item["satellite_signal"] = sat.get("signal", "NEUTRAL")
+        item["satellite_reason"] = sat.get("reason", "Scanning baseline...")
+        item["satellite_score"] = sat.get("score", 50)
+        item["alpha_opportunity"] = sat.get("signal") in ("BULLISH", "BEARISH")
+        
+        # Priority 2 Gap: Earnings Surprise Probability
+        # If signal is BULLISH and score > 70, high probability of upside surprise
+        score = item["satellite_score"]
+        if item["satellite_signal"] == "BULLISH":
+            item["surprise_probability"] = 0.5 + (score / 200) # 0.5 to 1.0
+        elif item["satellite_signal"] == "BEARISH":
+            item["surprise_probability"] = -(0.5 + (score / 200)) # -0.5 to -1.0
+        else:
+            item["surprise_probability"] = 0.0
+            
         enriched.append(item)
 
     return enriched

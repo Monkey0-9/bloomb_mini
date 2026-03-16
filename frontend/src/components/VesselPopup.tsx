@@ -24,11 +24,21 @@ export const getVesselHTML = (v: any) => {
     <div class="popup-body p-3">
       <div class="space-y-1.5 font-mono">
         <div class="data-row flex justify-between"><span class="data-label text-text-4 text-[10px] uppercase">Class</span><span class="data-value text-accent-secondary text-[11px] font-bold">${v.type || 'Cargo'} ${v.class ? `(${v.class})` : ''}</span></div>
+        <div class="data-row flex justify-between"><span class="data-label text-text-4 text-[10px] uppercase">IMO / MMSI</span><span class="data-value text-[11px]">${v.imo || 'N/A'} / ${v.mmsi || 'N/A'}</span></div>
+        <div class="data-row flex justify-between"><span class="data-label text-text-4 text-[10px] uppercase">Tonnage / Draft</span><span class="data-value text-[11px]">${v.gross_tonnage || 'N/A'} GT / ${v.draft || 'N/A'}m</span></div>
         <div class="data-row flex justify-between"><span class="data-label text-text-4 text-[10px] uppercase">Route</span><span class="data-value text-[11px]">${v.origin || 'N/A'} → ${v.destination || 'N/A'}</span></div>
         <div class="data-row flex justify-between pt-1 border-t border-white/5"><span class="data-label text-text-4 text-[10px] uppercase">Cargo</span><span class="data-value text-bull text-[11px] font-bold">${cargo.type || 'General'}</span></div>
         <div class="data-row flex justify-between"><span class="data-label text-text-4 text-[10px] uppercase">Manifest</span><span class="data-value text-[10px] italic text-text-2">${cargo.manifest || 'No details available'}</span></div>
         <div class="data-row flex justify-between"><span class="data-label text-text-4 text-[10px] uppercase">Quantity</span><span class="data-value text-[11px]">${cargo.quantity || 'Bulk'} ${cargo.teu ? `(${cargo.teu} TEU)` : ''}</span></div>
         <div class="data-row flex justify-between"><span class="data-label text-text-4 text-[10px] uppercase">Shipper</span><span class="data-value text-[10px]">${cargo.shipper || 'Unknown'}</span></div>
+        ${v.sar_validated ? `
+        <div class="data-row flex justify-between pt-1 mt-1 border-t border-accent-primary/20">
+          <span class="data-label text-accent-primary text-[9px] font-bold uppercase tracking-tighter">SAR Validated</span>
+          <span class="data-value text-accent-primary text-[10px] font-bold flex items-center gap-1">
+             <span class="w-1.5 h-1.5 bg-accent-primary rounded-full animate-pulse"></span>
+             SENTINEL-1 (${(v.sar_backscatter_db || 0).toFixed(1)} dB)
+          </span>
+        </div>` : ''}
       </div>
 
       <div class="mt-4 pt-3 border-t border-white/10">
@@ -45,6 +55,7 @@ export const getVesselHTML = (v: any) => {
            <span class="text-[9px] text-text-5 uppercase tracking-widest font-bold">Est. Economic Impact</span>
            <span class="text-sm font-black text-bull tracking-tighter">$${(v.signal?.impact || 0).toFixed(1)}M USD</span>
         </div>
+        ${v.sar_validated ? '<span class="text-[8px] bg-accent-primary/20 text-accent-primary px-1 rounded border border-accent-primary/30">H-CONFIDENCE</span>' : ''}
       </div>
     </div>
     <div class="h-1 w-full bg-surface-1 relative">

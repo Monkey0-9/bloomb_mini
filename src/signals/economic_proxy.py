@@ -30,7 +30,8 @@ from datetime import UTC, datetime
 
 import numpy as np
 
-from src.features.feature_store import FeatureStore, FeatureVector
+from src.features.feature_store import FeatureStore
+from src.common.schemas import FeatureVector
 
 logger = logging.getLogger(__name__)
 
