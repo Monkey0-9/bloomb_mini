@@ -20,10 +20,11 @@ class FlightAgent(BaseAgent):
     async def get_state(self) -> Dict[str, Any]:
         """Provides high-fidelity aviation telemetry state."""
         self.last_sync = datetime.now(timezone.utc)
-        await self.flight_tracker.update_live_positions()
+        # In a real system, the scheduler triggers the global populate/update
         return {
             "flights": self.flight_tracker.to_geojson_feature_collection(),
-            "global_cargo_status": "MONITORING_HUBS"
+            "intelligence": self.flight_tracker.get_market_intelligence(),
+            "status": self.status
         }
 
     async def process_task(self, task_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -32,7 +33,11 @@ class FlightAgent(BaseAgent):
             flight = self.flight_tracker.get_flight(callsign)
             return {"flight": flight}
         elif task_type == "LIST_OPERATOR_FLIGHTS":
-            operator = params.get("operator")
+            operator = params.get("operator", "")
             flights = [f for f in self.flight_tracker.get_all_flights() if operator.lower() in f.aircraft.operator.lower()]
             return {"flights": flights, "count": len(flights)}
+        elif task_type == "POPULATE":
+            count = params.get("count", 100)
+            await self.flight_tracker.populate_global_fleet(count)
+            return {"success": True, "count": count}
         return {"error": "Unknown task type"}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Ship, ShoppingCart, Factory, Radio, Activity } from 'lucide-react';
+import { Activity } from 'lucide-react';
 import { useTerminalStore, useSignalStore } from '../store';
 
 const SignalCard = ({ 
@@ -9,12 +9,11 @@ const SignalCard = ({
   score, 
   ic, 
   icir, 
-  tickers,
-  id
+  tickers
 }: any) => {
   const { setView, setCurrentTicker } = useTerminalStore();
   const isBull = status === 'bullish';
-  const statusColor = isBull ? 'text-bull' : status === 'bearish' ? 'text-bear' : 'text-text-4';
+  const statusColor = isBull ? 'text-[var(--neon-bull)]' : status === 'bearish' ? 'text-[var(--neon-bear)]' : 'text-[var(--text-tertiary)]';
 
   const handleClick = () => {
     if (tickers && tickers.length > 0) {
@@ -28,35 +27,50 @@ const SignalCard = ({
   return (
     <div 
       onClick={handleClick}
-      className="px-4 py-3 border-b border-white/5 group hover:bg-surface-2 transition-all cursor-pointer"
+      className="relative p-2.5 mx-2 mt-2 bg-transparent border border-[var(--border-subtle)] group hover:border-[var(--neon-bull)] transition-colors cursor-crosshair overflow-hidden"
     >
-      <div className="flex justify-between items-start mb-1">
+      <div className="absolute inset-0 bg-[var(--neon-bull)] opacity-0 group-hover:opacity-5 transition-opacity pointer-events-none"></div>
+      
+      <div className="flex justify-between items-start mb-1.5">
+        <span className={`text-[8px] font-bold font-mono tracking-widest uppercase px-1.5 py-0.5 border ${
+          isBull ? 'bg-[var(--neon-dim-bull)] border-[var(--neon-bull)]/50 text-[var(--neon-bull)]' :
+          status === 'bearish' ? 'bg-[var(--neon-dim-bear)] border-[var(--neon-bear)]/50 text-[var(--neon-bear)]' :
+          'bg-[var(--bg-overlay)] border-[var(--border-subtle)] text-[var(--text-secondary)]'
+        }`}>
+          {status}
+        </span>
+        <span className="text-[8px] text-[var(--text-tertiary)] font-mono uppercase tracking-widest">{location}</span>
+      </div>
+
+      <div className="mb-2">
+        <span className="text-[11px] text-[var(--text-primary)] group-hover:text-[var(--neon-bull)] font-bold tracking-wider leading-tight uppercase line-clamp-2">
+          {name}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-3 pt-1.5 border-t border-[var(--border-subtle)]">
         <div className="flex flex-col">
-          <span className="text-[10px] text-text-3 font-bold">{location} <span className="text-text-4 ml-1"> {isBull ? 'GO' : 'GO'}</span></span>
-          <span className="text-[12px] text-text-1 font-bold leading-none tracking-tight">{name}</span>
+          <span className="text-[7px] text-[var(--text-tertiary)] uppercase tracking-widest">Confidence</span>
+          <span className={`text-[12px] font-bold font-mono tracking-tighter ${statusColor}`}>
+            {score}
+          </span>
         </div>
-        <div className={`text-[11px] font-bold uppercase ${statusColor}`}>{status}</div>
-      </div>
-
-      <div className="flex items-center gap-4 py-2">
-        <div className={`text-2xl font-bold ${statusColor} tracking-tighter`}>{score}</div>
-        <div className="flex-1 grid grid-cols-2 gap-x-2 text-[10px] border-l border-white/10 pl-3">
-          <div className="flex justify-between flex-1"><span className="text-text-4">IC</span> <span className="text-text-1">{ic.toFixed(3)}</span></div>
-          <div className="flex justify-between flex-1"><span className="text-text-4">ICIR</span> <span className="text-text-1">{icir.toFixed(2)}</span></div>
-          <div className="flex justify-between flex-1 col-span-2 mt-1 border-t border-white/5 pt-1 uppercase text-[8px] text-text-5 tracking-widest">
-            STAC Telemetry Active
-          </div>
+        <div className="flex-1 grid grid-cols-2 gap-x-2 text-[9px] border-l border-[var(--border-subtle)] pl-2 font-mono">
+          <div className="flex justify-between"><span className="text-[var(--text-tertiary)]">IC</span> <span className="text-[var(--text-primary)] font-bold">{ic.toFixed(3)}</span></div>
+          <div className="flex justify-between"><span className="text-[var(--text-tertiary)]">IR</span> <span className="text-[var(--text-primary)] font-bold">{icir.toFixed(2)}</span></div>
         </div>
       </div>
 
-      <div className="space-y-1 mt-1">
-        {(tickers || []).slice(0, 3).map((t: string) => (
-          <div key={t} className="flex justify-between items-center text-[10px]">
-            <span className="text-text-3 font-mono">{t} <span className="text-text-5 ml-1">US Equity</span></span>
-            <span className="text-bull">+{ (Math.random() * 1.5).toFixed(2) }%</span>
-          </div>
-        ))}
-      </div>
+      {tickers && tickers.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2 pt-1.5 border-t border-[var(--border-subtle)]">
+          {tickers.slice(0, 3).map((t: string) => (
+            <div key={t} className="flex items-center gap-1 text-[8px] font-mono font-bold bg-[var(--bg-overlay)] px-1 py-0.5 border border-[var(--border-subtle)]">
+              <span className="text-[var(--text-secondary)]">{t}</span>
+              <span className="text-[var(--neon-bull)] group-hover:animate-pulse">+{(Math.random() * 1.2).toFixed(2)}%</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -72,29 +86,28 @@ const SignalPanel = () => {
   }, [fetchSignals]);
 
   return (
-    <div className="w-[280px] h-full bg-void border-r border-white/10 flex flex-col overflow-hidden shrink-0 z-raised relative">
-      <div className="p-3 border-b border-accent-primary/20 flex flex-col gap-1 bg-surface-0">
+    <div className="flex flex-col h-full bg-[var(--bg-base)] overflow-hidden font-mono select-none">
+      <div className="p-2 border-b border-[var(--border-subtle)] flex flex-col gap-1 bg-[var(--bg-surface)] shrink-0">
           <div className="flex justify-between items-center">
-            <span className="text-[10px] text-accent-primary font-bold tracking-[0.2em] flex items-center gap-2">
-              <Activity size={10} /> SIGNAL TICKER {`<GO>`}
+            <span className="text-[10px] text-[var(--text-primary)] font-bold tracking-[0.2em] flex items-center gap-2 uppercase">
+              <Activity size={10} className="text-[var(--neon-bull)]" /> ACTIVE INTERCEPTS
             </span>
-            <div className="w-1.5 h-1.5 rounded-full bg-bull dot-live"></div>
+            <div className="w-1.5 h-1.5 bg-[var(--neon-bull)] shadow-[0_0_4px_var(--neon-bull)] animate-pulse"></div>
           </div>
-          <span className="text-[9px] text-text-4 uppercase tracking-tighter">Live Institutional Stream • Alpaca Connected</span>
       </div>
       
-      <div className="flex-1 overflow-y-auto custom-scrollbar">
+      <div className="flex-1 overflow-y-auto custom-scrollbar pb-2">
         {signals.map(s => (
           <SignalCard key={s.id} {...s} />
         ))}
       </div>
 
-      <div className="p-3 bg-surface-0 border-t border-white/5">
+      <div className="p-2 bg-[var(--bg-surface)] border-t border-[var(--border-subtle)] shrink-0">
          <button 
            onClick={() => setView('matrix')}
-           className="w-full py-1.5 bg-accent-primary text-black text-[10px] font-bold uppercase tracking-widest hover:bg-white transition-colors"
+           className="w-full py-1.5 bg-[var(--bg-overlay)] border border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:border-[var(--neon-bull)] hover:text-[var(--neon-bull)] text-[9px] font-bold uppercase tracking-widest transition-colors flex justify-center items-center gap-2"
          >
-            Full Signal Matrix
+            Signal Matrix <span className="opacity-50">→</span>
          </button>
       </div>
     </div>

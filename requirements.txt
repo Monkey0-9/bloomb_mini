@@ -1,17 +1,51 @@
-# SatTrade Locked Dependencies
-# Generated for Top 1% Global Standard compliance
-
-pyyaml==6.0.1 --hash=sha256:bfdf321ae337bc7c48c779b1f308ff9a08769db02ca1760a95c52ece239e3f81
-pydantic==2.6.4 --hash=sha256:7b50808b23c28965ef82d383f8488eef82d383f8488eef82d383f8488eef82d
-python-dateutil==2.9.0 --hash=sha256:32f08e5e8a5b28d0a76500a0c91e6bf6ac2b2b3c4d5e6f7a8b6c4d5e6f7a
-numpy==1.26.4 --hash=sha256:bf2225ea8b876b876b876b876b876b876b876b876b876b876b876b876b876b8
-pandas==2.2.1 --hash=sha256:fb2225ea8b876b876b876b876b876b876b876b876b876b876b876b876b876b
-requests==2.31.0 --hash=sha256:59cc28d0a76500a0c91e6bf6ac2b2b3c4d5e6f7a8b6c4d5e6f7a8b6c4d5e6
-pystac-client==0.7.6 --hash=sha256:aac613cd-6375-4011-80a9-7d9147d746fb
-rasterio==1.3.9 --hash=sha256:b98cf12c-35d6-48e6-88fd-85f32f83f2f4
-scikit-learn==1.4.1.post1 --hash=sha256:ee7a6308-369f-4744-9277-9bfa6ada5561
-scipy==1.12.0 --hash=sha256:cf54b36d-af0e-4b57-bb03-f114491d152b
-torch==2.2.1
-torchvision==0.17.1
-httpx==0.27.0
-structlog==24.1.0
+fastapi==0.103.1
+uvicorn[standard]==0.23.2
+pydantic==2.3.0
+pydantic-settings==2.0.3
+structlog==23.1.0
+slowapi==0.1.8
+pyjwt[crypto]==2.8.0
+redis==5.0.0
+anthropic==0.3.11
+requests==2.31.0
+pandas==2.1.0
+yfinance==0.2.28
+numpy==1.25.2
+aiohttp==3.8.5
+python-multipart==0.0.6
+python-dotenv==1.0.0
+asyncio==3.4.3
+aioredis==2.0.1
+sqlalchemy==2.0.20
+asyncpg==0.28.0
+alembic==1.12.0
+psutil==5.9.5
+pytz==2023.3
+scipy==1.11.2
+statsmodels==0.14.0
+scikit-learn==1.3.0
+torch==2.0.1
+transformers==4.33.1
+lightweight-charts==1.0.1
+websockets==11.0.3
+alpaca-trade-api==3.1.1
+kpler-api==1.0.1
+opencv-python-headless==4.8.0.76
+pillow==10.0.0
+rasterio==1.3.8
+folium==0.14.0
+geopandas==0.13.2
+shapely==2.0.1
+pyproj==3.6.0
+pyshp==2.3.1
+fiona==1.9.4.post1
+h3==3.7.6
+lucide-react==0.279.0
+framer-motion==10.16.4
+react-globe.gl==2.31.1
+three==0.156.1
+zustand==4.4.1
+axios==1.5.0
+date-fns==2.30.0
+clsx==2.0.0
+tailwind-merge==1.14.0

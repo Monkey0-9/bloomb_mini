@@ -58,35 +58,35 @@ const MacroRow = ({ s, data }: { s: typeof MACRO_SERIES[0], data: SeriesData | n
   const isUp = change !== null && change >= 0;
 
   return (
-      <div className="flex items-center h-12 border-b border-border-ghost hover:bg-surface-2/50 transition-colors group">
+      <div className="flex items-center h-8 border-b border-surface-4 hover:bg-surface-2 transition-colors group">
           <div className="w-1.5 h-full opacity-0 group-hover:opacity-100 transition-opacity" style={{ backgroundColor: s.color }}></div>
-          <div className="flex-1 px-4 py-2 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 shrink-0 border border-white/20" style={{ backgroundColor: s.color + '40' }}></div>
-                  <span className="type-data-sm text-text-0 font-bold uppercase tracking-widest w-40 truncate">{s.label}</span>
-                  <span className="type-data-xs text-text-5 uppercase w-16 text-right mr-4">{s.unit}</span>
+          <div className="flex-1 px-2 py-0 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 shrink-0 border border-white/20" style={{ backgroundColor: s.color + '40' }}></div>
+                  <span className="text-[11px] text-accent-primary font-bold uppercase w-40 truncate">{s.label}</span>
+                  <span className="text-[9px] text-neutral uppercase w-16 text-right mr-4">{s.unit}</span>
               </div>
-              <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
                   {data?.history ? (
-                      <div className="w-28 opacity-60 group-hover:opacity-100 transition-opacity">
+                      <div className="w-20 opacity-60 group-hover:opacity-100 transition-opacity">
                           <Sparkline history={data.history} color={s.color} />
                       </div>
-                  ) : <div className="w-28 h-6 bg-surface-1 animate-pulse"></div>}
+                  ) : <div className="w-20 h-4 bg-surface-1 animate-pulse"></div>}
                   
-                  <div className="w-32 text-right flex flex-col items-end justify-center">
+                  <div className="w-24 text-right flex flex-col items-end justify-center">
                       {val !== null ? (
                           <motion.span 
                               key={val}
-                              initial={{ opacity: 0, scale: 1.1 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              className="text-lg font-data font-bold text-text-0 tabular-nums leading-none tracking-tight"
+                              initial={{ opacity: 0, x: -5 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              className="text-[11px] font-bold text-accent-primary tabular-nums leading-none tracking-tight"
                           >
                               {val.toFixed(2)}
                           </motion.span>
-                      ) : <span className="text-text-5 animate-pulse">—</span>}
+                      ) : <span className="text-neutral animate-pulse">—</span>}
                       
                       {change !== null && (
-                          <div className={`flex items-center gap-1 text-[10px] font-mono mt-0.5 tracking-wider ${isUp ? 'text-bull' : 'text-bear'}`}>
+                          <div className={`flex items-center justify-end gap-1 text-[9px] mt-0 tracking-wider ${isUp ? 'text-bull' : 'text-bear'}`}>
                               {isUp ? '+' : ''}{change.toFixed(3)} ({pct !== null ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : ''})
                           </div>
                       )}
@@ -129,29 +129,29 @@ const EconomicsView = () => {
   }, []);
 
   return (
-    <div className="flex-1 flex flex-col bg-void overflow-hidden font-sans">
+    <div className="flex-1 flex flex-col bg-void overflow-hidden font-mono text-accent-primary select-none w-full tabular-nums">
       
       {/* HEADER */}
-      <div className="h-11 border-b border-border-1 flex items-center justify-between px-4 shrink-0 bg-surface-base">
-        <div className="flex items-center gap-3">
-          <Globe size={16} className="text-accent-primary" />
-          <span className="type-h1 text-sm tracking-[0.2em] text-text-0 uppercase">Global Macro Surveillance</span>
+      <div className="h-7 border-b border-surface-4 flex items-center justify-between px-2 shrink-0 bg-void">
+        <div className="flex items-center gap-2">
+          <Globe size={12} className="text-accent-primary" />
+          <span className="text-[11px] font-bold tracking-widest text-accent-primary uppercase">Global Macro Surveillance</span>
         </div>
         <div className="flex items-center gap-3">
-            <span className="type-data-xs text-text-4 uppercase tracking-[0.2em] border border-border-ghost px-2 py-0.5 bg-surface-1">
+            <span className="text-[9px] text-neutral uppercase tracking-widest border border-surface-4 px-1 py-0 bg-surface-1">
                 FRED / ST. LOUIS
             </span>
-            <span className="type-data-xs text-accent-blue tracking-widest font-mono font-bold animate-pulse">L7 CONNECTION ACTIVE</span>
+            <span className="text-[9px] text-accent-secondary tracking-widest font-bold animate-pulse">L7 CONNECTION ACTIVE</span>
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto custom-scrollbar flex flex-col xl:flex-row divide-y xl:divide-y-0 xl:divide-x divide-border-ghost">
+      <div className="flex-1 overflow-auto custom-scrollbar flex flex-col xl:flex-row divide-y xl:divide-y-0 xl:divide-x divide-surface-4">
         
         {/* LEFT PANE: LIVE STREAMS */}
         <div className="flex-1 p-0 xl:min-w-[500px] flex flex-col">
-            <div className="h-9 bg-surface-1/50 flex items-center px-6 border-b border-border-ghost shrink-0">
-                <span className="text-[10px] uppercase tracking-widest text-text-4 font-mono font-bold flex items-center gap-2">
-                    <Activity size={12}/> Live Economic Instruments
+            <div className="h-6 bg-surface-1 flex items-center px-2 border-b border-surface-4 shrink-0">
+                <span className="text-[9px] uppercase tracking-widest text-neutral font-bold flex items-center gap-2">
+                    <Activity size={10}/> Live Economic Instruments
                 </span>
             </div>
             
@@ -167,61 +167,51 @@ const EconomicsView = () => {
         </div>
 
         {/* RIGHT PANE: CROSS-ASSET CORRELATION MATRIX */}
-        <div className="flex-1 bg-surface-0 flex flex-col">
-            <div className="h-9 bg-surface-1/50 flex items-center justify-between px-6 border-b border-border-ghost shrink-0">
-                <span className="text-[10px] uppercase tracking-widest text-text-4 font-mono font-bold flex items-center gap-2">
-                    <Crosshair size={12}/> Orbital ↔ Macro Correlation Matrix
+        <div className="flex-1 bg-void flex flex-col">
+            <div className="h-6 bg-surface-1 flex items-center justify-between px-2 border-b border-surface-4 shrink-0">
+                <span className="text-[9px] uppercase tracking-widest text-neutral font-bold flex items-center gap-2">
+                    <Crosshair size={10}/> Orbital ↔ Macro Correlation Matrix
                 </span>
-                <span className="text-[9px] uppercase tracking-[0.2em] text-accent-primary font-bold">Spearman ρ LEAD-LAG</span>
+                <span className="text-[9px] uppercase tracking-widest text-accent-primary font-bold">Spearman ρ LEAD-LAG</span>
             </div>
             
-            <div className="p-6">
-                <div className="border border-border-2 bg-void">
+            <div className="p-2">
+                <div className="border border-surface-4 bg-void">
                     {/* Matrix Header */}
-                    <div className="grid grid-cols-12 h-8 border-b border-border-ghost bg-surface-1/30">
-                        <div className="col-span-4 flex items-center px-3"><span className="text-[9px] tracking-widest text-text-4 uppercase font-bold">Satellite Alpha Node</span></div>
-                        <div className="col-span-1 flex items-center justify-center border-l border-border-ghost"><ArrowRightLeft size={10} className="text-text-5"/></div>
-                        <div className="col-span-3 flex items-center px-3 border-l border-border-ghost"><span className="text-[9px] tracking-widest text-text-4 uppercase font-bold">Macro Target</span></div>
-                        <div className="col-span-2 flex items-center justify-end px-3 border-l border-border-ghost"><span className="text-[9px] tracking-widest text-text-4 uppercase font-bold">ρ Score</span></div>
-                        <div className="col-span-2 flex items-center justify-center border-l border-border-ghost"><span className="text-[9px] tracking-widest text-text-4 uppercase font-bold">Lag Vector</span></div>
+                    <div className="grid grid-cols-12 h-6 border-b border-surface-4 bg-surface-1">
+                        <div className="col-span-4 flex items-center px-2"><span className="text-[9px] tracking-widest text-neutral uppercase font-bold">Satellite Alpha Node</span></div>
+                        <div className="col-span-1 flex items-center justify-center border-l border-surface-4"><ArrowRightLeft size={10} className="text-neutral"/></div>
+                        <div className="col-span-3 flex items-center px-2 border-l border-surface-4"><span className="text-[9px] tracking-widest text-neutral uppercase font-bold">Macro Target</span></div>
+                        <div className="col-span-2 flex items-center justify-end px-2 border-l border-surface-4"><span className="text-[9px] tracking-widest text-neutral uppercase font-bold">ρ Score</span></div>
+                        <div className="col-span-2 flex items-center justify-center border-l border-surface-4"><span className="text-[9px] tracking-widest text-neutral uppercase font-bold">Lag Vector</span></div>
                     </div>
 
                     {/* Matrix Rows */}
                     {[
-                        { sat: 'Thermal FRP (Rotterdam)', macro: 'Eurozone CPI', rho: 0.74, lead: '+21D', type: 'LEAD', rhoColor: '#00FF9D' },
-                        { sat: 'Sentinel-2 Cargo Density', macro: 'Baltic Dry Index', rho: 0.88, lead: '+5D', type: 'LEAD', rhoColor: '#00FF9D' },
+                        { sat: 'Thermal FRP (Rotterdam)', macro: 'Eurozone CPI', rho: 0.74, lead: '+21D', type: 'LEAD', rhoColor: '#00FF00' },
+                        { sat: 'Sentinel-2 Cargo Density', macro: 'Baltic Dry Index', rho: 0.88, lead: '+5D', type: 'LEAD', rhoColor: '#00FF00' },
                         { sat: 'Dark Vessel Anomalies', macro: 'WTI Crude ($/bbl)', rho: -0.62, lead: '-2D', type: 'LAG', rhoColor: '#FF3D3D' },
                         { sat: 'OpenSky Heavy Freight', macro: 'US Retail Sales', rho: 0.81, lead: 'SYNC', type: 'SYNC', rhoColor: '#C084FC' },
-                        { sat: 'LNG Terminal Activity', macro: 'Henry Hub Gas', rho: 0.65, lead: '+14D', type: 'LEAD', rhoColor: '#00FF9D' },
-                        { sat: 'Shanghai Port Congestion', macro: 'US PPI (Goods)', rho: 0.58, lead: '+45D', type: 'LEAD', rhoColor: '#00FF9D' },
+                        { sat: 'LNG Terminal Activity', macro: 'Henry Hub Gas', rho: 0.65, lead: '+14D', type: 'LEAD', rhoColor: '#00FF00' },
+                        { sat: 'Shanghai Port Congestion', macro: 'US PPI (Goods)', rho: 0.58, lead: '+45D', type: 'LEAD', rhoColor: '#00FF00' },
                     ].map((row, i) => (
-                        <div key={i} className="grid grid-cols-12 h-12 border-b border-white/5 hover:bg-surface-2 transition-colors group">
-                            <div className="col-span-4 flex items-center px-3 border-l-2 border-transparent group-hover:border-accent-primary transition-colors">
-                                <span className="type-data-xs text-text-1 font-bold truncate pr-2">{row.sat}</span>
+                        <div key={i} className="grid grid-cols-12 h-6 border-b border-surface-4 hover:bg-surface-2 transition-colors group">
+                            <div className="col-span-4 flex items-center px-2">
+                                <span className="text-[11px] text-accent-primary font-bold truncate pr-2">{row.sat}</span>
                             </div>
-                            <div className="col-span-1 flex items-center justify-center border-l border-border-ghost opacity-40 group-hover:opacity-100 transition-opacity">
-                                <ArrowRight size={12} className={row.rho >= 0 ? 'text-bull' : 'text-bear'}/>
+                            <div className="col-span-1 flex items-center justify-center border-l border-surface-4 opacity-40 group-hover:opacity-100 transition-opacity">
+                                <ArrowRight size={10} className={row.rho >= 0 ? 'text-bull' : 'text-bear'}/>
                             </div>
-                            <div className="col-span-3 flex items-center px-3 border-l border-border-ghost">
-                                <span className="type-data-xs text-text-3 uppercase tracking-wider">{row.macro}</span>
+                            <div className="col-span-3 flex items-center px-2 border-l border-surface-4">
+                                <span className="text-[10px] text-neutral uppercase tracking-wider">{row.macro}</span>
                             </div>
-                            <div className="col-span-2 flex items-center justify-end px-3 border-l border-border-ghost">
-                                <div className="flex flex-col items-end w-full">
-                                    <span className="type-data-sm font-mono font-bold" style={{ color: row.rhoColor }}>{row.rho.toFixed(2)}</span>
-                                    <div className="w-full bg-surface-2 h-[2px] mt-1 overflow-hidden relative">
-                                        <div className="absolute top-0 bottom-0 left-1/2 w-[1px] bg-white/20 z-10"></div>
-                                        {row.rho >= 0 ? (
-                                            <div className="bg-bull h-full absolute top-0 left-1/2" style={{ width: `${row.rho * 50}%` }}></div>
-                                        ) : (
-                                            <div className="bg-bear h-full absolute top-0 right-1/2" style={{ width: `${Math.abs(row.rho) * 50}%` }}></div>
-                                        )}
-                                    </div>
-                                </div>
+                            <div className="col-span-2 flex items-center justify-end px-2 border-l border-surface-4">
+                                <span className="text-[11px] font-bold" style={{ color: row.rhoColor }}>{row.rho.toFixed(2)}</span>
                             </div>
-                            <div className="col-span-2 flex items-center justify-center border-l border-border-ghost">
-                                <span className={`type-data-xs font-mono font-bold px-2 py-0.5 border ${
-                                    row.type === 'LEAD' ? 'text-bull border-bull/30 bg-bull/10' : 
-                                    row.type === 'LAG' ? 'text-bear border-bear/30 bg-bear/10' : 'text-[#C084FC] border-[#C084FC]/30 bg-[#C084FC]/10'
+                            <div className="col-span-2 flex items-center justify-center border-l border-surface-4">
+                                <span className={`text-[10px] font-bold px-1 py-0 border ${
+                                    row.type === 'LEAD' ? 'text-bull border-bull bg-bull/10' : 
+                                    row.type === 'LAG' ? 'text-bear border-bear bg-bear/10' : 'text-[#C084FC] border-[#C084FC]/30 bg-[#C084FC]/10'
                                 }`}>
                                     {row.lead}
                                 </span>
@@ -230,19 +220,19 @@ const EconomicsView = () => {
                     ))}
                 </div>
 
-                <div className="mt-8">
-                    <span className="text-[10px] uppercase tracking-widest text-text-4 font-bold block mb-3">Model Inference Insights</span>
-                    <div className="bg-surface-1/50 border-l-4 border-bull p-4 type-ui-sm text-text-2 leading-relaxed font-sans">
-                        <strong className="text-text-0 font-sans tracking-tight block mb-1">High-Conviction Alpha Detected</strong>
-                        The TFT engine has identified a systemic lag between <span className="text-accent-primary font-bold">Sentinel-2 Cargo Density</span> and the <span className="text-accent-primary font-bold">Baltic Dry Index</span>. Signal lead time is actively decaying (+5D remaining). Suggest immediate rebalancing of bulk maritime exposure.
+                <div className="mt-4">
+                    <span className="text-[9px] uppercase tracking-widest text-neutral font-bold block mb-1">Model Inference Insights</span>
+                    <div className="bg-surface-1 border-l-2 border-bull p-2 text-[10px] text-accent-primary/80 leading-relaxed font-mono">
+                        <strong className="text-accent-primary font-mono tracking-tight block mb-0.5">High-Conviction Alpha Detected</strong>
+                        The TFT engine has identified a systemic lag between <span className="text-white font-bold">Sentinel-2 Cargo Density</span> and the <span className="text-white font-bold">Baltic Dry Index</span>. Signal lead time is actively decaying (+5D remaining). Suggest immediate rebalancing of bulk maritime exposure.
                     </div>
                 </div>
             </div>
         </div>
       </div>
 
-      <div className="h-8 border-t border-border-1 flex items-center px-4 bg-surface-base shrink-0 shadow-[0_-5px_15px_rgba(0,0,0,0.5)] z-10">
-        <span className="type-data-xs text-text-5 uppercase tracking-[0.2em] font-mono">
+      <div className="h-6 border-t border-surface-4 flex items-center px-2 bg-surface-1 shrink-0 z-10">
+        <span className="text-[9px] text-neutral uppercase tracking-widest font-mono">
           Proprietary Intelligence · FRED / IMF / WORLD BANK · Last Sync: {new Date().toLocaleTimeString()}
         </span>
       </div>

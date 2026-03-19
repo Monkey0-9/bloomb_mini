@@ -18,22 +18,22 @@ const GlobalEquitiesView = () => {
   }, [equities, search, filter]);
 
   return (
-    <div className="flex-1 flex flex-col bg-surface-0 overflow-hidden">
-      {/* EQUITIES HEADER: ALLX STYLE */}
-      <div className="h-11 border-b border-white/5 flex items-center justify-between px-4 shrink-0 bg-surface-1/40">
+    <div className="flex-1 flex flex-col bg-void overflow-hidden text-accent-primary font-mono select-none">
+      {/* EQUITIES HEADER: BLOOMBERG STYLE */}
+      <div className="h-7 border-b border-surface-4 flex items-center justify-between px-2 shrink-0 bg-void">
          <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
                <span className="type-h1 text-sm tracking-[0.2em] text-text-0 uppercase">GLOBAL EQUITIES MONITOR</span>
                <div className="w-2 h-2 rounded-full bg-bull animate-pulse"></div>
             </div>
             <div className="h-6 w-[1px] bg-white/5 mx-2"></div>
-            <div className="flex gap-2">
+            <div className="flex gap-1">
                {['ALL', 'BULLISH', 'BEARISH', 'NEUTRAL'].map(f => (
                   <button 
                     key={f}
                     onClick={() => setFilter(f)}
-                    className={`type-data-xs px-3 py-1 rounded-sm border transition-all ${
-                       filter === f ? 'bg-accent-primary border-accent-primary text-void font-bold shadow-[0_0_10px_rgba(0,200,255,0.3)]' : 'border-white/10 text-text-4 hover:border-text-2'
+                    className={`text-[10px] px-2 py-0 border transition-none uppercase ${
+                       filter === f ? 'bg-accent-primary text-void font-bold border-accent-primary' : 'border-surface-4 text-neutral hover:border-accent-primary hover:text-accent-primary'
                     }`}
                   >
                     {f}
@@ -42,31 +42,32 @@ const GlobalEquitiesView = () => {
             </div>
          </div>
          
-         <div className="flex items-center bg-surface-2 border border-white/5 px-3 py-1 rounded-sm group focus-within:border-accent-primary transition-all">
+         <div className="flex items-center bg-surface-1 border border-surface-4 px-2 py-0 focus-within:border-accent-primary">
+            <span className="text-[10px] mr-1 text-neutral">ticker:</span>
             <input 
                type="text" 
-               placeholder="SEARCH TICKERS..." 
+               placeholder="SRCH..." 
                value={search}
                onChange={(e) => setSearch(e.target.value)}
-               className="bg-transparent outline-none type-data-xs text-text-1 placeholder:text-text-5 w-40 font-mono"
+               className="bg-transparent outline-none text-[11px] text-accent-primary placeholder:text-neutral w-24 font-mono uppercase"
             />
          </div>
       </div>
 
-      {/* EQUITIES GRID */}
+      {/* BLOOMBERG EQUITIES GRID */}
       <div className="flex-1 overflow-auto custom-scrollbar tabular-nums">
-        <table className="w-full text-left border-collapse">
-          <thead className="sticky top-0 bg-surface-1 z-10 border-b border-white/10">
+        <table className="w-full text-left border-collapse table-fixed">
+          <thead className="sticky top-0 bg-surface-1 z-10 border-b border-surface-4 shadow-sm">
             <tr>
-              <th className="px-6 py-3 type-data-xs text-text-3 font-bold uppercase tracking-widest">Ticker</th>
-              <th className="px-6 py-3 type-data-xs text-text-3 font-bold uppercase tracking-widest">Security Name</th>
-              <th className="px-6 py-3 type-data-xs text-text-3 font-bold uppercase tracking-widest text-right">Last Price</th>
-              <th className="px-6 py-3 type-data-xs text-text-3 font-bold uppercase tracking-widest text-right">Change</th>
-              <th className="px-4 py-3 type-data-xs text-text-3 font-bold uppercase tracking-widest text-center">Satellite Alpha</th>
-              <th className="px-6 py-3 type-data-xs text-text-3 font-bold uppercase tracking-widest text-right">Market</th>
+              <th className="px-2 py-1 text-[10px] text-neutral font-bold uppercase w-20">TICKER</th>
+              <th className="px-2 py-1 text-[10px] text-neutral font-bold uppercase w-48 truncate">SECURITY NAME</th>
+              <th className="px-2 py-1 text-[10px] text-neutral font-bold uppercase text-right w-24">LAST PX</th>
+              <th className="px-2 py-1 text-[10px] text-neutral font-bold uppercase text-right w-24">CHG %</th>
+              <th className="px-2 py-1 text-[10px] text-neutral font-bold uppercase text-center w-28">SAT ALPHA</th>
+              <th className="px-2 py-1 text-[10px] text-neutral font-bold uppercase text-right w-24">EXCH</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-white/5">
+          <tbody className="divide-y divide-surface-4">
             <AnimatePresence mode="popLayout">
               {filteredEquities.map((e) => (
                 <motion.tr 
@@ -75,33 +76,34 @@ const GlobalEquitiesView = () => {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="hover:bg-white/5 transition-colors cursor-pointer group h-14"
+                  transition={{ duration: 0.15 }}
+                  className="hover:bg-surface-3 transition-colors cursor-pointer group h-5"
                 >
-                  <td className="px-6 py-3">
-                    <span className="type-data-md text-accent-primary font-bold group-hover:text-text-0 transition-colors uppercase font-mono">{e.ticker}</span>
+                  <td className="px-2 py-0">
+                    <span className="text-[11px] text-accent-primary font-bold uppercase">{e.ticker}</span>
                   </td>
-                  <td className="px-6 py-3">
-                    <span className="type-data-xs text-text-2 uppercase group-hover:text-text-1 truncate max-w-[200px] inline-block font-mono tracking-tight">{e.name}</span>
+                  <td className="px-2 py-0">
+                    <span className="text-[11px] text-accent-primary/80 uppercase truncate block">{e.name}</span>
                   </td>
-                  <td className="px-6 py-3 text-right">
-                    <span className="type-data-md text-text-1 font-bold font-mono">${(e.price || 0).toFixed(2)}</span>
+                  <td className="px-2 py-0 text-right">
+                    <span className="text-[11px] text-accent-primary font-bold">{(e.price || 0).toFixed(2)}</span>
                   </td>
-                  <td className="px-6 py-3 text-right">
-                    <span className={`type-data-xs font-bold font-mono ${(e.change || 0) >= 0 ? 'text-bull' : 'text-bear'}`}>
-                      {(e.change || 0) >= 0 ? '+' : ''}{(e.change || 0).toFixed(2)}%
+                  <td className="px-2 py-0 text-right">
+                    <span className={`text-[11px] font-bold ${(e.change || 0) >= 0 ? 'text-bull' : 'text-bear'}`}>
+                      {(e.change || 0) >= 0 ? '+' : ''}{(e.change || 0).toFixed(2)}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center">
-                     <span className={`type-data-xs px-2 py-0.5 rounded-sm border font-bold tracking-widest text-[9px] ${
-                        (e.sat_signal || 'NEUTRAL').toUpperCase() === 'BULLISH' ? 'bg-bull/10 border-bull/50 text-bull' : 
-                        (e.sat_signal || 'NEUTRAL').toUpperCase() === 'BEARISH' ? 'bg-bear/10 border-bear/50 text-bear' : 
-                        'bg-surface-2 border-white/10 text-text-4'
+                  <td className="px-2 py-0 text-center">
+                     <span className={`text-[9px] px-1 py-0 uppercase ${
+                        (e.sat_signal || 'NEUTRAL').toUpperCase() === 'BULLISH' ? 'bg-bull text-void' : 
+                        (e.sat_signal || 'NEUTRAL').toUpperCase() === 'BEARISH' ? 'bg-bear text-void' : 
+                        'text-neutral'
                      }`}>
                         {e.sat_signal || 'NEUTRAL'}
                      </span>
                   </td>
-                  <td className="px-6 py-3 text-right">
-                    <span className="type-data-xs text-text-5 uppercase font-mono">{e.exchange}</span>
+                  <td className="px-2 py-0 text-right">
+                    <span className="text-[10px] text-neutral uppercase">{e.exchange}</span>
                   </td>
                 </motion.tr>
               ))}
@@ -111,9 +113,9 @@ const GlobalEquitiesView = () => {
       </div>
 
       {/* EQUITIES FOOTER STATUS */}
-      <div className="h-8 border-t border-white/10 flex items-center justify-between px-4 bg-void shrink-0">
-         <span className="type-data-xs text-text-4 uppercase tracking-[0.2em]">Live Telemetry: <span className="text-bull">Feed Optimal</span></span>
-         <span className="type-data-xs text-text-4 uppercase tracking-[0.2em]">Signals: <span className="text-accent-primary">{filteredEquities.length} Active</span></span>
+      <div className="h-6 border-t border-surface-4 flex items-center justify-between px-2 bg-void shrink-0">
+         <span className="text-[9px] text-neutral uppercase">LIVE EQTY FEED: <span className="text-bull">CONNECTED</span></span>
+         <span className="text-[9px] text-neutral uppercase">ROWS: <span className="text-accent-primary">{filteredEquities.length}</span></span>
       </div>
     </div>
   );

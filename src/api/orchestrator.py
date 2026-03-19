@@ -12,6 +12,7 @@ from src.api.agents.news import NewsAgent
 from src.api.agents.execution import ExecutionAgent
 from src.api.agents.flight import FlightAgent
 from src.api.agents.satellite import SatelliteAgent
+from src.api.agents.thermal import ThermalAgent
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +30,8 @@ class SignalOrchestrator:
             "fundamentals": FundamentalAgent(),
             "news": NewsAgent(),
             "execution": ExecutionAgent(),
-            "satellite": SatelliteAgent()
+            "satellite": SatelliteAgent(),
+            "thermal": ThermalAgent()
         }
         self.status = "ACTIVE"
         self._last_state = {}

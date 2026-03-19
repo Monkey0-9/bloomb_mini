@@ -24,10 +24,30 @@
   --color-text-4: #808080;
   --color-text-5: #404040;
 
+  /* OSINT THEME SPECIFICS */
+  --color-osint-bg: #0d0d0d;
+  --color-osint-cyan: #00ffff;
+  --color-osint-red: #ff3300;
+  --color-osint-amber: #ffcc00;
+  --color-osint-green: #00ff99;
+
   --font-bebas: "IBM Plex Mono", monospace;
   --font-dm: "IBM Plex Mono", monospace;
   --font-mono: "IBM Plex Mono", monospace;
   --font-lora: "IBM Plex Mono", monospace;
+}
+
+@layer utilities {
+  .osint-theme {
+    --color-void: var(--color-osint-bg);
+    --color-accent-primary: var(--color-osint-cyan);
+    --color-bull: var(--color-osint-green);
+    --color-bear: var(--color-osint-red);
+    --color-text-1: var(--color-osint-cyan);
+    --color-surface-0: rgba(0, 255, 255, 0.05);
+    background-color: var(--color-void);
+    color: var(--color-text-1);
+  }
 }
 
 @layer base {

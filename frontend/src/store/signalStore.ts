@@ -41,6 +41,7 @@ interface SignalState {
   setEvents: (events: TerminalEvent[]) => void;
   addEvent: (event: TerminalEvent) => void;
   fetchSignals: () => Promise<void>;
+  handleWSUpdate: (msg: any) => void;
 }
 
 export const useSignalStore = create<SignalState>((set) => ({
@@ -94,6 +95,15 @@ export const useSignalStore = create<SignalState>((set) => ({
       set({ events: newsEvents });
     } catch (err) {
       console.error('Failed to fetch intelligence data:', err);
+    }
+  },
+  handleWSUpdate: (msg) => {
+    if (msg.type === 'signal_update' && msg.id) {
+      set((state) => ({
+        signals: state.signals.map(s => s.id === msg.id ? { ...s, score: msg.score, status: msg.status, delta: msg.delta } : s)
+      }));
+    } else if (msg.type === 'new_event' && msg.event) {
+      set((state) => ({ events: [msg.event, ...state.events].slice(0, 100) }));
     }
   }
 }));

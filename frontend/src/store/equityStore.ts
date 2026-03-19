@@ -25,7 +25,7 @@ export const useEquityStore = create<EquityState>()(
   persist(
     (set) => ({
       equities: [],
-      watchlist: ['AMKBY', 'ZIM', 'SHEL', 'LNG', 'MT'],
+      watchlist: ['SPY', 'QQQ', 'WTI', 'GLD', 'BTC'],
       setEquities: (equities) => set({ equities }),
       addToWatchlist: (ticker) => set((state) => ({ 
         watchlist: [...new Set([...state.watchlist, ticker.toUpperCase()])] 

@@ -15,9 +15,8 @@ async def get_signals(orchestrator: SignalOrchestrator = Depends(get_orchestrato
 
 @router.get("/thermal")
 async def get_thermal_signals(orchestrator: SignalOrchestrator = Depends(get_orchestrator)):
-    # This will eventually be handled by a ThermalAgent
-    from src.satellite.thermal import scan_industrial_facilities
-    return {"data": scan_industrial_facilities(day_range=2), "source": "NASA-FIRMS-VIIRS"}
+    result = await orchestrator.dispatch_task("thermal", "RUN_SCAN", {})
+    return result
 
 @router.get("/dark-vessels")
 async def get_dark_vessels(orchestrator: SignalOrchestrator = Depends(get_orchestrator)):

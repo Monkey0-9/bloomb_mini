@@ -10,6 +10,7 @@ interface VesselState {
   setSelectedVessel: (vessel: Vessel | null) => void;
   fetchVessels: () => Promise<void>;
   updateVesselPosition: (mmsi: string, lat: number, lon: number) => void;
+  handleWSUpdate: (msg: any) => void;
 }
 
 export const useVesselStore = create<VesselState>((set) => ({
@@ -48,4 +49,11 @@ export const useVesselStore = create<VesselState>((set) => ({
       v.mmsi === mmsi ? { ...v, position: { ...v.position, lat, lon } } : v
     )
   })),
+  handleWSUpdate: (msg) => {
+    if (msg.mmsi && msg.lat && msg.lon) {
+      set((state) => ({
+        vessels: state.vessels.map(v => v.mmsi === msg.mmsi ? { ...v, position: { ...v.position, lat: msg.lat, lon: msg.lon } } : v)
+      }));
+    }
+  }
 }));

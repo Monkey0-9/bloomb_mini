@@ -10,6 +10,7 @@ interface FlightState {
   setSelectedFlight: (flight: Flight | null) => void;
   fetchFlights: () => Promise<void>;
   updateFlightPosition: (icao24: string, lat: number, lon: number, alt: number) => void;
+  handleWSUpdate: (msg: any) => void;
 }
 
 export const useFlightStore = create<FlightState>((set) => ({
@@ -45,4 +46,13 @@ export const useFlightStore = create<FlightState>((set) => ({
       f.icao24 === icao24 ? { ...f, position: { ...f.position, lat, lon, alt_ft } } : f
     )
   })),
+  handleWSUpdate: (msg) => {
+    if (msg.icao24 && msg.lat && msg.lon) {
+      set((state) => ({
+        flights: state.flights.map((f) => 
+          f.icao24 === msg.icao24 ? { ...f, position: { ...f.position, lat: msg.lat, lon: msg.lon, alt_ft: msg.alt_ft || f.position.alt_ft } } : f
+        )
+      }));
+    }
+  }
 }));

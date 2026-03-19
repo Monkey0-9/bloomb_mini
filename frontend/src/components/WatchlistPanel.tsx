@@ -1,50 +1,46 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
-import { motion } from 'framer-motion';
 import { useTerminalStore, useSignalStore } from '../store';
 import { useEquityStore } from '../store/equityStore';
 
-const WatchlistRow = ({ ticker, name, price, change, signal, onRemove }: any) => {
+const WatchlistRow = ({ ticker, price, change, signal, onRemove }: any) => {
   const isUp = change >= 0;
   const { setView, setCurrentTicker } = useTerminalStore();
   
   return (
     <div 
-      className="h-10 border-b border-white/5 hover:bg-surface-2 transition-all cursor-pointer group flex items-center px-3 relative"
+      className="h-8 border-b border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] transition-all cursor-crosshair group flex items-center px-2 relative"
       onClick={() => {
         setCurrentTicker(`${ticker} US Equity`);
         setView('charts');
       }}
     >
-      <div className="flex-1 min-w-0 pr-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="type-data-sm font-bold text-accent-primary tracking-tight group-hover:text-text-0 transition-colors">{ticker}</span>
-        </div>
+      <div className="flex-1 min-w-0 flex items-center justify-between mr-2">
+        <span className="text-[11px] font-bold text-[var(--neon-bull)] tracking-tight font-mono">{ticker}</span>
         <div className="flex items-center gap-3">
-          <span className="type-data-sm text-text-0 font-mono tracking-tighter group-hover:text-accent-primary transition-colors">${(price || 0).toFixed(2)}</span>
-          <span className={`type-data-xs font-mono font-bold w-12 text-right ${isUp ? 'text-bull' : 'text-bear'}`}>
+          <span className="text-[11px] text-[var(--text-primary)] font-mono tracking-tighter group-hover:text-[var(--neon-signal)] transition-colors">${(price || 0).toFixed(2)}</span>
+          <span className={`text-[10px] font-mono font-bold w-12 text-right ${isUp ? 'text-[var(--neon-bull)]' : 'text-[var(--neon-bear)]'}`}>
             {isUp ? '+' : ''}{(change || 0).toFixed(2)}%
           </span>
         </div>
       </div>
 
-      <div className="w-24 flex items-center justify-end gap-2 shrink-0 border-l border-white/5 pl-2">
-            <span className={`text-[9px] px-1 py-0.5 font-bold uppercase tracking-widest ${
-              signal === 'STRONG' ? 'bg-bull/20 text-bull border-bull/30' : 
-              signal === 'BULLISH' ? 'bg-bull/10 text-bull border-bull/20' : 
-              signal === 'BEARISH' ? 'bg-bear/20 text-bear border-bear/30' : 
-              'bg-surface-3 text-text-4 border-border-1'
-            } border`}>
+      <div className="w-20 flex items-center justify-end gap-2 shrink-0 border-l border-[var(--border-subtle)] pl-2">
+            <span className={`text-[9px] px-1 font-bold uppercase tracking-widest leading-none flex items-center h-5 border ${
+              signal === 'STRONG' ? 'bg-[var(--neon-dim-bull)] text-[var(--neon-bull)] border-[var(--neon-bull)]' : 
+              signal === 'BULLISH' ? 'bg-[var(--neon-dim-bull)] text-[var(--neon-bull)] border-[var(--neon-bull)]/50' : 
+              signal === 'BEARISH' ? 'bg-[var(--neon-dim-bear)] text-[var(--neon-bear)] border-[var(--neon-bear)]' : 
+              'bg-[var(--bg-card)] text-[var(--text-tertiary)] border-[var(--border-subtle)]'
+            }`}>
               {signal === 'STRONG' ? '↑ STRONG' : signal === 'BULLISH' ? '↑ LONG' : signal === 'BEARISH' ? '↓ SHORT' : '— FLAT'}
             </span>
             <button 
               onClick={(e) => { e.stopPropagation(); onRemove(ticker); }}
-              className="opacity-0 group-hover:opacity-100 p-0.5 text-text-5 hover:text-bear transition-all w-4 h-4 rounded hover:bg-bear/10 flex items-center justify-center"
+              className="opacity-0 group-hover:opacity-100 text-[var(--text-tertiary)] hover:text-[var(--neon-bear)] transition-all"
             >
               ×
             </button>
       </div>
-      <div className="absolute right-0 top-0 bottom-0 w-[2px] bg-accent-primary opacity-0 group-hover:opacity-100 transition-opacity"></div>
     </div>
   );
 };
@@ -58,21 +54,21 @@ const WatchlistPanel = () => {
   const watchlistEquities = equities.filter(e => watchlist.includes(e.ticker));
   
   return (
-    <div className="w-[300px] bg-surface-0 border-l border-border-1 flex flex-col shrink-0 font-sans z-10 shadow-[-10px_0_20px_rgba(0,0,0,0.5)]">
+    <div className="flex flex-col h-full bg-[var(--bg-base)] overflow-hidden">
       
       {/* HEADER */}
-      <div className="h-11 border-b border-border-1 flex items-center justify-between px-3 shrink-0 bg-surface-base">
-        <span className="type-h1 text-sm tracking-widest text-text-0 uppercase">Watchlist</span>
+      <div className="h-8 border-b border-[var(--border-subtle)] flex items-center justify-between px-3 shrink-0 bg-[var(--bg-surface)]">
+        <span className="text-[10px] tracking-widest text-[var(--text-primary)] font-bold uppercase">Watchlist</span>
         {!isAdding ? (
           <button 
             onClick={() => setIsAdding(true)}
-            className="flex items-center gap-1.5 px-2 py-0.5 border border-border-3 bg-surface-1 type-ui-sm text-text-3 hover:border-accent-primary hover:text-accent-primary transition-colors group"
+            className="flex items-center gap-1.5 px-2 py-0.5 border border-[var(--border-subtle)] bg-[var(--bg-base)] hover:border-[var(--neon-signal)] transition-colors group"
           >
-            <Plus size={12} strokeWidth={3} className="group-hover:text-accent-primary text-text-5" />
-            <span className="font-bold tracking-widest uppercase text-[9px]">Add</span>
+            <Plus size={10} className="text-[var(--text-tertiary)] group-hover:text-[var(--neon-signal)]" />
+            <span className="font-bold tracking-widest uppercase text-[8px] text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">Add</span>
           </button>
         ) : (
-          <div className="flex gap-1 animate-in fade-in slide-in-from-right-2 duration-200">
+          <div className="flex gap-1">
              <input 
                autoFocus
                type="text"
@@ -87,59 +83,45 @@ const WatchlistPanel = () => {
                    setIsAdding(false);
                  }
                }}
-               className="w-24 bg-surface-2 border border-accent-primary/50 px-2 py-0.5 text-[10px] uppercase font-mono text-accent-primary outline-none"
+               className="w-20 bg-[var(--bg-base)] border border-[var(--neon-signal)] px-2 py-0.5 text-[10px] uppercase font-mono text-[var(--neon-signal)] outline-none"
                placeholder="TICKER"
              />
           </div>
         )}
       </div>
 
-      {/* FILTER TABS */}
-      <div className="h-8 border-b border-white/5 flex items-center px-1 shrink-0 bg-surface-1">
-         <button className="text-[9px] font-bold tracking-[0.1em] uppercase text-text-0 border-b-2 border-accent-primary h-full px-3 transition-colors bg-surface-0">CORE</button>
-         <button className="text-[9px] font-bold tracking-[0.1em] uppercase text-text-4 hover:text-text-0 hover:bg-surface-2 transition-colors h-full px-3">ALPHA</button>
-         <button className="text-[9px] font-bold tracking-[0.1em] uppercase text-text-4 hover:text-text-0 hover:bg-surface-2 transition-colors h-full px-3">MOVERS</button>
-      </div>
-
       {/* LIST HEADER */}
-      <div className="h-6 border-b border-white/5 flex items-center justify-between px-3 shrink-0 bg-surface-0 shadow-sm">
-          <span className="text-[8px] font-bold uppercase tracking-widest text-text-5 w-12">Ticker</span>
-          <div className="flex gap-[34px] mr-12">
-            <span className="text-[8px] font-bold uppercase tracking-widest text-text-5">Last</span>
-            <span className="text-[8px] font-bold uppercase tracking-widest text-text-5">Chg %</span>
+      <div className="h-6 border-b border-[var(--border-subtle)] flex items-center px-3 shrink-0 bg-[var(--bg-surface)]">
+          <span className="text-[8px] font-bold uppercase tracking-widest text-[var(--text-tertiary)] w-14">Ticker</span>
+          <div className="flex-1 flex justify-center gap-10">
+            <span className="text-[8px] font-bold uppercase tracking-widest text-[var(--text-tertiary)]">Price</span>
+            <span className="text-[8px] font-bold uppercase tracking-widest text-[var(--text-tertiary)]">Change</span>
           </div>
-          <span className="text-[8px] font-bold uppercase tracking-widest text-text-5 w-16 text-right">Inference</span>
+          <span className="text-[8px] font-bold uppercase tracking-widest text-[var(--text-tertiary)] w-16 text-right mr-6">Alpha</span>
       </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar bg-void pt-1">
+      <div className="flex-1 overflow-y-auto bg-[var(--bg-base)]">
         {watchlistEquities.length > 0 ? (
-          watchlistEquities.map((e: any, i) => (
-            <motion.div
-                initial={{ opacity: 0, x: 5 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.03 }}
-                key={e.ticker}
-            >
-                <WatchlistRow 
-                    ticker={e.ticker} 
-                    name={e.name} 
-                    price={e.price} 
-                    change={e.change} 
-                    onRemove={removeFromWatchlist}
-                    signal={signals.find(s => (s.tickers || []).includes(e.ticker))?.status.toUpperCase() || e.sat_signal} 
-                />
-            </motion.div>
+          watchlistEquities.map((e: any) => (
+            <WatchlistRow 
+              key={e.ticker}
+              ticker={e.ticker}
+              price={e.price}
+              change={e.change}
+              onRemove={removeFromWatchlist}
+              signal={signals.find(s => (s.tickers || []).includes(e.ticker))?.status.toUpperCase() || e.sat_signal} 
+            />
           ))
         ) : (
-          <div className="p-8 text-center text-[10px] text-text-5 font-mono uppercase tracking-widest">AWAITING INPUT</div>
+          <div className="p-8 text-center text-[9px] text-[var(--text-tertiary)] font-mono uppercase tracking-widest">Awaiting Selections</div>
         )}
       </div>
 
       {/* FOOTER ACTION */}
-      <div className="h-9 border-t border-border-1 bg-surface-base shrink-0 flex items-center justify-center cursor-pointer hover:bg-surface-2 transition-colors border-x-0 border-b-0 outline-none group px-4">
-        <span className="text-[10px] text-text-4 uppercase tracking-[0.2em] font-bold group-hover:text-accent-primary transition-colors flex items-center gap-2">
-           <div className="w-1.5 h-1.5 bg-accent-primary rounded-[1px] opacity-50 group-hover:opacity-100 group-hover:animate-pulse"></div>
-           CONFIGURE ALERT WEBHOOKS
+      <div className="h-8 border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] shrink-0 flex items-center justify-center cursor-pointer hover:bg-[var(--bg-hover)] transition-colors group">
+        <span className="text-[9px] text-[var(--text-secondary)] uppercase tracking-[0.1em] font-bold group-hover:text-[var(--text-primary)] transition-colors flex items-center gap-2">
+           <div className="w-1.5 h-1.5 bg-[var(--neon-bull)] shadow-[0_0_4px_var(--neon-bull)]"></div>
+           Configure Alert Webhooks
         </span>
       </div>
     </div>

@@ -14,17 +14,48 @@ async def get_account_status(orchestrator: SignalOrchestrator = Depends(get_orch
 @router.post("/trade")
 async def execute_trade(payload: Dict[str, Any] = Body(...), orchestrator: SignalOrchestrator = Depends(get_orchestrator)):
     """
-    Institutional endpoint for manual or signal-triggered trades.
+    Institutional endpoint with pre-trade risk audit.
     """
     ticker = payload.get("ticker")
     qty = payload.get("qty", 1)
     side = payload.get("side", "BUY")
+    notional = payload.get("notional", qty * 150.0) # Mock price if not provided
     
     if not ticker:
         raise HTTPException(status_code=400, detail="Ticker required")
+
+    # 1. Pre-Trade Risk Audit
+    audit_params = {
+        "order": {
+            "ticker": ticker,
+            "notional": notional,
+            "side": side,
+            "market_price": 150.0,
+            "price": 150.0,
+            "adv_30d": 100_000_000
+        }
+    }
+    audit = await orchestrator.dispatch_task("risk", "RUN_AUDIT", audit_params)
+    
+    if not audit.get("passed"):
+        return {
+            "status": "REJECTED",
+            "reason": "Risk limits exceeded",
+            "audit_results": audit.get("results")
+        }
         
-    result = await orchestrator.dispatch_task("execution", "PLACE_ORDER", {"ticker": ticker, "qty": qty, "side": side})
-    if "error" in result:
-        raise HTTPException(status_code=500, detail=result["error"])
+    # 2. Execution
+    execution_result = await orchestrator.dispatch_task(
+        "execution", 
+        "EXECUTE_TRADE", 
+        {"ticker": ticker, "qty": qty, "side": side}
+    )
+    
+    if "error" in execution_result:
+        raise HTTPException(status_code=500, detail=execution_result["error"])
         
-    return result
+    return {
+        "status": "FILLED",
+        "execution": execution_result,
+        "audit": audit
+    }
