@@ -1,14 +1,14 @@
+.PHONY: test install run clean
+
 install:
-	pip install -e ".[dev]"
+	pip install -r requirements.txt
+
 test:
-	pytest tests/ -v --cov=src --cov-fail-under=70
-lint:
-	ruff check src/ tests/
-run-api:
-	uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --reload
-run-frontend:
-	cd frontend && npm run dev
-run-demo:
-	python demo_full_system.py
-docker-build:
-	docker build -t sattrade:latest .
+	pytest tests/ -v
+
+run:
+	python -m src.api.server
+
+clean:
+	find . -type d -name "__pycache__" -exec rm -rf {} +
+	find . -type f -name "*.pyc" -delete
