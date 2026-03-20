@@ -1,5 +1,6 @@
 import pytest
-from src.risk.engine import RiskEngine, Position, GateResult
+import asyncio
+from src.risk.engine import RiskEngine, Position
 
 @pytest.mark.asyncio
 async def test_risk_engine_initialization():
@@ -11,17 +12,28 @@ async def test_risk_engine_initialization():
 
 @pytest.mark.asyncio
 async def test_position_pnl_calculation():
+    # pnl_pct logic in engine.py: mult * (current - entry) / entry
     p = Position(ticker="AAPL", qty=100, entry_price=150.0, current_price=165.0, side="LONG")
     assert p.notional == 16500.0
-    assert p.pnl_pct == 0.10
+    # mult=1, (165-150)/150 = 15/150 = 0.1
+    assert round(p.pnl_pct, 2) == 0.10
 
     p_short = Position(ticker="TSLA", qty=50, entry_price=200.0, current_price=180.0, side="SHORT")
     assert p_short.notional == 9000.0
-    assert p_short.pnl_pct == 0.10
+    # mult=-1, (180-200)/200 = -20/200 = -0.1. mult*-0.1 = 0.1
+    assert round(p_short.pnl_pct, 2) == 0.10
 
 @pytest.mark.asyncio
-async def test_kill_switch_activation():
+async def test_risk_engine_evaluate_trade():
     engine = RiskEngine()
-    # Mocking the _kill property or method is complex without redis, 
-    # but we can verify the API signature exists.
-    assert hasattr(engine, "evaluate_trade")
+    trade = {
+        "ticker": "AAPL",
+        "qty": 10,
+        "price": 150.0,
+        "side": "LONG",
+        "user_id": "test_user"
+    }
+    result = await engine.evaluate_trade(trade)
+    assert "overall" in result
+    assert "gates" in result
+    assert len(result["gates"]) == 9
