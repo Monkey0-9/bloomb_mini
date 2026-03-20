@@ -1,56 +1,77 @@
-"""
-SatTrade Macro Data via FRED CSVs
-"""
-import asyncio
+import httpx
+import pandas as pd
 import io
-import csv
 import structlog
-from typing import Dict, Any
+from datetime import datetime, timezone
 
-log = structlog.get_logger(__name__)
+log = structlog.get_logger()
 
-FRED_MAPPING = {
-    "US_CPI": "CPIAUCSL",
-    "US_PPI": "PPIFES",
-    "OIL_WTI": "DCOILWTICO",
-    "NATURAL_GAS": "DHHNGSP",
-    "US_10Y": "DGS10",
-    "FED_FUNDS": "FEDFUNDS",
-    "USD_INDEX": "DTWEXBGS",
+# FRED series available via free CSV download — no API key needed
+FRED_SERIES = {
+    "VIX":            ("VIXCLS",    "CBOE Volatility Index",          "index"),
+    "FED_FUNDS":      ("DFF",       "Federal Funds Rate",             "percent"),
+    "YIELD_10Y2Y":    ("T10Y2Y",    "10Y-2Y Treasury Spread",         "percent"),
+    "YIELD_10Y":      ("GS10",      "10-Year Treasury Rate",          "percent"),
+    "YIELD_2Y":       ("GS2",       "2-Year Treasury Rate",           "percent"),
+    "CPI_YOY":        ("CPIAUCSL",  "CPI All Urban Consumers",        "index"),
+    "WTI_OIL":        ("DCOILWTICO","WTI Crude Oil Price",            "usd/barrel"),
+    "BRENT_OIL":      ("DCOILBRENTEU","Brent Crude Oil Price",        "usd/barrel"),
+    "GOLD":           ("GOLDAMGBD228NLBM","Gold London Price AM",     "usd/troy_oz"),
+    "UNEMPLOYMENT":   ("UNRATE",    "US Unemployment Rate",           "percent"),
+    "USD_INDEX":      ("DTWEXBGS",  "USD Broad Dollar Index",         "index"),
+    "INDUSTRIAL_PROD":("INDPRO",    "Industrial Production Index",    "index"),
+    "BALTIC_DRY":     ("WWGDPBL01", "Baltic Dry Index Proxy",         "index"),
 }
 
-async def fetch_fred_csv(series_id: str) -> list:
+def fetch_fred_series(series_id: str, limit: int = 252) -> list[dict]:
+    """
+    Fetch a FRED data series via free CSV endpoint.
+    No API key needed. Returns last N observations.
+    """
     url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
     try:
-        import aiohttp
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=10) as resp:
-                if resp.status != 200:
-                    return []
-                text = await resp.text()
-                reader = csv.reader(io.StringIO(text))
-                headers = next(reader, None) # skip header
-                data = []
-                for row in reader:
-                    if len(row) == 2 and row[1] != '.':
-                        data.append({"date": row[0], "value": row[1]})
-                return data[-100:] # Last 100 periods
-    except Exception as exc:
-        log.warning("fred_fetch_failed", series=series_id, error=str(exc))
+        resp = httpx.get(url, timeout=20)
+        resp.raise_for_status()
+        df = pd.read_csv(io.StringIO(resp.text), na_values=".")
+        df.columns = ["date", "value"]
+        df = df.dropna().tail(limit)
+        return [
+            {"date": row["date"], "value": float(row["value"])}
+            for _, row in df.iterrows()
+        ]
+    except Exception as e:
+        log.error("fred_error", series_id=series_id, error=str(e))
         return []
 
-async def get_macro_data() -> Dict[str, Any]:
-    tasks = [fetch_fred_csv(fred_id) for fred_id in FRED_MAPPING.values()]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    
-    output = {}
-    for (key, fred_id), history in zip(FRED_MAPPING.items(), results):
-        if isinstance(history, Exception) or not history:
-            output[key] = {"latest_value": None, "latest_date": None, "history": []}
-        else:
-            output[key] = {
-                "latest_value": history[-1]["value"],
-                "latest_date": history[-1]["date"],
-                "history": history
+
+def get_macro_dashboard() -> dict:
+    """Get current values of all key macro indicators."""
+    result = {}
+    for key, (series_id, label, unit) in FRED_SERIES.items():
+        data = fetch_fred_series(series_id, limit=2)
+        if data:
+            current = data[-1]
+            prev = data[-2] if len(data) > 1 else current
+            change = current["value"] - prev["value"]
+            result[key] = {
+                "label": label,
+                "unit": unit,
+                "current_value": current["value"],
+                "previous_value": prev["value"],
+                "change": round(change, 4),
+                "date": current["date"],
+                "signal": _macro_signal(key, current["value"], prev["value"]),
             }
-    return output
+    return result
+
+
+def _macro_signal(key: str, current: float, prev: float) -> str:
+    """Simple directional signal from macro data."""
+    change = current - prev
+    if key == "VIX":
+        return "BEARISH_MARKET" if current > 25 else "NEUTRAL" if current > 18 else "BULLISH_MARKET"
+    elif key == "YIELD_10Y2Y":
+        return "RECESSION_RISK" if current < -0.5 else "NEUTRAL" if current < 0.5 else "EXPANSION"
+    elif key in ("WTI_OIL", "BRENT_OIL"):
+        return "BULLISH_ENERGY" if change > 1 else "BEARISH_ENERGY" if change < -1 else "NEUTRAL"
+    return "NEUTRAL"

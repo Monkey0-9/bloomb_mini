@@ -1,93 +1,186 @@
-import json
-import time
-import requests
-import asyncio
-import traceback
-from typing import List, Dict
+import httpx
+import structlog
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Literal
 
-# Cargo airlines: FedEx, UPS, DHL (DHK), Cargolux, ABX
-CARGO_CALLSIGNS = ('FDX', 'UPS', 'DHK', 'CLX', 'ABX', 'PAC', 'GTI')
+log = structlog.get_logger()
 
-# Known US/NATO Military Hex prefixes (approximate heuristics for OpenSky filtering if full ADSBx db missing)
-MILITARY_HEX_PREFIXES = ('ae', 'af', 'ad', '43', '3e', '3f') 
+# Known military ICAO24 hex prefixes by country
+# Source: ADSBexchange, OpenSky research papers, public OSINT databases
+MILITARY_HEX_PREFIXES = {
+    "AE": "US Military",    # USAF, USN, USMC, USA, USCG
+    "43": "UK Military",    # RAF, RN
+    "3A": "French Military", # Armée de l'Air
+    "84": "German Military", # Luftwaffe
+    "AMF": "NATO AWACS",
+    "4B": "Swiss Military",
+    "47": "Swedish Military",
+    "48": "Swedish Military",
+}
 
-def fetch_opensky_states() -> List[Dict]:
-    """Retrieve all aircraft currently tracked by OpenSky."""
+# Specific high-interest ICAO24 hex codes for world leader aircraft
+VIP_AIRCRAFT = {
+    "ae0434": {"name": "Air Force One (primary)", "country": "USA", "icon": "⭐"},
+    "ae04cc": {"name": "Air Force One (backup)", "country": "USA", "icon": "⭐"},
+    "43c6f5": {"name": "RAF Voyager (UK PM)", "country": "UK", "icon": "⭐"},
+    "3c6675": {"name": "German Air Force One", "country": "Germany", "icon": "⭐"},
+    "3a4ee7": {"name": "French Presidential", "country": "France", "icon": "⭐"},
+}
+
+# Cargo airline callsign prefixes for cargo aircraft filter
+CARGO_CALLSIGNS = {"FDX","UPS","DHK","CLX","ABX","GTI","ATN","PAC","NCB","BCS","KZR"}
+
+# Squawk codes of interest
+SQUAWK_ALERTS = {
+    "7700": {"level": "EMERGENCY", "description": "General emergency", "color": "#E24B4A"},
+    "7600": {"level": "RADIO FAILURE", "description": "Radio communication failure", "color": "#EF9F27"},
+    "7500": {"level": "HIJACK", "description": "Unlawful interference", "color": "#E24B4A"},
+    "7400": {"level": "DRONE LOST LINK", "description": "UAS lost link", "color": "#EF9F27"},
+}
+
+
+@dataclass
+class Aircraft:
+    icao24: str
+    callsign: str
+    origin_country: str
+    lat: float
+    lon: float
+    altitude_ft: int
+    speed_knots: int
+    heading: float
+    on_ground: bool
+    squawk: str
+    last_contact: datetime
+    aircraft_category: Literal["MILITARY","CARGO","COMMERCIAL","PRIVATE","GOVERNMENT","UNKNOWN"]
+    vip_info: dict | None
+    alert: dict | None
+
+
+def fetch_all_aircraft() -> list[Aircraft]:
+    """
+    Fetch all aircraft from OpenSky Network.
+    No API key. No registration. Completely free.
+    Rate limit: anonymous = 10s per request, free account = better rate.
+    """
     try:
-        response = requests.get('https://opensky-network.org/api/states/all', timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        
-        vectors = data.get('states', [])
-        results = []
-        for v in vectors:
-            if not v[5] or not v[6]: # Needs lat/lon
-                continue
-                
-            icao24 = str(v[0]).strip().lower()
-            callsign = str(v[1]).strip().upper() if v[1] else ""
-            longitude = float(v[5])
-            latitude = float(v[6])
-            altitude = v[7] if v[7] else 0
-            velocity = v[9] if v[9] else 0
-            heading = v[10] if v[10] else 0
-            squawk = str(v[14]).strip() if v[14] else ""
-            
-            # Cargo evaluation
-            is_cargo = any(callsign.startswith(c) for c in CARGO_CALLSIGNS)
-            
-            # Military evaluation
-            is_military = any(icao24.startswith(prefix) for prefix in MILITARY_HEX_PREFIXES)
-            
-            flight_type = None
-            if is_cargo:
-                flight_type = 'CARGO'
-            elif is_military:
-                flight_type = 'MILITARY'
-                
-            if flight_type:
-                results.append({
-                    'id': icao24,
-                    'callsign': callsign,
-                    'type': flight_type,
-                    'lat': latitude,
-                    'lon': longitude,
-                    'alt': altitude,
-                    'speed': velocity,
-                    'heading': heading,
-                    'squawk': squawk,
-                    'timestamp': time.time()
-                })
-                
-        return results
+        resp = httpx.get(
+            "https://opensky-network.org/api/states/all",
+            timeout=30,
+        )
+        if resp.status_code != 200:
+            log.warning("opensky_failed", status=resp.status_code)
+            return []
+
+        states = resp.json().get("states", []) or []
+        aircraft = []
+
+        for s in states:
+            if s[5] is None or s[6] is None:
+                continue  # skip if no position
+
+            icao24 = (s[0] or "").strip().lower()
+            callsign = (s[1] or "").strip().upper()
+            squawk = (s[15] or "").strip() if len(s) > 15 else ""
+
+            # Determine category
+            category = "UNKNOWN"
+            vip_info = None
+            alert = None
+
+            if icao24 in VIP_AIRCRAFT:
+                category = "GOVERNMENT"
+                vip_info = VIP_AIRCRAFT[icao24]
+            elif any(icao24.startswith(p.lower()) for p in MILITARY_HEX_PREFIXES):
+                category = "MILITARY"
+            elif any(callsign.startswith(p) for p in CARGO_CALLSIGNS):
+                category = "CARGO"
+
+            # Check squawk alerts
+            if squawk in SQUAWK_ALERTS:
+                alert = {
+                    "squawk": squawk,
+                    **SQUAWK_ALERTS[squawk],
+                    "callsign": callsign,
+                    "lat": s[6],
+                    "lon": s[5],
+                }
+
+            # Only include if MILITARY, CARGO, GOVERNMENT, or has squawk alert
+            # Filter out millions of commercial flights to keep data manageable
+            if category in ("MILITARY","CARGO","GOVERNMENT") or alert:
+                aircraft.append(Aircraft(
+                    icao24=icao24,
+                    callsign=callsign,
+                    origin_country=s[2] or "",
+                    lat=s[6],
+                    lon=s[5],
+                    altitude_ft=int((s[7] or 0) * 3.281),
+                    speed_knots=int((s[9] or 0) * 1.944),
+                    heading=float(s[10] or 0),
+                    on_ground=bool(s[8]),
+                    squawk=squawk,
+                    last_contact=datetime.fromtimestamp(s[4] or 0, tz=timezone.utc),
+                    aircraft_category=category,
+                    vip_info=vip_info,
+                    alert=alert,
+                ))
+
+        log.info("opensky_fetched",
+                 total=len(states),
+                 military=sum(1 for a in aircraft if a.aircraft_category=="MILITARY"),
+                 cargo=sum(1 for a in aircraft if a.aircraft_category=="CARGO"),
+                 squawk_alerts=sum(1 for a in aircraft if a.alert))
+        return aircraft
+
     except Exception as e:
-        print(f"[ADSB] Error fetching Opensky Data: {e}")
+        log.error("opensky_error", error=str(e))
         return []
 
-async def run_adsb_pipeline(update_callback):
-    """Async loop that polls Opensky every 10 seconds and pushes to websocket."""
-    print("[ADSB] Starting OpenSky pipeline for Military + Cargo flights...")
-    while True:
-        try:
-            flights = fetch_opensky_states()
-            if flights:
-                print(f"[ADSB] Found {len(flights)} priority aircraft (Military + Cargo).")
-                # Push back to central socket via callback
-                await update_callback({
-                    '_topic': 'flight_update',
-                    'count': len(flights),
-                    'flights': flights
-                })
-        except Exception:
-            traceback.print_exc()
-            
-        await asyncio.sleep(10)
 
-if __name__ == '__main__':
-    # Test script standalone execution
-    res = fetch_opensky_states()
-    mils = [f for f in res if f['type'] == 'MILITARY']
-    cargs = [f for f in res if f['type'] == 'CARGO']
-    print(f"Test poll completed: {len(mils)} Military, {len(cargs)} Cargo.")
-    if res:
-        print(json.dumps(res[0], indent=2))
+def get_squawk_alerts(aircraft: list[Aircraft]) -> list[dict]:
+    """Extract and return all active squawk alerts."""
+    return [a.alert for a in aircraft if a.alert is not None]
+
+
+def aircraft_to_geojson(aircraft: list[Aircraft]) -> dict:
+    """Convert aircraft list to GeoJSON for globe rendering."""
+    features = []
+    for a in aircraft:
+        color = (
+            "#FFD700" if a.aircraft_category == "GOVERNMENT"
+            else "#FF3D3D" if a.aircraft_category == "MILITARY"
+            else "#FF7A3D" if a.aircraft_category == "CARGO"
+            else "#FFFFFF"
+        )
+        features.append({
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [a.lon, a.lat]},
+            "properties": {
+                "icao24": a.icao24,
+                "callsign": a.callsign,
+                "country": a.origin_country,
+                "category": a.aircraft_category,
+                "altitude_ft": a.altitude_ft,
+                "speed_knots": a.speed_knots,
+                "heading": a.heading,
+                "on_ground": a.on_ground,
+                "squawk": a.squawk,
+                "alert": a.alert,
+                "vip": a.vip_info,
+                "color": color,
+                "size": 8 if a.aircraft_category == "GOVERNMENT" else 5,
+            },
+        })
+    return {
+        "type": "FeatureCollection",
+        "features": features,
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "counts": {
+            "military": sum(1 for a in aircraft if a.aircraft_category=="MILITARY"),
+            "cargo": sum(1 for a in aircraft if a.aircraft_category=="CARGO"),
+            "government": sum(1 for a in aircraft if a.aircraft_category=="GOVERNMENT"),
+            "squawk_alerts": sum(1 for a in aircraft if a.alert),
+        },
+    }

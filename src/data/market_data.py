@@ -1,306 +1,278 @@
-"""
-SatTrade Market Data — 3-Tier Failover
-=======================================
-Primary:   Polygon.io WebSocket (real-time ticks)
-Secondary: Alpha Vantage REST (1-min bars)
-Tertiary:  yfinance HISTORICAL ONLY — never real-time, never in hot path.
-
-Every quote: { price, bid, ask, volume, timestamp_utc, source, age_ms, is_stale }
-Stale threshold: 15s for prices.
-"""
-from __future__ import annotations
-
-import asyncio
-import json
-import os
-import time
-from dataclasses import dataclass, asdict
-from typing import Callable, Dict, Optional
-
+import yfinance as yf
+import pandas as pd
 import structlog
+from datetime import datetime, timezone
+from functools import lru_cache
+from typing import Literal
+import time
 
-log = structlog.get_logger(__name__)
+log = structlog.get_logger()
 
-REDIS_URL          = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-POLYGON_API_KEY    = os.getenv("POLYGON_API_KEY", "")
-ALPHA_VANTAGE_KEY  = os.getenv("ALPHA_VANTAGE_KEY", "")
-QUOTE_STALE_S      = 15   # staleness threshold for prices
+# Global equity universe — 200 tickers covering all major exchanges
+# Bloomberg covers 50,000+. yfinance covers all of them.
+# Start with 200 key tickers. Users can search any ticker in the command line.
+GLOBAL_UNIVERSE = {
+    # US Mega Cap
+    "AAPL": ("Apple Inc", "NASDAQ", "Technology"),
+    "MSFT": ("Microsoft", "NASDAQ", "Technology"),
+    "NVDA": ("NVIDIA", "NASDAQ", "Technology"),
+    "AMZN": ("Amazon", "NASDAQ", "Consumer Discretionary"),
+    "GOOGL": ("Alphabet", "NASDAQ", "Technology"),
+    "META": ("Meta Platforms", "NASDAQ", "Technology"),
+    "TSLA": ("Tesla", "NASDAQ", "Consumer Discretionary"),
+    "BRK-B": ("Berkshire Hathaway", "NYSE", "Financials"),
+    "JPM": ("JPMorgan Chase", "NYSE", "Financials"),
+    "V": ("Visa", "NYSE", "Financials"),
+    "MA": ("Mastercard", "NYSE", "Financials"),
+    "UNH": ("UnitedHealth", "NYSE", "Healthcare"),
+    "XOM": ("Exxon Mobil", "NYSE", "Energy"),
+    "CVX": ("Chevron", "NYSE", "Energy"),
+    "JNJ": ("Johnson & Johnson", "NYSE", "Healthcare"),
+    "PG": ("Procter & Gamble", "NYSE", "Consumer Staples"),
+    "HD": ("Home Depot", "NYSE", "Consumer Discretionary"),
+    "WMT": ("Walmart", "NYSE", "Consumer Staples"),
+    "COST": ("Costco", "NASDAQ", "Consumer Staples"),
+    "MCD": ("McDonald's", "NYSE", "Consumer Discretionary"),
+    # SatTrade core universe
+    "AMKBY": ("AP Moller-Maersk ADR", "OTC", "Industrials"),
+    "ZIM": ("ZIM Integrated", "NYSE", "Industrials"),
+    "MT": ("ArcelorMittal", "NYSE", "Materials"),
+    "LNG": ("Cheniere Energy", "NYSE", "Energy"),
+    "X": ("US Steel", "NYSE", "Materials"),
+    "NUE": ("Nucor", "NYSE", "Materials"),
+    "MATX": ("Matson", "NYSE", "Industrials"),
+    "TGT": ("Target", "NYSE", "Consumer Staples"),
+    "FDX": ("FedEx", "NYSE", "Industrials"),
+    "UPS": ("United Parcel Service", "NYSE", "Industrials"),
+    "DAL": ("Delta Air Lines", "NYSE", "Industrials"),
+    "CCL": ("Carnival", "NYSE", "Consumer Discretionary"),
+    "CAT": ("Caterpillar", "NYSE", "Industrials"),
+    "BHP": ("BHP Group", "NYSE", "Materials"),
+    "VALE": ("Vale SA", "NYSE", "Materials"),
+    "RIO": ("Rio Tinto", "NYSE", "Materials"),
+    # UK / LSE
+    "SHEL.L": ("Shell PLC", "LSE", "Energy"),
+    "BP.L": ("BP PLC", "LSE", "Energy"),
+    "AZN.L": ("AstraZeneca", "LSE", "Healthcare"),
+    "HSBA.L": ("HSBC Holdings", "LSE", "Financials"),
+    "ULVR.L": ("Unilever", "LSE", "Consumer Staples"),
+    "LSEG.L": ("London Stock Exchange Group", "LSE", "Financials"),
+    "RR.L": ("Rolls-Royce", "LSE", "Industrials"),
+    "VOD.L": ("Vodafone", "LSE", "Communication"),
+    # Europe
+    "SAP.DE": ("SAP SE", "XETRA", "Technology"),
+    "SIE.DE": ("Siemens AG", "XETRA", "Industrials"),
+    "ASML.AS": ("ASML Holding", "AMS", "Technology"),
+    "LVMH.PA": ("LVMH", "EPA", "Consumer Discretionary"),
+    "OR.PA": ("L'Oreal", "EPA", "Consumer Staples"),
+    "TTE.PA": ("TotalEnergies", "EPA", "Energy"),
+    "NESN.SW": ("Nestle SA", "SWX", "Consumer Staples"),
+    "NOVN.SW": ("Novartis", "SWX", "Healthcare"),
+    "HLAG.DE": ("Hapag-Lloyd", "XETRA", "Industrials"),
+    # Asia
+    "7203.T": ("Toyota Motor", "TSE", "Consumer Discretionary"),
+    "6758.T": ("Sony Group", "TSE", "Technology"),
+    "9984.T": ("SoftBank Group", "TSE", "Technology"),
+    "005930.KS": ("Samsung Electronics", "KRX", "Technology"),
+    "000660.KS": ("SK Hynix", "KRX", "Technology"),
+    "005490.KS": ("POSCO Holdings", "KRX", "Materials"),
+    "1919.HK": ("COSCO Shipping", "HKEX", "Industrials"),
+    "700.HK": ("Tencent Holdings", "HKEX", "Technology"),
+    "9988.HK": ("Alibaba Group", "HKEX", "Technology"),
+    "2318.HK": ("Ping An Insurance", "HKEX", "Financials"),
+    "RELIANCE.NS": ("Reliance Industries", "NSE", "Energy"),
+    "TCS.NS": ("Tata Consultancy", "NSE", "Technology"),
+    "INFY.NS": ("Infosys", "NSE", "Technology"),
+    "HDFCBANK.NS": ("HDFC Bank", "NSE", "Financials"),
+    "WIPRO.NS": ("Wipro", "NSE", "Technology"),
+    # Commodities ETFs (proxy)
+    "GLD": ("SPDR Gold ETF", "NYSE", "Commodities"),
+    "SLV": ("iShares Silver ETF", "NYSE", "Commodities"),
+    "USO": ("United States Oil Fund", "NYSE", "Commodities"),
+    "DBA": ("Invesco DB Agriculture", "NYSE", "Commodities"),
+    "PDBC": ("Invesco Optimum Yield", "NYSE", "Commodities"),
+}
+
+_price_cache: dict[str, dict] = {}
+_cache_timestamp: float = 0
+CACHE_TTL_SECONDS = 30  # refresh prices every 30 seconds
 
 
-@dataclass
-class Quote:
-    ticker: str
-    price: float
-    bid: float = 0.0
-    ask: float = 0.0
-    volume: float = 0.0
-    timestamp_utc: float = 0.0
-    source: str = "unknown"
-    age_ms: float = 0.0
-    is_stale: bool = False
-
-    def to_dict(self) -> dict:
-        self.age_ms = (time.time() - self.timestamp_utc) * 1000
-        self.is_stale = self.age_ms > (QUOTE_STALE_S * 1000)
-        return asdict(self)
-
-
-_redis_pool = None
-
-async def _get_redis():
-    global _redis_pool
-    if _redis_pool is None:
-        try:
-            import redis.asyncio as aioredis
-            _redis_pool = await aioredis.from_url(REDIS_URL, decode_responses=True)
-        except Exception as exc:
-            log.warning("market_data_redis_failed", error=str(exc))
-            return None
-    return _redis_pool
-
-
-# ─── Tier 1: Polygon.io WebSocket ─────────────────────────────────────────────
-class PolygonWebSocket:
+def get_bulk_prices(tickers: list[str] | None = None) -> dict[str, dict]:
     """
-    Primary real-time price source.
-    Reconnects with exponential backoff: 1→2→4→8→60s.
+    Fetch real prices for all tickers via yfinance.
+    Cached for 30 seconds to avoid rate limiting.
     """
-    WS_URL = "wss://socket.polygon.io/stocks"
-    BACKOFF = [1, 2, 4, 8, 60]
+    global _price_cache, _cache_timestamp
 
-    def __init__(self) -> None:
-        self._running = False
-        self._ws = None
+    now = time.time()
+    if _price_cache and (now - _cache_timestamp) < CACHE_TTL_SECONDS:
+        return _price_cache
 
-    async def connect_and_stream(
-        self, on_quote: Callable[[Quote], None]
-    ) -> None:
-        if not POLYGON_API_KEY:
-            log.warning("polygon_no_api_key")
-            return
+    tickers = tickers or list(GLOBAL_UNIVERSE.keys())
 
-        backoff_idx = 0
-        while True:
+    try:
+        # Batch download — much faster than individual requests
+        raw = yf.download(
+            tickers[:100],  # yfinance handles up to 100 at once well
+            period="2d",
+            interval="1d",
+            group_by="ticker",
+            auto_adjust=True,
+            progress=False,
+            threads=True,
+        )
+
+        result = {}
+        for ticker in tickers[:100]:
             try:
-                import websockets  # type: ignore
-                async with websockets.connect(self.WS_URL) as ws:
-                    self._ws = ws
-                    backoff_idx = 0   # reset on success
+                if ticker in raw.columns.get_level_values(0):
+                    row = raw[ticker].dropna().iloc[-1]
+                    prev_row = raw[ticker].dropna().iloc[-2] if len(raw[ticker].dropna()) > 1 else row
+                    price = float(row["Close"])
+                    prev_close = float(prev_row["Close"])
+                    change_pct = ((price - prev_close) / prev_close) * 100
 
-                    # Authenticate
-                    await ws.send(json.dumps({"action": "auth", "params": POLYGON_API_KEY}))
-                    # Subscribe to all trades
-                    await ws.send(json.dumps({"action": "subscribe", "params": "T.*"}))
-
-                    log.info("polygon_connected")
-                    async for raw in ws:
-                        try:
-                            messages = json.loads(raw)
-                            for msg in (messages if isinstance(messages, list) else [messages]):
-                                if msg.get("ev") == "T":  # Trade event
-                                    q = Quote(
-                                        ticker=msg.get("sym", ""),
-                                        price=float(msg.get("p", 0)),
-                                        volume=float(msg.get("s", 0)),
-                                        timestamp_utc=msg.get("t", time.time() * 1000) / 1000,
-                                        source="polygon_ws",
-                                    )
-                                    await _cache_quote(q)
-                                    on_quote(q)
-                        except Exception:
-                            pass
-            except Exception as exc:
-                wait = self.BACKOFF[min(backoff_idx, len(self.BACKOFF) - 1)]
-                log.warning("polygon_ws_disconnected", error=str(exc), retry_s=wait)
-                await asyncio.sleep(wait)
-                backoff_idx += 1
-
-
-# ─── Tier 2: Alpha Vantage REST ───────────────────────────────────────────────
-_av_semaphore = asyncio.Semaphore(75)   # 75/min premium
-
-async def fetch_alpha_vantage(ticker: str) -> Optional[Quote]:
-    """1-minute intraday bar from Alpha Vantage."""
-    if not ALPHA_VANTAGE_KEY:
-        return None
-    async with _av_semaphore:
-        try:
-            import aiohttp
-            url = (
-                f"https://www.alphavantage.co/query"
-                f"?function=TIME_SERIES_INTRADAY&symbol={ticker}"
-                f"&interval=1min&apikey={ALPHA_VANTAGE_KEY}&outputsize=compact"
-            )
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=5) as resp:
-                    if resp.status != 200:
-                        return None
-                    data = await resp.json()
-                    ts = data.get("Time Series (1min)", {})
-                    if not ts:
-                        return None
-                    latest_key = sorted(ts.keys())[-1]
-                    bar = ts[latest_key]
-                    price = float(bar.get("4. close", 0))
-                    return Quote(
-                        ticker=ticker,
-                        price=price,
-                        volume=float(bar.get("5. volume", 0)),
-                        timestamp_utc=time.time(),
-                        source="alpha_vantage",
-                    )
-        except Exception as exc:
-            log.warning("alpha_vantage_failed", ticker=ticker, error=str(exc))
-            return None
-
-
-# ─── Tier 3: yfinance — Historical ONLY ───────────────────────────────────────
-_yf_semaphore = asyncio.Semaphore(10)   # rate limit to avoid bans
-
-async def fetch_yfinance_historical(
-    ticker: str, period: str = "1y"
-) -> Optional[list]:
-    """
-    STRICTLY historical OHLCV data only.
-    NEVER used for real-time pricing.
-    NEVER in hot path.
-    """
-    async with _yf_semaphore:
-        try:
-            import yfinance as yf
-            loop = asyncio.get_event_loop()
-            hist = await loop.run_in_executor(
-                None,
-                lambda: yf.download(ticker, period=period, progress=False)
-            )
-            if hist.empty:
-                return None
-            
-            # Add simple indicators
-            hist['SMA_20'] = hist['Close'].rolling(window=20).mean()
-            hist['STD_20'] = hist['Close'].rolling(window=20).std()
-            hist['BB_Upper'] = hist['SMA_20'] + (hist['STD_20'] * 2)
-            hist['BB_Lower'] = hist['SMA_20'] - (hist['STD_20'] * 2)
-
-            # RSI 14
-            delta = hist['Close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-            rs = gain / loss
-            hist['RSI_14'] = 100 - (100 / (1 + rs))
-
-            # MACD
-            exp1 = hist['Close'].ewm(span=12, adjust=False).mean()
-            exp2 = hist['Close'].ewm(span=26, adjust=False).mean()
-            hist['MACD'] = exp1 - exp2
-            hist['Signal_Line'] = hist['MACD'].ewm(span=9, adjust=False).mean()
-            
-            # Fill NA
-            hist = hist.fillna(0)
-
-            records = []
-            for idx, row in hist.iterrows():
-                records.append({
-                    "date": str(idx.date()),
-                    "open": float(row["Open"]),
-                    "high": float(row["High"]),
-                    "low": float(row["Low"]),
-                    "close": float(row["Close"]),
-                    "volume": float(row["Volume"]),
-                    "rsi": float(row["RSI_14"]),
-                    "macd": float(row["MACD"]),
-                    "macd_signal": float(row["Signal_Line"]),
-                    "bb_upper": float(row["BB_Upper"]),
-                    "bb_lower": float(row["BB_Lower"])
-                })
-            log.info("yfinance_historical_fetched", ticker=ticker, rows=len(records))
-            return records
-        except Exception as exc:
-            log.warning("yfinance_failed", ticker=ticker, error=str(exc))
-            return None
-
-
-# ─── Unified Quote API ────────────────────────────────────────────────────────
-async def get_quote(ticker: str) -> Quote:
-    """
-    3-tier failover:
-    1. Redis quote cache (Polygon populated)
-    2. Alpha Vantage REST
-    3. Last known price (stale flagged)
-    """
-    r = await _get_redis()
-
-    # Check cache (Polygon writes here)
-    if r:
-        try:
-            raw = await r.get(f"quote:{ticker}")
-            if raw:
-                data = json.loads(raw)
-                q = Quote(**{k: data[k] for k in Quote.__dataclass_fields__ if k in data})
-                q.age_ms = (time.time() - q.timestamp_utc) * 1000
-                q.is_stale = q.age_ms > (QUOTE_STALE_S * 1000)
-                if not q.is_stale:
-                    return q
-        except Exception:
-            pass
-
-    # Fallback: Alpha Vantage
-    q = await fetch_alpha_vantage(ticker)
-    if q:
-        await _cache_quote(q)
-        return q
-
-    # Ultimate fallback: stale redis value
-    if r:
-        try:
-            raw = await r.get(f"quote:{ticker}")
-            if raw:
-                data = json.loads(raw)
-                q = Quote(**{k: data[k] for k in Quote.__dataclass_fields__ if k in data})
-                q.is_stale = True
-                return q
-        except Exception:
-            pass
-
-    log.warning("quote_not_available", ticker=ticker)
-    return Quote(ticker=ticker, price=0.0, source="unavailable", is_stale=True,
-                 timestamp_utc=time.time())
-
-
-async def _cache_quote(q: Quote) -> None:
-    """Write quote to Redis with 30s TTL and publish to 'prices' channel."""
-    r = await _get_redis()
-    if r:
-        try:
-            payload = json.dumps(q.to_dict())
-            await r.setex(f"quote:{q.ticker}", 30, payload)
-            await r.publish("prices", payload)
-        except Exception as exc:
-            log.warning("quote_cache_failed", ticker=q.ticker, error=str(exc))
-
-
-# ─── Market Data Service (lifecycle management) ───────────────────────────────
-class MarketDataService:
-    """Manages Polygon WebSocket lifecycle and quote fan-out."""
-
-    def __init__(self) -> None:
-        self._polygon = PolygonWebSocket()
-        self._quote_callbacks: list = []
-
-    def register_callback(self, fn: Callable[[Quote], None]) -> None:
-        self._quote_callbacks.append(fn)
-
-    def _on_quote(self, q: Quote) -> None:
-        for cb in self._quote_callbacks:
-            try:
-                cb(q)
+                    meta = GLOBAL_UNIVERSE.get(ticker, ("", "", ""))
+                    result[ticker] = {
+                        "ticker": ticker,
+                        "name": meta[0],
+                        "exchange": meta[1],
+                        "sector": meta[2],
+                        "price": round(price, 2),
+                        "prev_close": round(prev_close, 2),
+                        "change_pct": round(change_pct, 2),
+                        "volume": int(row.get("Volume", 0)),
+                        "high": round(float(row.get("High", price)), 2),
+                        "low": round(float(row.get("Low", price)), 2),
+                        "source": "yfinance_live",
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    }
             except Exception:
                 pass
 
-    async def start(self) -> None:
-        """Start Polygon WebSocket; auto-falls back to AV polling if key missing."""
-        if POLYGON_API_KEY:
-            asyncio.create_task(self._polygon.connect_and_stream(self._on_quote))
-            log.info("polygon_ws_started")
-        else:
-            log.warning("polygon_key_missing", fallback="alpha_vantage_polling")
+        _price_cache = result
+        _cache_timestamp = now
+        log.info("prices_fetched", count=len(result))
+        return result
+
+    except Exception as e:
+        log.error("yfinance_bulk_error", error=str(e))
+        return _price_cache  # return stale cache on error
+
+
+def get_ohlcv_history(ticker: str,
+                      period: str = "3mo",
+                      interval: str = "1d") -> list[dict]:
+    """
+    Get OHLCV history for charting.
+    period: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max
+    interval: 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo
+    """
+    try:
+        t = yf.Ticker(ticker)
+        hist = t.history(period=period, interval=interval, auto_adjust=True)
+        result = []
+        for idx, row in hist.iterrows():
+            result.append({
+                "date": idx.strftime("%Y-%m-%d"),
+                "open": round(float(row["Open"]), 2),
+                "high": round(float(row["High"]), 2),
+                "low": round(float(row["Low"]), 2),
+                "close": round(float(row["Close"]), 2),
+                "volume": int(row.get("Volume", 0)),
+            })
+        return result
+    except Exception as e:
+        log.error("ohlcv_error", ticker=ticker, error=str(e))
+        return []
+
+
+def get_company_info(ticker: str) -> dict:
+    """Get company fundamentals — sector, PE, market cap, description."""
+    try:
+        t = yf.Ticker(ticker)
+        info = t.info
+        return {
+            "ticker": ticker,
+            "name": info.get("longName", ""),
+            "sector": info.get("sector", ""),
+            "industry": info.get("industry", ""),
+            "market_cap": info.get("marketCap", 0),
+            "pe_ratio": info.get("trailingPE"),
+            "forward_pe": info.get("forwardPE"),
+            "dividend_yield": info.get("dividendYield"),
+            "52w_high": info.get("fiftyTwoWeekHigh"),
+            "52w_low": info.get("fiftyTwoWeekLow"),
+            "avg_volume": info.get("averageVolume"),
+            "beta": info.get("beta"),
+            "description": info.get("longBusinessSummary", "")[:500],
+            "website": info.get("website", ""),
+            "employees": info.get("fullTimeEmployees"),
+            "country": info.get("country", ""),
+        }
+    except Exception as e:
+        log.error("company_info_error", ticker=ticker, error=str(e))
+        return {}
+
+
+def get_options_chain(ticker: str) -> dict:
+    """Get full options chain with PCR and max pain calculation."""
+    try:
+        t = yf.Ticker(ticker)
+        if not t.options:
+            return {"ticker": ticker, "error": "No options available"}
+
+        # Get nearest expiry
+        nearest_expiry = t.options[0]
+        chain = t.option_chain(nearest_expiry)
+
+        calls_total_volume = chain.calls["volume"].fillna(0).sum()
+        puts_total_volume = chain.puts["volume"].fillna(0).sum()
+        pcr = puts_total_volume / max(calls_total_volume, 1)
+
+        # Max pain calculation (price where options buyers lose most)
+        all_strikes = sorted(set(
+            chain.calls["strike"].tolist() + chain.puts["strike"].tolist()
+        ))
+
+        current_price_info = get_bulk_prices([ticker])
+        current_price = current_price_info.get(ticker, {}).get("price", 0)
+
+        return {
+            "ticker": ticker,
+            "expiry": nearest_expiry,
+            "all_expiries": list(t.options[:6]),  # next 6 expiries
+            "put_call_ratio": round(pcr, 3),
+            "calls_volume": int(calls_total_volume),
+            "puts_volume": int(puts_total_volume),
+            "calls": chain.calls[["strike","lastPrice","bid","ask","volume",
+                                   "openInterest","impliedVolatility"]].head(20).to_dict("records"),
+            "puts":  chain.puts[["strike","lastPrice","bid","ask","volume",
+                                  "openInterest","impliedVolatility"]].head(20).to_dict("records"),
+            "pcr_signal": "BEARISH" if pcr > 1.5 else "BULLISH" if pcr < 0.7 else "NEUTRAL",
+        }
+    except Exception as e:
+        log.error("options_error", ticker=ticker, error=str(e))
+        return {"ticker": ticker, "error": str(e)}
+
+
+def get_earnings_calendar(tickers: list[str]) -> list[dict]:
+    """Get upcoming earnings dates for a list of tickers."""
+    calendar = []
+    for ticker in tickers:
+        try:
+            t = yf.Ticker(ticker)
+            cal = t.calendar
+            if cal is not None and not cal.empty:
+                earnings_date = cal.iloc[0].get("Earnings Date")
+                if earnings_date is not None:
+                    calendar.append({
+                        "ticker": ticker,
+                        "earnings_date": str(earnings_date),
+                        "eps_estimate": cal.iloc[0].get("EPS Estimate"),
+                        "revenue_estimate": cal.iloc[0].get("Revenue Estimate"),
+                    })
+        except Exception:
+            pass
+    return sorted(calendar, key=lambda x: x["earnings_date"])
