@@ -108,6 +108,20 @@ const PortfolioView = () => {
   const totalPnLPct = (totalPnL / totalCost) * 100;
   const portfolioDelta = positions.reduce((a, p) => a + (p.greeks.delta * (p.mktValue/totalMV)), 0);
 
+  const [riskData, setRiskData] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchRisk = async () => {
+      try {
+        const resp = await fetch('/api/risk/status');
+        if (resp.ok) setRiskData(await resp.json());
+      } catch (e) { console.error('Risk fetch failed', e); }
+    };
+    fetchRisk();
+    const iv = setInterval(fetchRisk, 10000);
+    return () => clearInterval(iv);
+  }, []);
+
   return (
     <div className="flex-1 flex flex-col bg-void overflow-hidden font-mono text-accent-primary select-none w-full tabular-nums">
 
@@ -122,7 +136,17 @@ const PortfolioView = () => {
           </div>
         </div>
         <div className="flex items-center gap-4">
-            <span className="text-[10px] text-neutral font-mono">TFT MONTE CARLO VaR: <span className="text-bear font-bold">-$42,105 (99%)</span></span>
+            <span className="text-[10px] text-neutral font-mono uppercase">
+                TFT {riskData?.engine || 'Monte Carlo'} VaR: 
+                <span className={`font-bold ml-1 ${riskData?.var_99_1d_pct > 2 ? 'text-bear' : 'text-bull'}`}>
+                    {riskData?.var_99_1d_pct ? `${riskData.var_99_1d_pct}%` : '---'}
+                </span>
+                <span className="text-neutral ml-2">CVaR: </span>
+                <span className="text-accent-primary font-bold ml-1">{riskData?.cvar_99_1d_pct ? `${riskData.cvar_99_1d_pct}%` : '---'}</span>
+            </span>
+            <div className={`px-2 py-0.5 text-[9px] font-bold uppercase transition-colors ${riskData?.kill_switch === 'ARMED' ? 'bg-bull text-void' : 'bg-bear text-void animate-pulse'}`}>
+                {riskData?.kill_switch || 'UNARMED'}
+            </div>
         </div>
       </div>
 

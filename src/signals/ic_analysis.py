@@ -87,12 +87,12 @@ class ICAnalysisPipeline:
                     
                     result.ic_by_regime = {"LOW_VIX": float(ic_low), "HIGH_VIX": float(ic_high)}
                 else:
-                    result.ic_by_regime = {"LOW_VIX": 0.04, "HIGH_VIX": 0.02}
+                    result.ic_by_regime = {"LOW_VIX": 0.0, "HIGH_VIX": 0.0}
             else:
-                result.ic_by_regime = {"LOW_VIX": 0.04, "HIGH_VIX": 0.02}
+                result.ic_by_regime = {"LOW_VIX": 0.0, "HIGH_VIX": 0.0}
         except Exception as e:
             self.logger.error(f"Error computing regime IC: {e}")
-            result.ic_by_regime = {"LOW_VIX": 0.03, "HIGH_VIX": 0.01}
+            result.ic_by_regime = {"LOW_VIX": 0.0, "HIGH_VIX": 0.0}
 
 
         # Stage 3: Multivariate Regression (Corrected for bias)

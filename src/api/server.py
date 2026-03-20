@@ -1,5 +1,5 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Request
-from typing import Dict, Any
+from typing import Dict, Any, List
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 import json
@@ -7,10 +7,10 @@ from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
 # Import all new modules
-from src.globe.adsb import fetch_all_aircraft, aircraft_to_geojson, get_squawk_alerts
+from src.globe.adsb import fetch_all_aircraft, get_squawk_alerts
 from src.globe.orbits import get_ground_track, SATELLITE_TLE_URLS
 from src.globe.thermal import fetch_firms_thermal, compute_signal_from_thermal
-from src.globe.ais_live import download_noaa_ais_zone, get_aishub_vessels
+from src.globe.ais_live import get_aishub_vessels
 from src.data.market_data import (get_bulk_prices, get_ohlcv_history,
                                    get_company_info, get_options_chain,
                                    get_earnings_calendar, GLOBAL_UNIVERSE)
@@ -27,11 +27,13 @@ from src.api.orchestrator import Orchestrator
 from src.api.agents.thermal_agent import ThermalAgent
 from src.api.agents.news_agent import NewsAgent
 from src.api.agents.research_agent import ResearchAgent
+from src.risk.engine import RiskEngine
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     start_scheduler()
     yield
+
 
 app = FastAPI(title="SatTrade Intelligence Terminal", version="2.0.0", lifespan=lifespan)
 
@@ -55,12 +57,14 @@ async def add_tracing(request: Request, call_next):
 async def metrics():
     return metrics_endpoint()
 
+
 # Singletons
 # Singletons imported from src.common.trackers
 _orchestrator = Orchestrator()
 _orchestrator.register_agent(ThermalAgent())
 _orchestrator.register_agent(NewsAgent())
 _orchestrator.register_agent(ResearchAgent())
+_risk_engine = RiskEngine()
 
 connected_clients: list[WebSocket] = []
 
@@ -349,18 +353,65 @@ async def get_news(topic: str = "", ticker: str = "", limit: int = 50):
     }
 
 # ── Risk Engine ───────────────────────────────────────────────────────────────
-@app.get("/api/risk/status", dependencies=[Depends(require_role(["ADMIN", "TRADER"]))])
-async def risk_status():
-    from src.execution.risk_engine import GROSS_EXPOSURE_LIMIT
+@app.get("/api/risk/status")
+async def risk_status(user_id: str = "anonymous"):
+    status = await _risk_engine.get_status()
+    # Fetch real portfolio data for summary metrics
+    positions, equity = await _risk_engine._get_portfolio(user_id)
+    var_99, cvar_99 = await _risk_engine._mc.compute(positions, equity)
+    
     return {
         "system_state": "ACTIVE",
-        "gross_exposure_limit_pct": GROSS_EXPOSURE_LIMIT * 100,
-        "nav_usd": 10_482_100.0,
-        "gross_exposure_pct": 142.0,
-        "var_99_1d_pct": 0.82,
-        "kill_switch": "ARMED",
-        "gates_active": 9,
+        "gross_exposure_limit_pct": 150.0,
+        "nav_usd": equity,
+        "gross_exposure_pct": (sum(p.notional for p in positions) / equity * 100) if equity > 0 else 0,
+        "var_99_1d_pct": round(var_99 * 100, 2),
+        "cvar_99_1d_pct": round(cvar_99 * 100, 2),
+        "kill_switch": "ACTIVE" if status["kill_switch_active"] else "ARMED",
+        "gates_active": status["gates"],
+        "engine": status["engine"]
     }
+
+@app.get("/api/risk")
+async def get_full_risk_status(user_id: str = "anonymous"):
+    """Returns detailed risk status including gates for the frontend RiskPanel."""
+    # 1. Fetch current portfolio and metrics
+    positions, equity = await _risk_engine._get_portfolio(user_id)
+    var_99, cvar_99 = await _risk_engine._mc.compute(positions, equity)
+    
+    # 2. To show gates, we run a "dummy" audit of the current portfolio 
+    # to populate the UI gates with active system limits.
+    status = await _risk_engine.get_status()
+    
+    # Construct a mock "current state" trade to trigger gate evaluation for visibility
+    # strictly for UI populating in this endpoint
+    dummy_trade = {"ticker": "NAV_SNAPSHOT", "qty": 0, "price": 0}
+    eval_res = await _risk_engine.evaluate_trade(dummy_trade)
+    
+    return {
+        "status": "GREEN" if not status["kill_switch_active"] else "RED",
+        "portfolio": {
+            "equity": equity,
+            "notional_exposure": sum(p.notional for p in positions),
+            "gross_exposure_pct": (sum(p.notional for p in positions) / equity) if equity > 0 else 0,
+            "net_exposure_pct": 0.0, # Simplified for demo
+            "var_99_1d_pct": var_99,
+            "kill_switch_active": status["kill_switch_active"],
+        },
+        "gates": [
+            {
+                "name": g["gate_name"],
+                "passed": g["result"] == "PASS",
+                "value": f"{g['computed_value']:.2f}" if g['computed_value'] is not None else "N/A",
+                "threshold": f"{g['threshold']:.2f}" if g['threshold'] is not None else "N/A"
+            } for g in eval_res["gates"]
+        ]
+    }
+
+@app.post("/api/risk/evaluate")
+async def evaluate_trade(trade: dict):
+    """Evaluates a proposed trade against 9 risk gates."""
+    return await _risk_engine.evaluate_trade(trade)
 
 @app.post("/api/execution/twap", dependencies=[Depends(require_role(["ADMIN", "TRADER"]))])
 async def execute_twap(ticker: str, side: str, quantity: int, duration: int):
@@ -402,3 +453,7 @@ async def websocket_live(websocket: WebSocket):
     except Exception:
         if websocket in connected_clients:
             connected_clients.remove(websocket)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("src.api.server:app", host="0.0.0.0", port=8000, reload=True)

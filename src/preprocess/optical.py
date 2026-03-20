@@ -67,8 +67,16 @@ def correct_atmospheric_6s(
             )
     except Exception as e:
         # Fallback to DOS (Dark Object Subtraction) if 6S fails
-        print(f"6S Correction failed: {e}. Falling back to TOA.")
-        corrections = [(1.0, 0.0, 0.0) for _ in SENTINEL2_BANDS]
+        print(f"6S Correction failed: {e}. Falling back to DOS.")
+        with rasterio.open(input_path) as src:
+            corrections = []
+            for i in range(1, src.count + 1):
+                # Calculate 1% percentile as the dark object offset
+                band_data = src.read(i)
+                dark_pixel = np.percentile(band_data[band_data > 0], 1) / 10000.0
+                # In DOS: result = (TOA - dark_pixel)
+                # We map this to (xa*TOA - xb) where xa=1, xb=dark_pixel, xc=0
+                corrections.append((1.0, float(dark_pixel), 0.0))
     with rasterio.open(input_path) as src:
         profile = src.profile.copy()
         n_bands = min(src.count, len(SENTINEL2_BANDS))

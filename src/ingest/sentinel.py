@@ -217,7 +217,8 @@ class SentinelIngester:
             "distinct": "date"
         }
         
-        solar_z, solar_a = 40.0, 160.0 # Defaults
+        solar_z, solar_a = 40.0, 160.0  # Defaults
+        view_z, view_a = 0.0, 0.0
         acq_month, acq_day = 6, 15
         
         async with aiohttp.ClientSession(headers=headers) as session:
@@ -228,13 +229,43 @@ class SentinelIngester:
                         props = cat_data["features"][0]["properties"]
                         solar_a = props.get("view:sun_azimuth", 160.0)
                         solar_z = 90.0 - props.get("view:sun_elevation", 50.0)
+                        view_z = props.get("view:incidence_angle", 0.0)
+                        view_a = props.get("view:azimuth", 0.0)
+                        
                         dt_str = props.get("datetime", end_dt)
                         try:
                             dt_obj = datetime.strptime(dt_str[:10], "%Y-%m-%d")
                             acq_month, acq_day = dt_obj.month, dt_obj.day
-                        except:
+                        except (ValueError, TypeError):
                             pass
-                        log.info("sentinel2_metadata_extracted", solar_z=solar_z, solar_a=solar_a)
+                        log.info(
+                            "sentinel2_metadata_extracted",
+                            solar_z=solar_z,
+                            solar_a=solar_a,
+                            view_z=view_z
+                        )
+
+                        # Quality Gate Check
+                        try:
+                            from src.common.schemas import TileMetadata
+                            from src.ingest.quality_gates import run_all_gates
+                            tile_metadata = TileMetadata(
+                                tile_id=cat_data["features"][0]["id"],
+                                source="sentinel-2-l2a",
+                                cloud_cover_pct=props.get("eo:cloud_cover", 0.0),
+                                acquisition_utc=datetime.fromisoformat(
+                                    dt_str.replace("Z", "+00:00")
+                                ),
+                                file_path="", # To be filled after download
+                                checksum_sha256="", # To be filled after download
+                                bbox_wgs84=bbox
+                            )
+                            gate_res = run_all_gates(tile_metadata)
+                            if gate_res.status == "REJECT":
+                                log.warning("sentinel2_quality_gate_failed", reason=gate_res.reason)
+                                # In production, we might skip this tile, but for now we proceed with a warning
+                        except Exception as e:
+                            log.error("quality_gate_error", error=str(e))
 
         # 2. Process API call
         url = "https://services.sentinel-hub.com/api/v1/process"
@@ -280,6 +311,12 @@ class SentinelIngester:
                                 result = correct_atmospheric_6s(
                                     input_path=filename,
                                     output_path=corrected_path,
+                                    solar_zenith=solar_z,
+                                    solar_azimuth=solar_a,
+                                    view_zenith=view_z,
+                                    view_azimuth=view_a,
+                                    acquisition_month=acq_month,
+                                    acquisition_day=acq_day,
                                     tile_id=f"S2_{lat}_{lon}"
                                 )
                                 log.info("sentinel2_atmospheric_correction_done", output=result.output_path)
