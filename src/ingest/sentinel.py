@@ -11,8 +11,10 @@ import asyncio
 import json
 import os
 import time
+from datetime import datetime
 from typing import Optional
 
+import aiohttp
 import structlog
 
 log = structlog.get_logger(__name__)
@@ -59,7 +61,6 @@ class SentinelIngester:
         }
 
         try:
-            import aiohttp
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, data=payload, timeout=10) as resp:
                     if resp.status == 200:
@@ -125,7 +126,6 @@ class SentinelIngester:
 
         async with self._sem:
             try:
-                import aiohttp
                 async with aiohttp.ClientSession(headers=headers) as session:
                     async with session.post(url, json=payload, timeout=12) as resp:
                         if resp.status == 200:
@@ -201,6 +201,42 @@ class SentinelIngester:
         }
         '''
         
+        headers = {
+            "Authorization": f"Bearer {self._auth_token}",
+            "Content-Type": "application/json",
+            "Accept": "image/tiff"
+        }
+
+        # 1. Search Catalog for Metadata (Solar Zenith, etc.)
+        catalog_url = "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/search"
+        cat_payload = {
+            "bbox": bbox,
+            "datetime": f"{start_dt}/{end_dt}",
+            "collections": ["sentinel-2-l2a"],
+            "limit": 1,
+            "distinct": "date"
+        }
+        
+        solar_z, solar_a = 40.0, 160.0 # Defaults
+        acq_month, acq_day = 6, 15
+        
+        async with aiohttp.ClientSession(headers=headers) as session:
+            async with session.post(catalog_url, json=cat_payload) as cat_resp:
+                if cat_resp.status == 200:
+                    cat_data = await cat_resp.json()
+                    if cat_data.get("features"):
+                        props = cat_data["features"][0]["properties"]
+                        solar_a = props.get("view:sun_azimuth", 160.0)
+                        solar_z = 90.0 - props.get("view:sun_elevation", 50.0)
+                        dt_str = props.get("datetime", end_dt)
+                        try:
+                            dt_obj = datetime.strptime(dt_str[:10], "%Y-%m-%d")
+                            acq_month, acq_day = dt_obj.month, dt_obj.day
+                        except:
+                            pass
+                        log.info("sentinel2_metadata_extracted", solar_z=solar_z, solar_a=solar_a)
+
+        # 2. Process API call
         url = "https://services.sentinel-hub.com/api/v1/process"
         payload = {
             "input": {
@@ -222,11 +258,6 @@ class SentinelIngester:
                 "responses": [{"identifier": "default", "format": {"type": "image/tiff"}}]
             },
             "evalscript": evalscript
-        }
-        headers = {
-            "Authorization": f"Bearer {self._auth_token}",
-            "Content-Type": "application/json",
-            "Accept": "image/tiff"
         }
 
         async with self._sem:

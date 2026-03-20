@@ -13,12 +13,15 @@ import RawTerminalMode from './views/RawTerminalMode';
 import ResearchView from './views/ResearchView';
 import EducationView from './views/EducationView';
 import FeedView from './views/FeedView';
-import PlaceholderView from './views/PlaceholderView';
 import EconomicsView from './views/EconomicsView';
 import EarningsView from './views/EarningsView';
 import PortfolioView from './views/PortfolioView';
 import LaunchpadView from './views/LaunchpadView';
 import NewsHubView from './views/NewsHubView';
+import SettingsView from './views/SettingsView';
+import HelpView from './views/HelpView';
+import AlertsView from './views/AlertsView';
+import WorkflowView from './views/WorkflowView';
 import { useEquityStore } from './store/equityStore';
 
 // Components
@@ -26,247 +29,136 @@ import Masthead from './components/Masthead';
 import NavRail from './components/NavRail';
 import SignalPanel from './components/SignalPanel';
 import WatchlistPanel from './components/WatchlistPanel';
-import RiskPanel from './components/RiskPanel';
-import DataStrip from './components/DataStrip';
-import AlertHub from './components/AlertHub';
-import ExplainMode from './components/ExplainMode';
-import NewsTicker from './components/NewsTicker';
-import CommandPalette from './components/CommandPalette';
-import MissionControlPanel from './components/MissionControlPanel';
+import GlobalGlobe from './components/GlobalGlobe';
+import TerminalOutput from './components/TerminalOutput';
 
-const CommandLine = () => {
-  const { setSelectedView } = useTerminalStore();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [cmdHistory, setCmdHistory] = useState<string[]>([]);
-  const [histPos, setHistPos]       = useState(-1);
+const UI_LAYOUT = {
+  activeView: 'satellite_feed' as ViewType,
+  sidebarExpanded: true,
+};
 
+export default function TerminalApp() {
+  const { selectedView, sidebarExpanded, setView } = useTerminalStore();
+  const [command, setCommand] = useState('');
+  const terminalRef = useRef<HTMLDivElement>(null);
+
+  // Keyboard layout for Terminal Parity
   useEffect(() => {
-    const focus = (e: KeyboardEvent) => {
-      if (e.key === '/' || e.key === ':') {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === 'k') {
         e.preventDefault();
-        inputRef.current?.focus();
+        // Focus search/command bar
       }
     };
-    window.addEventListener('keydown', focus);
-    return () => window.removeEventListener('keydown', focus);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    const val = e.currentTarget.value.trim();
-    if (e.key === 'Enter' && val) {
-      // Slash NAV commands
-      if (val.startsWith('/NAV ')) {
-        setSelectedView(val.replace('/NAV ', '').trim().toLowerCase() as ViewType);
-      } else {
-        executeCommand(val);
-      }
-      setCmdHistory(prev => [val, ...prev.slice(0, 49)]);
-      setHistPos(-1);
-      e.currentTarget.value = '';
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      const next = Math.min(histPos + 1, cmdHistory.length - 1);
-      setHistPos(next);
-      if (inputRef.current) inputRef.current.value = cmdHistory[next] ?? '';
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      const next = Math.max(histPos - 1, -1);
-      setHistPos(next);
-      if (inputRef.current) inputRef.current.value = next === -1 ? '' : cmdHistory[next];
-    } else if (e.key === 'Escape') {
-      if (inputRef.current) inputRef.current.value = '';
-      inputRef.current?.blur();
+  const handleCommand = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!command.trim()) return;
+    
+    // Virtual Engine Execution
+    await executeCommand(command);
+    
+    setCommand('');
+  };
+
+  const renderView = () => {
+    switch (selectedView) {
+      case 'world':
+        return <WorldView />;
+      case 'charts':
+        return <ChartView />;
+      case 'matrix':
+        return <SignalMatrix />;
+      case 'satellite_feed':
+        return <SatelliteFeed />;
+      case 'global_equities':
+        return <GlobalEquitiesView />;
+      case 'terminal':
+        return <RawTerminalMode />;
+      case 'research':
+        return <ResearchView />;
+      case 'education':
+        return <EducationView />;
+      case 'news':
+        return <NewsHubView />;
+      case 'feed':
+        return <FeedView />;
+      case 'economics':
+        return <EconomicsView />;
+      case 'earnings':
+        return <EarningsView />;
+      case 'portfolio':
+        return <PortfolioView />;
+      case 'launchpad':
+        return <LaunchpadView />;
+      case 'alerts':
+        return <AlertsView />;
+      case 'workflow':
+        return <WorkflowView />;
+      case 'settings':
+        return <SettingsView />;
+      case 'help':
+        return <HelpView />;
+      default:
+        return <SatelliteFeed />;
     }
   };
 
   return (
-    <div
-      className="h-8 flex items-center px-4 shrink-0 z-50 relative bg-[var(--bg-card)] border-t border-[var(--border-subtle)]"
-    >
-      <span
-        className="font-mono text-[11px] font-bold mr-3 uppercase text-[var(--neon-bull)]"
-      >SATTRADE&gt;</span>
-      <input
-        ref={inputRef}
-        type="text"
-        onKeyDown={handleKeyDown}
-        className="flex-1 bg-transparent border-none outline-none font-mono text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)]"
-        placeholder="Ticker · /NAV charts · /SIGNAL VALE · Cmd+K for AI"
-      />
-      <div
-        className="flex gap-4 font-mono text-[9px] uppercase tracking-widest hidden md:flex text-[var(--text-secondary)]"
-      >
-        <span>↑↓ history</span>
-        <span>·</span>
-        <span>Cmd+K AI</span>
-        <span>·</span>
-        <span>ESC clear</span>
+    <div className="flex h-screen w-screen bg-void text-text-1 overflow-hidden font-inter selection:bg-accent-primary selection:text-black">
+      {/* GLOBAL BACKGROUND GLOBE (GPU ACCELERATED) */}
+      <div className="fixed inset-0 z-0 pointer-events-none opacity-40">
+        <GlobalGlobe />
       </div>
-    </div>
-  );
-};
 
-const App = () => {
-  const { selectedView } = useTerminalStore();
-  const { signals, fetchSignals } = useSignalStore();
-  const { fetchVessels } = useVesselStore();
-  const { fetchFlights } = useFlightStore();
-  const { fetchEquities } = useEquityStore();
-  const [isExplainOpen, setIsExplainOpen] = useState(false);
-  const [isPaletteOpen, setIsPaletteOpen] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
+      <NavRail />
 
-  // ─── WebSocket Hub ────────────────────────────────────────────────────────
-  const connectWS = useCallback(() => {
-    const token = localStorage.getItem('token');
-    const wsUrl = `ws://localhost:8000/ws${token ? `?token=${token}` : ''}`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      console.log('WS: Connected to Institutional Hub');
-      // Subscribe to all topics immediately
-      ws.send(JSON.stringify({
-        action: 'subscribe',
-        topics: ['vessel', 'flight', 'signal', 'alerts']
-      }));
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        // Route to appropriate store
-        switch (msg._topic) {
-          case 'vessel':
-            useVesselStore.getState().handleWSUpdate(msg);
-            break;
-          case 'flight':
-            useFlightStore.getState().handleWSUpdate(msg);
-            break;
-          case 'signal':
-            useSignalStore.getState().handleWSUpdate(msg);
-            break;
-          case 'alerts':
-            // AlertHub will capture this via custom event if needed
-            window.dispatchEvent(new CustomEvent('terminal-alert', { detail: msg }));
-            break;
-        }
-      } catch (e) {
-        console.error('WS: Parse Error', e);
-      }
-    };
-
-    ws.onclose = () => {
-      console.warn('WS: Disconnected. Reconnecting in 3s...');
-      setTimeout(connectWS, 3000);
-    };
-
-    ws.onerror = (err) => console.error('WS: Socket Error', err);
-  }, []);
-
-  useEffect(() => {
-    connectWS();
-    return () => {
-      wsRef.current?.close();
-    };
-  }, [connectWS]);
-
-  // ─── Initial Load ─────────────────────────────────────────────────────────
-  useEffect(() => {
-    fetchSignals();
-    fetchVessels();
-    fetchFlights();
-    fetchEquities();
-  }, [fetchSignals, fetchVessels, fetchFlights, fetchEquities]);
-
-  // Cmd+K → CommandPalette
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setIsPaletteOpen(prev => !prev);
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
-
-  useEffect(() => {
-    const handleExplain = (e: any) => {
-        if (e.detail?.command === 'TEACH ME') setIsExplainOpen(true);
-    };
-    window.addEventListener('terminal-command', handleExplain as any);
-    return () => window.removeEventListener('terminal-command', handleExplain as any);
-  }, []);
-
-  return (
-    <div 
-      className="flex flex-col h-screen w-screen overflow-hidden selection:bg-[var(--neon-signal)]/20"
-      style={{ backgroundColor: 'var(--bg-base)' }}
-    >
-      {/* ZONE A: MASTHEAD */}
-      <Masthead />
-      
-      <div className="flex flex-1 overflow-hidden relative">
-        {/* ZONE B: NAV RAIL */}
-        <NavRail />
+      <main className="flex-1 flex flex-col min-w-0 z-10 relative">
+        <Masthead />
         
-        {/* ZONE C: MAIN VIEWPORT */}
-        <div className="flex-1 flex flex-col min-w-0 relative">
-           <div 
-             className={`flex-1 relative flex overflow-hidden border-b border-[var(--border-subtle)] ${['world', 'feed'].includes(selectedView) ? 'osint-theme' : ''}`}
-             style={{ backgroundColor: 'var(--bg-base)' }}
-           >
-              {selectedView === 'world'     && <WorldView />}
-              {selectedView === 'charts'    && <ChartView />}
-              {selectedView === 'matrix'    && <SignalMatrix />}
-              {selectedView === 'feed'      && <FeedView />}
-              {selectedView === 'portfolio' && <PortfolioView />}
-              {selectedView === 'economics' && <EconomicsView />}
-              {selectedView === 'earnings'  && <EarningsView />}
-              {selectedView === 'terminal'  && <RawTerminalMode />}
-              {selectedView === 'research'  && <ResearchView />}
-              {selectedView === 'settings'  && <PlaceholderView title="Terminal Settings" />}
-              {selectedView === 'help'      && <PlaceholderView title="Documentation" />}
-              {selectedView === 'education' && <EducationView />}
-              {selectedView === 'launchpad' && <LaunchpadView />}
-              {selectedView === 'news'      && <NewsHubView />}
-              
-              <ExplainMode 
-                isOpen={isExplainOpen} 
-                onClose={() => setIsExplainOpen(false)} 
-                view={selectedView as any} 
-              />
-           </div>
-           
-           {/* ZONE F: DATA STRIP */}
-           <DataStrip />
+        <div className="flex-1 flex min-h-0">
+          <div className="flex-1 flex flex-col min-w-0 border-r border-border-1 bg-void/40 backdrop-blur-sm">
+            <div className="flex-1 min-h-0 overflow-hidden relative">
+              {renderView()}
+            </div>
 
-           {/* ZONE G: COMMAND LINE */}
-           <CommandLine />
+            {/* COMMAND BAR — Bloomberg Command Line Interface */}
+            <div className="h-12 bg-surface-base border-t border-border-1 flex items-center px-4 gap-4 shrink-0 shadow-2xl">
+              <div className="flex items-center gap-2 text-accent-primary animate-pulse">
+                <span className="type-data-xs font-bold font-mono">SAT-OS {'>'}</span>
+              </div>
+              <form onSubmit={handleCommand} className="flex-1">
+                <input
+                  type="text"
+                  value={command}
+                  onChange={(e) => setCommand(e.target.value)}
+                  placeholder="EX: .SENTINEL BRASKEM | .VAR PORTFOLIO_1 | .AIS ZIM_QUICK"
+                  className="w-full bg-transparent border-none outline-none text-accent-primary type-data-sm placeholder:text-text-4/30 font-mono tracking-wider no-ring"
+                />
+              </form>
+              <div className="flex items-center gap-4 text-text-4 font-mono text-[10px]">
+                <span className="opacity-40">RSID: {Math.random().toString(16).slice(2, 8).toUpperCase()}</span>
+                <span className="text-bull font-bold">● SYSTEM NOMINAL</span>
+              </div>
+            </div>
+          </div>
+
+          <aside className="w-96 flex flex-col shrink-0 bg-surface-base/80 backdrop-blur-md hidden xl:flex">
+             <div className="flex-1 min-h-0 flex flex-col border-b border-border-1">
+                <WatchlistPanel />
+             </div>
+             <div className="h-2/5 min-h-0">
+                <SignalPanel />
+             </div>
+          </aside>
         </div>
+      </main>
 
-        {/* INSTITUTIONAL SIDE PANELS */}
-        <aside className="flex shrink-0">
-           <div className="flex flex-col border-r border-[var(--border-subtle)] w-[260px]">
-              <MissionControlPanel />
-              <SignalPanel />
-           </div>
-           
-           {/* ZONE E: WATCHLIST & RISK PANEL */}
-           <div 
-             className="flex flex-col border-l border-[var(--border-subtle)] w-[280px]"
-           >
-              <WatchlistPanel />
-              <RiskPanel />
-           </div>
-        </aside>
-      </div>
-
-      <AlertHub />
-      <CommandPalette isOpen={isPaletteOpen} onClose={() => setIsPaletteOpen(false)} />
+      {/* GLOBAL OVERLAYS */}
+      <TerminalOutput />
     </div>
   );
-};
-
-export default App;
+}

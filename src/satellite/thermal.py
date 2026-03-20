@@ -138,7 +138,7 @@ def _filter_by_bbox(records: list[dict], bbox_str: str) -> list[dict]:
                 filtered.append(r)
         except ValueError:
             continue
-    return filtered
+    return filtered, (w+e)/2.0, (s+n)/2.0
 
 
 def _determine_signal(frp: float, commodity: str, frp_values: list[float]) -> tuple[str, str]:
@@ -164,12 +164,14 @@ def scan_industrial_facilities(day_range: int = 1) -> list[dict]:
     global_data = _get_global_firms_data()
 
     for facility_key, meta in INDUSTRIAL_CLUSTERS.items():
-        records = _filter_by_bbox(global_data, meta["bbox"])
+        records, center_lon, center_lat = _filter_by_bbox(global_data, meta["bbox"])
 
         if not records:
             results.append({
                 "facility_key": facility_key,
                 "facility_name": meta["name"],
+                "lat": center_lat,
+                "lon": center_lon,
                 "tickers": meta["tickers"],
                 "commodity": meta["commodity"],
                 "anomaly_count": 0,
@@ -210,6 +212,8 @@ def scan_industrial_facilities(day_range: int = 1) -> list[dict]:
         results.append({
             "facility_key": facility_key,
             "facility_name": meta["name"],
+            "lat": center_lat,
+            "lon": center_lon,
             "tickers": meta["tickers"],
             "commodity": meta["commodity"],
             "anomaly_count": len(detections),

@@ -175,6 +175,29 @@ async def fetch_yfinance_historical(
             )
             if hist.empty:
                 return None
+            
+            # Add simple indicators
+            hist['SMA_20'] = hist['Close'].rolling(window=20).mean()
+            hist['STD_20'] = hist['Close'].rolling(window=20).std()
+            hist['BB_Upper'] = hist['SMA_20'] + (hist['STD_20'] * 2)
+            hist['BB_Lower'] = hist['SMA_20'] - (hist['STD_20'] * 2)
+
+            # RSI 14
+            delta = hist['Close'].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / loss
+            hist['RSI_14'] = 100 - (100 / (1 + rs))
+
+            # MACD
+            exp1 = hist['Close'].ewm(span=12, adjust=False).mean()
+            exp2 = hist['Close'].ewm(span=26, adjust=False).mean()
+            hist['MACD'] = exp1 - exp2
+            hist['Signal_Line'] = hist['MACD'].ewm(span=9, adjust=False).mean()
+            
+            # Fill NA
+            hist = hist.fillna(0)
+
             records = []
             for idx, row in hist.iterrows():
                 records.append({
@@ -184,6 +207,11 @@ async def fetch_yfinance_historical(
                     "low": float(row["Low"]),
                     "close": float(row["Close"]),
                     "volume": float(row["Volume"]),
+                    "rsi": float(row["RSI_14"]),
+                    "macd": float(row["MACD"]),
+                    "macd_signal": float(row["Signal_Line"]),
+                    "bb_upper": float(row["BB_Upper"]),
+                    "bb_lower": float(row["BB_Lower"])
                 })
             log.info("yfinance_historical_fetched", ticker=ticker, rows=len(records))
             return records

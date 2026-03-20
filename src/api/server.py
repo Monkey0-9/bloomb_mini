@@ -387,7 +387,31 @@ agent_router = AgentRouter()
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     await broadcast_mgr.init_redis()
     log.info("sattrade_server_started", redis=REDIS_AVAILABLE, jwt=JWT_AVAILABLE)
+
+    # Launch Globe Data Pipelines
+    from src.globe.adsb import run_adsb_pipeline
+    from src.globe.squawk import run_squawk_pipeline
+    from src.globe.orbits import run_orbits_pipeline
+    from src.globe.ais import run_ais_pipeline
+    from src.globe.thermal import run_thermal_pipeline
+    
+    async def globe_dispatch(payload: dict):
+        topic = payload.pop('_topic', 'default')
+        if topic == 'flight_update':
+            topic = 'flight'
+        await broadcast_mgr.broadcast(topic, payload)
+
+    globe_tasks = [
+        asyncio.create_task(run_adsb_pipeline(globe_dispatch)),
+        asyncio.create_task(run_squawk_pipeline(globe_dispatch)),
+        asyncio.create_task(run_orbits_pipeline(globe_dispatch)),
+        asyncio.create_task(run_ais_pipeline(globe_dispatch)),
+        asyncio.create_task(run_thermal_pipeline(globe_dispatch)),
+    ]
+
     yield
+    for t in globe_tasks:
+        t.cancel()
     log.info("sattrade_server_shutdown")
 
 app = FastAPI(
@@ -648,9 +672,10 @@ async def vessel_intelligence(mmsi: str, _: UserClaims = Depends(require_auth)):
 async def get_flights(request: Request):
     """GeoJSON flight layer from ADS-B feeds."""
     try:
-        from src.maritime.flight_tracker import FlightTracker
-        tracker = FlightTracker()
-        flights = await tracker.get_all_flights()
+        from src.maritime.flights_live import get_cargo_flights
+        import asyncio
+        data = await asyncio.to_thread(get_cargo_flights)
+        flights = data.get("flights", [])
         features = [_flight_to_feature(f) for f in flights]
         return {"type": "FeatureCollection", "features": features,
                 "_meta": {"count": len(features), "fetched_utc": time.time()}}
@@ -666,9 +691,9 @@ async def get_flights(request: Request):
 async def get_thermal(request: Request):
     """Industrial thermal anomalies from NASA FIRMS FRP — Bloomberg cannot offer this."""
     try:
-        from src.signals.facility_mapper import FacilityMapper
-        mapper = FacilityMapper()
-        signals = await mapper.get_thermal_signals()
+        from src.satellite.thermal import scan_industrial_facilities
+        import asyncio
+        signals = await asyncio.to_thread(scan_industrial_facilities, 1)
         return {"signals": signals, "_meta": {"source": "nasa_firms", "fetched_utc": time.time()}}
     except Exception as exc:
         log.warning("thermal_degraded", error=str(exc))
@@ -688,13 +713,33 @@ async def get_composite(request: Request, ticker: str = "ZIM"):
                 "final_score": 0.0, "confidence": 0.0}
 
 
+@app.get("/api/alpha/macro")
+async def get_macro():
+    """Macro indicators from FRED."""
+    from src.data.macro import get_macro_data
+    return await get_macro_data()
+
+
 @app.get("/api/alpha/news")
-async def get_news():
+async def get_news(ticker: str = ""):
     """Market news feed with satellite signal context."""
-    # Placeholder — integrate with actual news router
-    return {"news": [], "_meta": {"source": "aggregated"}}
+    from src.data.news import fetch_news
+    results = await fetch_news(ticker)
+    return {"news": results, "_meta": {"source": "rss_aggregated"}}
 
 
+@app.get("/api/market/history/{ticker}")
+@limiter.limit("50/minute")
+async def get_market_history(ticker: str, period: str = "1y", request: Request = None):
+    """Historical OHLCV data from yfinance for charting."""
+    try:
+        from src.data.market_data import fetch_yfinance_historical
+        data = await fetch_yfinance_historical(ticker.upper(), period=period)
+        if not data:
+            raise HTTPException(404, detail=f"No data found for {ticker}")
+        return {"data": data, "_meta": {"ticker": ticker, "period": period}}
+    except Exception as exc:
+        raise HTTPException(502, detail=str(exc)) from exc
 # ─── Risk Endpoints ───────────────────────────────────────────────────────────
 
 @app.get("/api/risk")

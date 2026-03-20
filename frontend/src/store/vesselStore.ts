@@ -50,7 +50,14 @@ export const useVesselStore = create<VesselState>((set) => ({
     )
   })),
   handleWSUpdate: (msg) => {
-    if (msg.mmsi && msg.lat && msg.lon) {
+    if (msg.data && Array.isArray(msg.data)) {
+      set({ vessels: msg.data.map((v: any) => ({
+        ...v,
+        position: {
+          lat: v.lat, lon: v.lon, speed_knots: v.speed_knots, heading_degrees: v.heading, course_over_ground: v.heading, navigational_status: v.nav_status, timestamp: new Date().toISOString()
+        }
+      })) });
+    } else if (msg.mmsi && msg.lat && msg.lon) {
       set((state) => ({
         vessels: state.vessels.map(v => v.mmsi === msg.mmsi ? { ...v, position: { ...v.position, lat: msg.lat, lon: msg.lon } } : v)
       }));

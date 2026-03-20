@@ -1,10 +1,53 @@
-import React from 'react';
-import { useSignalStore } from '../store';
+import React, { useEffect, useState } from 'react';
+import { useSignalStore, useTerminalStore } from '../store';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Activity, Globe, Zap, Shield, AlertTriangle } from 'lucide-react';
 
+const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 const FeedView = () => {
   const { events } = useSignalStore();
+  const { currentTicker } = useTerminalStore();
+  const [news, setNews] = useState<any[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    const fetchNews = async () => {
+      try {
+        const resp = await fetch(`${apiBase}/api/alpha/news?ticker=${currentTicker || ''}`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (active && data.news) {
+          setNews(data.news);
+        }
+      } catch (err) {}
+    };
+    fetchNews();
+    const interval = setInterval(fetchNews, 60000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [currentTicker]);
+
+  // Merge events and news, sorting by string timestamp descending
+  const feedItems = [
+    ...events.map(e => ({ id: e.id, type: e.type, message: e.message, timestamp: e.timestamp, url: e.url })),
+    ...news.map((n, i) => {
+      let d = new Date(n.published_utc);
+      let tsTag = isNaN(d.getTime()) ? n.published_utc : d.toLocaleTimeString('en-US', { hour12: false, hour: 'numeric', minute: 'numeric' });
+      return {
+        id: `news-${i}`,
+        type: 'market',
+        message: n.title,
+        timestamp: tsTag,
+        url: n.link
+      };
+    })
+  ].sort((a, b) => {
+    // Rough string sort for timestamps
+    return b.timestamp.localeCompare(a.timestamp);
+  });
 
   return (
     <div className="flex-1 flex flex-col bg-surface-0 overflow-hidden">
@@ -26,7 +69,7 @@ const FeedView = () => {
       <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-void/20">
         <div className="max-w-3xl mx-auto space-y-4">
           <AnimatePresence initial={false}>
-            {events.map((event, index) => (
+            {feedItems.map((event, index) => (
                 <motion.div
                   key={event.id}
                   initial={{ opacity: 0, x: -20 }}
@@ -57,7 +100,7 @@ const FeedView = () => {
           </AnimatePresence>
 
           {/* SKELETON LOADERS FOR ATMOSPHERE */}
-          {Array.from({ length: 3 }).map((_, i) => (
+          {feedItems.length === 0 && Array.from({ length: 3 }).map((_, i) => (
             <div key={`skel-${i}`} className="opacity-20 flex gap-4 p-4 border border-white/5 grayscale">
                <div className="w-10 h-10 bg-white/10 rounded-sm"></div>
                <div className="flex-1 space-y-2">

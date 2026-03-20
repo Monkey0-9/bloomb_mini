@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Zap, Box } from 'lucide-react';
+import { Zap, Box, AlertTriangle } from 'lucide-react';
 
 const AlertHub = () => {
   const [alerts, setAlerts] = useState<any[]>([]);
@@ -34,6 +34,25 @@ const AlertHub = () => {
       clearTimeout(timer);
       clearInterval(interval);
     };
+  }, []);
+
+  useEffect(() => {
+    const handleWsAlert = (e: any) => {
+      const msg = e.detail;
+      if (msg && msg.emitter === 'OPENSKY_SQUAWK_MONITOR') {
+        const newAlert = {
+          id: msg.data.id || Date.now() + Math.random(),
+          type: 'SQUAWK',
+          title: `EMERGENCY SQUAWK: ${msg.data.squawk}`,
+          detail: `${msg.data.callsign} · ${msg.data.type} · ${msg.data.lat.toFixed(2)}, ${msg.data.lon.toFixed(2)}`,
+          icon: AlertTriangle,
+          color: 'text-red-500 border-red-500'
+        };
+        setAlerts(prev => [newAlert, ...prev].slice(0, 5));
+      }
+    };
+    window.addEventListener('terminal-alert', handleWsAlert);
+    return () => window.removeEventListener('terminal-alert', handleWsAlert);
   }, []);
 
   const removeAlert = (id: any) => {

@@ -66,6 +66,15 @@ const GlobalGlobe: React.FC = () => {
   const { satellites, fetchSatellites } = useSatelliteStore();
   const globeEl = useRef<any>(null);
 
+  // ─── OSINT Vector Boundaries ────────────────────────────────────────────────
+  const [countries, setCountries] = React.useState<any>({ features: [] });
+  useEffect(() => {
+    fetch('https://unpkg.com/globe.gl/example/datasets/ne_110m_admin_0_countries.geojson')
+      .then(res => res.json())
+      .then(setCountries)
+      .catch(() => {});
+  }, []);
+
   // ─── Thermal HexBins from Signal API ────────────────────────────────────────
   const [thermalBins, setThermalBins] = React.useState<HexBin[]>([]);
 
@@ -78,7 +87,7 @@ const GlobalGlobe: React.FC = () => {
       const bins: HexBin[] = sigs.map((s: any) => ({
         lat: s.lat || s.location?.lat || 0,
         lng: s.lon || s.location?.lon || 0,
-        weight: Math.min((s.frp || 50) / 100, 1),
+        weight: Math.min((s.avg_frp_mw || s.frp || 50) / 100, 1),
         ticker: s.ticker || 'N/A',
         label: s.facility_name || 'Industrial Facility',
       }));
@@ -86,6 +95,24 @@ const GlobalGlobe: React.FC = () => {
     } catch {
       // Silently fail — telemetry degraded mode
     }
+  }, []);
+
+  useEffect(() => {
+    const handleWsThermal = (e: any) => {
+      const msg = e.detail;
+      if (msg.data && Array.isArray(msg.data)) {
+        const bins: HexBin[] = msg.data.map((s: any) => ({
+          lat: s.lat || s.location?.lat || 0,
+          lng: s.lon || s.location?.lon || 0,
+          weight: Math.min((s.avg_frp_mw || s.frp || 50) / 100, 1),
+          ticker: s.ticker || 'N/A',
+          label: s.name || s.facility_name || 'Industrial Facility',
+        }));
+        setThermalBins(bins);
+      }
+    };
+    window.addEventListener('thermal-update', handleWsThermal);
+    return () => window.removeEventListener('thermal-update', handleWsThermal);
   }, []);
 
   // ─── Polling ─────────────────────────────────────────────────────────────────
@@ -107,8 +134,8 @@ const GlobalGlobe: React.FC = () => {
   // ─── Camera Sync ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!globeEl.current) return;
-    const altitude = Math.max(0.5, 4.0 / (zoomLevel || 1));
-    globeEl.current.pointOfView({ lat: 24, lng: 0, altitude }, 1200);
+    const altitude = Math.max(0.2, 1.6 / (zoomLevel || 1));
+    globeEl.current.pointOfView({ lat: 28, lng: 10, altitude }, 1200);
   }, [zoomLevel]);
 
   // ─── Globe Setup (lighting, auto-rotate) ─────────────────────────────────────
@@ -205,26 +232,38 @@ const GlobalGlobe: React.FC = () => {
       ticker: v.linked_ticker,
     }));
 
-    const flightEls = filteredFlights.map((f: any) => ({
-      lat: f.position?.lat ?? 0,
-      lng: f.position?.lon ?? 0,
-      size: 16,
-      heading: f.position?.heading ?? 0,
-      color: f.signal === 'BULLISH' ? COL.bull : f.signal === 'BEARISH' ? COL.bear : COL.purple,
-      shape: 'flight',
-      label: `${f.callsign || f.icao24} · FL${Math.round((f.position?.alt_ft || 0) / 100)} · ${f.operator || ''}`,
-      ticker: f.linked_ticker,
-    }));
+    const flightEls = filteredFlights.map((f: any) => {
+      let fColor = COL.purple;
+      if (f.signal === 'BULLISH') fColor = COL.bull;
+      else if (f.signal === 'BEARISH') fColor = COL.bear;
+      else if (f.type === 'MILITARY') fColor = '#FFD700'; // gold
+      else if (f.type === 'CARGO') fColor = '#FFA500'; // orange
+
+      return {
+        lat: f.position?.lat ?? 0,
+        lng: f.position?.lon ?? 0,
+        size: 16,
+        heading: f.position?.heading ?? 0,
+        color: fColor,
+        shape: 'flight',
+        label: `${f.callsign || f.icao24} · ${f.type || 'CIVIL'} · FL${Math.round((f.position?.alt_ft || 0) / 100)}`,
+        ticker: f.linked_ticker,
+      };
+    });
 
     return [...vesselEls, ...flightEls];
   }, [filteredVessels, filteredFlights]);
 
   // ─── Arcs (Satellite Orbits + Active Flight Vectors) ─────────────────────────
   const arcsData = useMemo(() => {
-    const satArcs = [
-      { startLat: 51.9, startLng: 4.5,   endLat:  1.3, endLng: 103.8, color: [COL.signal, COL.bull],  label: 'Sentinel-2A Pass' },
-      { startLat: 31.2, startLng: 121.5, endLat: 33.7, endLng:-118.3,  color: [COL.signal, COL.bear],  label: 'Sentinel-2B Pass' },
-    ];
+    const satArcs = activeLayers.includes('SATELLITES')
+      ? satellites.filter((s:any) => s.next_lat !== undefined).map((s:any) => ({
+          startLat: s.lat, startLng: s.lon,
+          endLat: s.next_lat, endLng: s.next_lon,
+          color: [COL.signal, COL.bull],
+          label: `${s.name} Orbit`
+        }))
+      : [];
 
     const flightArcs = activeLayers.includes('FLIGHTS')
       ? filteredFlights.slice(0, 80).map((f: any) => ({
@@ -394,8 +433,8 @@ const GlobalGlobe: React.FC = () => {
   useEffect(() => {
     if (!globeEl.current) return;
     const globe = globeEl.current;
-    const vMesh = globe.scene().getObjectByName('vessels_instanced') as THREE.InstancedMesh;
-    const fMesh = globe.scene().getObjectByName('flights_instanced') as THREE.InstancedMesh;
+    const vMesh = globe.scene().getObjectByName('vessels_instanced') as any;
+    const fMesh = globe.scene().getObjectByName('flights_instanced') as any;
     if (!vMesh || !fMesh) return;
 
     const dummy = new THREE.Object3D();
@@ -435,13 +474,20 @@ const GlobalGlobe: React.FC = () => {
     }`}>
       <Globe
         ref={globeEl}
-        globeImageUrl={GLOBE_IMG}
-        bumpImageUrl={BUMP_IMG}
+        globeImageUrl={undefined}
+        bumpImageUrl={undefined}
+
+        // ── OSINT Vector Map (monitorthesituation.org style) ────────────────
+        polygonsData={countries.features}
+        polygonCapColor={() => 'rgba(2, 6, 15, 0.95)'}
+        polygonSideColor={() => 'rgba(0, 212, 255, 0.08)'}
+        polygonStrokeColor={() => '#00D4FF'}
+        showGraticules={true}
 
         // ── Atmosphere (Improved) ───────────────────────────────────────────
         showAtmosphere
         atmosphereColor="#00D4FF"
-        atmosphereAltitude={0.15}
+        atmosphereAltitude={0.25}
 
         // ── Hex-bin Thermal Mapping (Institutional Standard) ─────────────────
         hexBinPointsData={activeLayers.includes('THERMAL') ? thermalBins : []}
@@ -484,25 +530,31 @@ const GlobalGlobe: React.FC = () => {
           </div>
         `}
 
-        // ── Country Labels (Bug 1 Fix - Adaptive LOD) ────────────────────────
+        // ── Elite OSINT Country Typography (Adaptive LOD) ──────────────────
         labelsData={useMemo(() => {
           const altitude = zoomLevel ? 4 / zoomLevel : 2.5;
-          if (altitude > 1.8) return []; // Hide all labels when far out
-          return countryLabels.slice(0, altitude < 0.6 ? 195 : 30);
+          if (altitude > 1.8) return []; // Hide labels to maintain clean macro view
+          const limit = altitude < 0.4 ? 195 : altitude < 0.8 ? 85 : 35;
+          return countryLabels.slice(0, limit);
         }, [zoomLevel])}
         labelLat="lat"
         labelLng="lng"
-        labelText="name"
-        labelSize={0.8}
-        labelColor={() => COL.neutral}
-        labelResolution={2}
+        labelText={(d: any) => d.name.toUpperCase()}
+        labelSize={0.4}
+        labelColor={() => 'rgba(139, 148, 158, 0.95)'}
+        labelResolution={4}
+        labelIncludeDot={true}
+        labelDotRadius={0.12}
+        labelAltitude={0.01}
 
         // ── Globe Appearance (Bug 6 Fix - Deep Black) ────────────────────────
         backgroundColor="rgba(0,0,0,0)"
         globeMaterial={new THREE.MeshStandardMaterial({
-          color: '#080C14',
-          metalness: 0.1,
-          roughness: 0.7,
+          color: '#02040A',
+          transparent: true,
+          opacity: 0.92,
+          metalness: 0.2,
+          roughness: 0.9,
         })}
 
         // ── Performance ───────────────────────────────────────────────────────

@@ -18,6 +18,7 @@ interface SatelliteState {
   satellites: Satellite[];
   isLoading: boolean;
   fetchSatellites: () => Promise<void>;
+  handleWSUpdate: (msg: any) => void;
 }
 
 export const useSatelliteStore = create<SatelliteState>((set) => ({
@@ -43,4 +44,9 @@ export const useSatelliteStore = create<SatelliteState>((set) => ({
       set({ isLoading: false });
     }
   },
+  handleWSUpdate: (msg) => {
+    if (msg.data && Array.isArray(msg.data)) {
+      set({ satellites: msg.data });
+    }
+  }
 }));

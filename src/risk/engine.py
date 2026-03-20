@@ -450,16 +450,30 @@ class RiskEngine:
         }
 
     async def _write_audit(self, record: RiskAuditRecord) -> None:
-        """Persist immutable audit record to Redis (and PostgreSQL in production)."""
+        """Persist immutable audit record to Redis and local JSONL."""
+        payload = json.dumps(asdict(record), default=str)
+        # 1. Local Immutable Audit Trail
+        try:
+            import aiofiles
+            async with aiofiles.open("risk_audit.jsonl", "a") as f:
+                await f.write(payload + "\n")
+        except ImportError:
+            # Fallback for sync I/O in thread
+            def write_sync():
+                with open("risk_audit.jsonl", "a") as f:
+                    f.write(payload + "\n")
+            await asyncio.to_thread(write_sync)
+        except Exception as exc:
+            log.error("local_audit_write_failed", error=str(exc))
+
+        # 2. Redis temporary cache
         r = await self._get_redis()
         if r:
             try:
                 key = f"audit:{record.id}"
-                payload = json.dumps(asdict(record), default=str)
-                # Store for 90 days
                 await r.setex(key, 7_776_000, payload)
             except Exception as exc:
-                log.error("audit_write_failed", error=str(exc))
+                log.error("redis_audit_write_failed", error=str(exc))
 
     async def get_status(self) -> dict:
         """Return current risk engine status for AgentRouter."""

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { createChart, ColorType, IChartApi, ISeriesApi, AreaSeries, LineSeries } from 'lightweight-charts';
+import { createChart, ColorType, IChartApi, ISeriesApi, CandlestickSeries, HistogramSeries, LineSeries } from 'lightweight-charts';
 import { useTerminalStore, useSignalStore } from '../store';
 import { useEquityStore } from '../store/equityStore';
 import { Plus, X } from 'lucide-react';
@@ -31,7 +31,8 @@ const ChartView = () => {
   }, [equities, currentTicker]);
 
   const chartRef = useRef<IChartApi | null>(null);
-  const areaSeriesRef = useRef<ISeriesApi<"Area"> | null>(null);
+  const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const p10SeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const p90SeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const p50SeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
@@ -68,30 +69,49 @@ const ChartView = () => {
         if (!resp.ok) throw new Error('Failed to fetch history');
         const data = await resp.json();
 
-        if (areaSeriesRef.current && data.data) {
-          areaSeriesRef.current.setData(data.data);
+        if (candleSeriesRef.current && data.data) {
+          const formatted = data.data.map((d: any) => ({
+            time: d.date,
+            open: d.open,
+            high: d.high,
+            low: d.low,
+            close: d.close,
+          }));
+          candleSeriesRef.current.setData(formatted);
+
+          if (volumeSeriesRef.current) {
+            const volData = data.data.map((d: any) => ({
+              time: d.date,
+              value: d.volume,
+              color: d.close >= d.open ? 'rgba(0, 255, 157, 0.5)' : 'rgba(255, 77, 77, 0.5)'
+            }));
+            volumeSeriesRef.current.setData(volData);
+          }
 
           // Satellite alpha signal line
           if (signalSeriesRef.current) {
             const tickerSignal = signals.find(s => (s.tickers || []).includes(currentTicker));
             const baseValue = tickerSignal ? tickerSignal.score : 50;
             const signalData = data.data.map((d: any, i: number) => ({
-              time: d.time,
+              time: d.date,
               value: baseValue + (Math.sin(i / 3) * 15) + (Math.random() * 5)
             }));
             signalSeriesRef.current.setData(signalData);
           }
 
           // Render TFT quantile bands if available
-          if (forecast && p50SeriesRef.current && p10SeriesRef.current && p90SeriesRef.current) {
-            const lastTime = data.data[data.data.length - 1]?.time || Math.floor(Date.now() / 1000);
-            const lastVal = data.data[data.data.length - 1]?.value || 100;
+          if (forecast && p50SeriesRef.current && p10SeriesRef.current && p90SeriesRef.current && data.data.length > 0) {
+            const lastCandle = data.data[data.data.length - 1];
+            const lastDate = new Date(lastCandle.date);
+            const lastTime = Math.floor(lastDate.getTime() / 1000);
+            const lastVal = lastCandle.close;
             const range = lastVal * 0.1;
 
-            // Forecast bands start from last price
-            const p50Data = forecast.map(f => ({ time: (lastTime + (f.time * 86400)) as any, value: lastVal + f.p50 * range }));
-            const p10Data = forecast.map(f => ({ time: (lastTime + (f.time * 86400)) as any, value: lastVal + f.p10 * range }));
-            const p90Data = forecast.map(f => ({ time: (lastTime + (f.time * 86400)) as any, value: lastVal + f.p90 * range }));
+            // Forecast bands start from last price. Ensure yfinance time string formatting compatibility
+            const formatTime = (ts: number) => new Date(ts * 1000).toISOString().split('T')[0];
+            const p50Data = forecast.map(f => ({ time: formatTime(lastTime + (f.time * 86400)), value: lastVal + f.p50 * range }));
+            const p10Data = forecast.map(f => ({ time: formatTime(lastTime + (f.time * 86400)), value: lastVal + f.p10 * range }));
+            const p90Data = forecast.map(f => ({ time: formatTime(lastTime + (f.time * 86400)), value: lastVal + f.p90 * range }));
 
             p50SeriesRef.current.setData(p50Data);
             p10SeriesRef.current.setData(p10Data);
@@ -140,12 +160,24 @@ const ChartView = () => {
         },
       });
 
-      const areaSeries = chart.addSeries(AreaSeries, {
-        lineColor: '#00C8FF',
-        topColor: 'rgba(0, 200, 255, 0.15)',
-        bottomColor: 'rgba(0, 200, 255, 0.01)',
-        lineWidth: 2,
-        title: currentTicker
+      const candleSeries = chart.addSeries(CandlestickSeries, {
+        upColor: '#00FF9D',
+        downColor: '#FF4D4D',
+        borderVisible: false,
+        wickUpColor: '#00FF9D',
+        wickDownColor: '#FF4D4D',
+      });
+
+      const volumeSeries = chart.addSeries(HistogramSeries, {
+        color: '#26a69a',
+        priceFormat: { type: 'volume' },
+        priceScaleId: 'volume', // use a named scale
+      });
+      chart.priceScale('volume').applyOptions({
+        scaleMargins: {
+          top: 0.8,
+          bottom: 0,
+        },
       });
 
       const signalSeries = chart.addSeries(LineSeries, {
@@ -206,11 +238,11 @@ const ChartView = () => {
           shape: (s.status === 'bullish' ? 'arrowUp' : 'arrowDown') as any,
           text: s.name || 'SIGNAL',
         }));
-      (areaSeries as any).setMarkers(markers);
-
+      (candleSeries as any).setMarkers(markers);
 
       chartRef.current = chart;
-      areaSeriesRef.current = areaSeries;
+      candleSeriesRef.current = candleSeries as any;
+      volumeSeriesRef.current = volumeSeries as any;
       signalSeriesRef.current = signalSeries;
       p50SeriesRef.current = p50Series;
       p10SeriesRef.current = p10Series;

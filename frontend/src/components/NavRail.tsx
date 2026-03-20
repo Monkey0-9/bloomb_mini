@@ -9,7 +9,9 @@ import {
   Terminal,
   TrendingUp,
   Layout,
-  Newspaper
+  Newspaper,
+  HelpCircle,
+  Bell
 } from 'lucide-react';
 import { useTerminalStore } from '../store';
 
@@ -69,10 +71,13 @@ const NavRail = () => {
   const secondaryNav = [
     { id: 'news',      icon: <Newspaper size={16} strokeWidth={1.5} />,    label: 'Intelligence Hub',   shortcut: 'N' },
     { id: 'feed',      icon: <Satellite size={16} strokeWidth={1.5} />,    label: 'Raw STAC Feed',      shortcut: 'F' },
+    { id: 'alerts',    icon: <Bell size={16} strokeWidth={1.5} />,         label: 'Alert Hub',          shortcut: 'A' },
+    { id: 'workflow',  icon: <Layout size={16} strokeWidth={1.5} />,       label: 'Workflow Engine',    shortcut: 'W' },
     { id: 'terminal',  icon: <Terminal size={16} strokeWidth={1.5} />,     label: 'Direct Kernel',      shortcut: 'K' },
   ];
 
   const bottomNav = [
+    { id: 'help',      icon: <HelpCircle size={16} strokeWidth={1.5} />,     label: 'Documentation',      shortcut: 'H' },
     { id: 'settings',  icon: <Settings size={16} strokeWidth={1.5} />,     label: 'Core Settings',      shortcut: 'S' },
   ];
 

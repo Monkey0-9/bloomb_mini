@@ -30,9 +30,9 @@ export const useFlightStore = create<FlightState>((set) => ({
         position: {
           lat: f.geometry.coordinates[1],
           lon: f.geometry.coordinates[0],
-          alt_ft: f.properties.alt_ft || 0,
-          speed_kts: f.properties.speed_kts || 0,
-          heading: f.properties.heading || 0,
+          alt_ft: f.properties.altitude_m ? f.properties.altitude_m * 3.28084 : (f.properties.alt_ft || 0),
+          speed_kts: f.properties.velocity_ms ? f.properties.velocity_ms * 1.94384 : (f.properties.speed_kts || 0),
+          heading: f.properties.heading_deg || f.properties.heading || 0,
           timestamp: new Date().toISOString(),
         }
       }));
@@ -47,7 +47,14 @@ export const useFlightStore = create<FlightState>((set) => ({
     )
   })),
   handleWSUpdate: (msg) => {
-    if (msg.icao24 && msg.lat && msg.lon) {
+    if (msg.flights) {
+      set({ flights: msg.flights.map((f: any) => ({
+        ...f,
+        position: {
+          lat: f.lat, lon: f.lon, alt_ft: f.alt || (f.altitude_m ? f.altitude_m * 3.28084 : 0), speed_kts: f.speed || (f.velocity_ms ? f.velocity_ms * 1.94384 : 0), heading: f.heading || f.heading_deg || 0, timestamp: new Date().toISOString()
+        }
+      })) });
+    } else if (msg.icao24 && msg.lat && msg.lon) {
       set((state) => ({
         flights: state.flights.map((f) => 
           f.icao24 === msg.icao24 ? { ...f, position: { ...f.position, lat: msg.lat, lon: msg.lon, alt_ft: msg.alt_ft || f.position.alt_ft } } : f

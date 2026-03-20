@@ -5,8 +5,8 @@ NO-KEY WMTS tile server for satellite imagery.
 
 import math
 import hashlib
+import aiohttp
 import sqlite3
-import httpx
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 import structlog
@@ -67,7 +67,7 @@ class GibsIngester:
             """)
             conn.commit()
 
-    def fetch_latest_tile(self, location_key: str, layer_key: str = "viirs_true_color", zoom: int = 7) -> dict:
+    async def fetch_latest_tile(self, location_key: str, layer_key: str = "viirs_true_color", zoom: int = 7) -> dict:
         if location_key not in LOCATIONS:
             raise ValueError(f"Unknown location: {location_key}")
         if layer_key not in LAYERS:
@@ -90,17 +90,23 @@ class GibsIngester:
             log.info("gibs_tile_exists", file=str(file_path))
         else:
             log.info("gibs_wmts_download", url=url)
-            resp = httpx.get(url, timeout=30)
-            if resp.status_code == 404:
-                log.warning("gibs_tile_not_found_for_date", date=date_str)
-                # Fallback to older date
-                date_str = (datetime.now(UTC) - timedelta(days=2)).strftime("%Y-%m-%d")
-                url = WMTS_TEMPLATE.format(layer=layer_name, date=date_str, z=zoom, x=x, y=y)
-                resp = httpx.get(url, timeout=30)
-            
-            resp.raise_for_status()
-            with open(file_path, "wb") as f:
-                f.write(resp.content)
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=30) as resp:
+                    if resp.status == 404:
+                        log.warning("gibs_tile_not_found_for_date", date=date_str)
+                        # Fallback to older date
+                        date_str = (datetime.now(UTC) - timedelta(days=2)).strftime("%Y-%m-%d")
+                        url = WMTS_TEMPLATE.format(layer=layer_name, date=date_str, z=zoom, x=x, y=y)
+                        async with session.get(url, timeout=30) as resp2:
+                            resp2.raise_for_status()
+                            content = await resp2.read()
+                    else:
+                        resp.raise_for_status()
+                        content = await resp.read()
+                    
+                    with open(file_path, "wb") as f:
+                        f.write(content)
             log.info("gibs_tile_saved", file=str(file_path))
 
         h = hashlib.sha256()
@@ -117,6 +123,9 @@ class GibsIngester:
         return {"tile_id": tile_id, "file_path": str(file_path), "layer": layer_name, "zoom": zoom, "url": url}
 
 if __name__ == "__main__":
-    ingester = GibsIngester()
-    res = ingester.fetch_latest_tile("rotterdam", layer_key="viirs_fires", zoom=7)
-    print("Downloaded NASA GIBS Tile:", res)
+    import asyncio
+    async def main():
+        ingester = GibsIngester()
+        res = await ingester.fetch_latest_tile("rotterdam", layer_key="viirs_fires", zoom=7)
+        print("Downloaded NASA GIBS Tile:", res)
+    asyncio.run(main())
