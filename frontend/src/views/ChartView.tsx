@@ -45,7 +45,7 @@ const ChartView = () => {
     setForecastLoading(true);
     try {
       const symbol = ticker.split(' ')[0];
-      const resp = await fetch(`http://localhost:8000/api/signals/forecast/${symbol}`);
+      const resp = await fetch(`/api/signals/forecast/${symbol}`);
       if (resp.ok) {
         const data = await resp.json();
         setForecast(data.bands || null);
@@ -65,7 +65,7 @@ const ChartView = () => {
 
     const fetchHistory = async () => {
       try {
-        const resp = await fetch(`http://localhost:8000/api/history/${currentTicker}`);
+        const resp = await fetch(`/api/history/${currentTicker}`);
         if (!resp.ok) throw new Error('Failed to fetch history');
         const data = await resp.json();
 
@@ -125,7 +125,7 @@ const ChartView = () => {
 
     const fetchOverlayHistory = async (ticker: string) => {
         try {
-            const resp = await fetch(`http://localhost:8000/api/history/${ticker}`);
+            const resp = await fetch(`/api/history/${ticker}`);
             if (resp.ok) {
                 const data = await resp.json();
                 const series = overlaySeriesRefs.current.get(ticker);

@@ -3,7 +3,7 @@ import { useSignalStore, useTerminalStore } from '../store';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Activity, Globe, Zap, Shield, AlertTriangle } from 'lucide-react';
 
-const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const apiBase = import.meta.env.VITE_API_URL || '';
 
 const FeedView = () => {
   const { events } = useSignalStore();

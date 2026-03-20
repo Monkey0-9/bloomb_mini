@@ -23,7 +23,7 @@ export const useFlightStore = create<FlightState>((set) => ({
   fetchFlights: async () => {
     set({ isLoading: true });
     try {
-      const response = await fetch('http://localhost:8000/api/flights');
+      const response = await fetch('/api/globe/aircraft');
       const data = await response.json();
       const flights = data.features.map((f: any) => ({
         ...f.properties,

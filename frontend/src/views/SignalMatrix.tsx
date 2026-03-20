@@ -36,7 +36,7 @@ interface ContribSignal {
   headline: string;
 }
 
-const API_BASE = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8000';
+const API_BASE = (import.meta.env.VITE_API_URL as string) || '';
 const REFRESH_MS = 20_000;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

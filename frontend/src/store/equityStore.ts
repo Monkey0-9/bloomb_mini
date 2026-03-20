@@ -35,7 +35,7 @@ export const useEquityStore = create<EquityState>()(
       })),
       fetchEquities: async () => {
         try {
-          const response = await fetch('http://localhost:8000/api/equities');
+          const response = await fetch('/api/equities');
           if (!response.ok) throw new Error('Network response was not ok');
           const data = await response.json();
           set({ equities: data.equities });

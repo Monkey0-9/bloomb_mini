@@ -104,7 +104,7 @@ const EconomicsView = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        const resp = await fetch('http://localhost:8000/api/alpha/macro');
+        const resp = await fetch('/api/alpha/macro');
         if (!resp.ok) throw new Error();
         const data = await resp.json();
         

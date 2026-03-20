@@ -63,7 +63,7 @@ export const useSignalStore = create<SignalState>((set) => ({
   fetchSignals: async () => {
     try {
       // Fetch Signals
-      const sigResponse = await fetch('http://localhost:8000/api/signals');
+      const sigResponse = await fetch('/api/signals');
       const sigData = await sigResponse.json();
       const signals = Object.entries(sigData.signals).map(([key, s]: [string, any]) => ({
         id: key,
@@ -83,7 +83,7 @@ export const useSignalStore = create<SignalState>((set) => ({
       set({ signals });
 
       // Fetch News for Feed
-      const newsResponse = await fetch('http://localhost:8000/api/alpha/news');
+      const newsResponse = await fetch('/api/alpha/news');
       const newsData = await newsResponse.json();
       const newsEvents = (newsData.news || []).map((n: any) => ({
         id: `news-${n.id}`,

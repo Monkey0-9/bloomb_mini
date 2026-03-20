@@ -23,7 +23,7 @@ export const useVesselStore = create<VesselState>((set) => ({
   fetchVessels: async () => {
     set({ isLoading: true });
     try {
-      const response = await fetch('http://localhost:8000/api/vessels');
+      const response = await fetch('/api/globe/vessels');
       const data = await response.json();
       // data is GeoJSON, we want the objects for the store or just store the features
       // For the store, we'll extract the properties and geometry

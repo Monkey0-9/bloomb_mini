@@ -22,7 +22,7 @@ const NewsHubView = () => {
   useEffect(() => {
     const loadNews = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/alpha/news');
+        const response = await fetch('/api/alpha/news');
         const data = await response.json();
         setNewsArticles(data.news || []);
       } catch (err) {

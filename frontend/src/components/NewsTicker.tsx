@@ -9,7 +9,7 @@ const NewsTicker = () => {
     useEffect(() => {
         const fetchNews = async () => {
             try {
-                const res = await fetch(`http://localhost:8000/api/news?ticker=${encodeURIComponent(currentTicker)}`);
+                const res = await fetch(`/api/news?ticker=${encodeURIComponent(currentTicker)}`);
                 const data = await res.json();
                 if (data.news) setNews(data.news);
             } catch (err) {

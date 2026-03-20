@@ -37,6 +37,7 @@ const Masthead = () => {
         <div className="h-4 w-[1px] bg-[var(--border-subtle)] mx-3"></div>
         <div className="flex flex-col">
           <span className="text-[8px] text-[var(--text-tertiary)] tracking-[0.2em] font-bold uppercase">TERMINAL</span>
+          <span className="text-[6px] text-accent-primary/40 tracking-[0.1em] font-bold uppercase">V2.6.4-PRIME [OSINT_MODE]</span>
         </div>
       </div>
       
@@ -47,7 +48,7 @@ const Masthead = () => {
          <input 
             type="text" 
             onKeyDown={handleKeyDown}
-            placeholder="CLAUDE 4.6 INTENT ROUTING ACTIVE..."
+            placeholder="EXECUTE DEPTH_COMMAND OR INTENT_ROUTING..."
             className="bg-transparent w-full text-[11px] text-accent-primary placeholder:text-neutral outline-none font-mono tracking-wide truncate"
          />
          <div className="ml-2 text-accent-primary bg-surface-3 text-[9px] font-bold px-1 border border-surface-5 flex-shrink-0">AI</div>

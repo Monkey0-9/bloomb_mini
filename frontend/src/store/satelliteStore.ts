@@ -27,7 +27,7 @@ export const useSatelliteStore = create<SatelliteState>((set) => ({
   fetchSatellites: async () => {
     set({ isLoading: true });
     try {
-      const response = await fetch('http://localhost:8000/api/alpha/satellites');
+      const response = await fetch('/api/alpha/satellites');
       const data = await response.json();
       const features = data.satellites.features;
       

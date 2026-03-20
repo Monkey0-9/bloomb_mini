@@ -1,4 +1,5 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Request
+from typing import Dict, Any
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 import json
@@ -16,9 +17,16 @@ from src.data.market_data import (get_bulk_prices, get_ohlcv_history,
 from src.data.macro import get_macro_dashboard, fetch_fred_series, FRED_SERIES
 from src.data.news import fetch_all_news
 from src.signals.composite_scorer import compute_all_signals
-from src.maritime.vessel_tracker import VesselTracker
-from src.maritime.flight_tracker import FlightTracker
+from src.common.trackers import vessel_tracker as _vessel_tracker, flight_tracker as _flight_tracker
 from src.scheduler.jobs import start_scheduler
+
+import os
+from src.api.auth import get_current_user, require_role
+from src.api.monitoring import metrics_middleware, metrics_endpoint, tracing_middleware
+from src.api.orchestrator import Orchestrator
+from src.api.agents.thermal_agent import ThermalAgent
+from src.api.agents.news_agent import NewsAgent
+from src.api.agents.research_agent import ResearchAgent
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,13 +34,34 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title="SatTrade Intelligence Terminal", version="2.0.0", lifespan=lifespan)
+
+# Configurable CORS
+TRUSTED_ORIGINS = os.getenv("TRUSTED_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
 app.add_middleware(CORSMiddleware,
-    allow_origins=["*"], allow_credentials=True,
-    allow_methods=["*"], allow_headers=["*"])
+    allow_origins=TRUSTED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"])
+
+@app.middleware("http")
+async def add_metrics(request: Request, call_next):
+    return await metrics_middleware(request, call_next)
+
+@app.middleware("http")
+async def add_tracing(request: Request, call_next):
+    return await tracing_middleware(request, call_next)
+
+@app.get("/metrics")
+async def metrics():
+    return metrics_endpoint()
 
 # Singletons
-_vessel_tracker = VesselTracker()
-_flight_tracker = FlightTracker()
+# Singletons imported from src.common.trackers
+_orchestrator = Orchestrator()
+_orchestrator.register_agent(ThermalAgent())
+_orchestrator.register_agent(NewsAgent())
+_orchestrator.register_agent(ResearchAgent())
+
 connected_clients: list[WebSocket] = []
 
 # ── Health ────────────────────────────────────────────────────────────────────
@@ -55,12 +84,12 @@ async def health():
 # ── Globe — Aircraft ──────────────────────────────────────────────────────────
 @app.get("/api/globe/aircraft")
 async def get_aircraft():
-    aircraft = fetch_all_aircraft()
-    return aircraft_to_geojson(aircraft)
+    flights = _flight_tracker.get_all_flights()
+    return _flight_tracker.to_geojson_feature_collection()
 
 @app.get("/api/globe/squawk-alerts")
 async def get_squawk_alerts_endpoint():
-    aircraft = fetch_all_aircraft()
+    aircraft = await asyncio.to_thread(fetch_all_aircraft)
     return {"alerts": get_squawk_alerts(aircraft),
             "timestamp": datetime.now(timezone.utc).isoformat()}
 
@@ -70,7 +99,7 @@ async def get_orbit(satellite_name: str):
     if satellite_name not in SATELLITE_TLE_URLS:
         raise HTTPException(404, f"Satellite {satellite_name} not tracked. "
                                f"Available: {list(SATELLITE_TLE_URLS.keys())}")
-    return get_ground_track(satellite_name)
+    return await asyncio.to_thread(get_ground_track, satellite_name)
 
 @app.get("/api/globe/orbits")
 async def get_all_orbits():
@@ -84,7 +113,7 @@ async def get_all_orbits():
 # ── Globe — Thermal ───────────────────────────────────────────────────────────
 @app.get("/api/globe/thermal")
 async def get_thermal():
-    anomalies = fetch_firms_thermal()
+    anomalies = await asyncio.to_thread(fetch_firms_thermal)
     return {
         "anomalies": [
             {
@@ -109,7 +138,7 @@ async def get_thermal():
     }
 
 # ── Globe — Vessels ───────────────────────────────────────────────────────────
-@app.get("/api/vessels")
+@app.get("/api/globe/vessels")
 async def get_vessels():
     """Returns vessels in the flat object format expected by vesselStore.ts"""
     vessels = await _vessel_tracker.get_all_vessels()
@@ -142,9 +171,9 @@ async def get_vessel_detail(mmsi: str):
 
 # ── Globe — Flights ───────────────────────────────────────────────────────────
 @app.get("/api/flights")
-async def get_flights():
-    """Returns flights in the flat object format expected by flightStore.ts"""
-    flights = _flight_tracker.get_all_flights()
+async def get_flights_legacy():
+    # Legacy redirect or redundant endpoint
+    return _flight_tracker.to_geojson_feature_collection()
     return {
         "features": [
             {
@@ -170,10 +199,10 @@ async def get_flights():
     }
 
 # ── Signals — Thermal ─────────────────────────────────────────────────────────
-@app.get("/api/alpha/thermal")
+@app.get("/api/alpha/thermal", dependencies=[Depends(get_current_user)])
 async def get_thermal_signals():
     """Returns thermal industrial signals for the globe heatmap"""
-    anomalies = fetch_firms_thermal()
+    anomalies = await asyncio.to_thread(fetch_firms_thermal)
     return {
         "signals": [
             {
@@ -190,11 +219,11 @@ async def get_thermal_signals():
     }
 
 # ── Signals ───────────────────────────────────────────────────────────────────
-@app.get("/api/signals")
+@app.get("/api/signals", dependencies=[Depends(get_current_user)])
 async def get_signals():
-    thermal = fetch_firms_thermal()
-    earnings = get_earnings_calendar(["AMKBY","ZIM","MT","LNG","WMT","1919.HK"])
-    signals = compute_all_signals(thermal_anomalies=thermal, earnings_calendar=earnings)
+    thermal = await asyncio.to_thread(fetch_firms_thermal)
+    earnings = await asyncio.to_thread(get_earnings_calendar, ["AMKBY","ZIM","MT","LNG","WMT","1919.HK"])
+    signals = await asyncio.to_thread(compute_all_signals, thermal_anomalies=thermal, earnings_calendar=earnings)
     return {
         "signals": {
             k: {
@@ -221,9 +250,9 @@ async def get_signals():
     }
 
 # ── Market Data ───────────────────────────────────────────────────────────────
-@app.get("/api/market/prices")
+@app.get("/api/market/prices", dependencies=[Depends(get_current_user)])
 async def get_prices():
-    prices = get_bulk_prices()
+    prices = await asyncio.to_thread(get_bulk_prices)
     return {"prices": prices, "count": len(prices),
             "timestamp": datetime.now(timezone.utc).isoformat()}
 
@@ -320,7 +349,7 @@ async def get_news(topic: str = "", ticker: str = "", limit: int = 50):
     }
 
 # ── Risk Engine ───────────────────────────────────────────────────────────────
-@app.get("/api/risk/status")
+@app.get("/api/risk/status", dependencies=[Depends(require_role(["ADMIN", "TRADER"]))])
 async def risk_status():
     from src.execution.risk_engine import GROSS_EXPOSURE_LIMIT
     return {
@@ -333,7 +362,18 @@ async def risk_status():
         "gates_active": 9,
     }
 
-# ── WebSocket Live Feed ───────────────────────────────────────────────────────
+@app.post("/api/execution/twap", dependencies=[Depends(require_role(["ADMIN", "TRADER"]))])
+async def execute_twap(ticker: str, side: str, quantity: int, duration: int):
+    from src.execution.service import execution_service
+    return await execution_service.execute_twap(ticker, side, quantity, duration)
+
+@app.post("/api/backtest", dependencies=[Depends(get_current_user)])
+async def backtest_strategy(ticker: str):
+    from src.backtest.engine import BacktestEngine
+    engine = BacktestEngine()
+    # In a real flow, we'd fetch actual prices and signals
+    return {"status": "simulation_started", "ticker": ticker}
+
 @app.websocket("/ws/live")
 async def websocket_live(websocket: WebSocket):
     await websocket.accept()

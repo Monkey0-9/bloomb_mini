@@ -20,7 +20,7 @@ const DataStrip = () => {
         <div className="flex gap-16 whitespace-nowrap items-center animate-ticker-slow">
            <div className="flex items-center gap-12 text-[var(--text-tertiary)] text-[10px] uppercase tracking-[0.1em] font-bold">
               <span className="flex items-center gap-2">
-                <span className="text-[var(--neon-signal)]">ROTTERDAM HUB</span> <span className="text-[var(--neon-bull)]">+34%</span> <span className="text-[var(--text-secondary)]">·</span> Δ {activeVessels} VESSELS ARRIVING
+                <span className="text-[var(--neon-signal)]">ALGO_MODE:</span> <span className="text-[var(--neon-bull)]">SHADOW_DETECTION_ACTIVE</span> <span className="text-[var(--text-secondary)]">·</span> SCANNING {activeVessels} ASSETS
               </span>
               <span className="text-[var(--border-default)]">//</span>
               <span className="flex items-center gap-2">
@@ -28,7 +28,7 @@ const DataStrip = () => {
               </span>
               <span className="text-[var(--border-default)]">//</span>
               <span className="flex items-center gap-2">
-                <span className="text-[var(--neon-purple)]">SINGAPORE PSA</span> STATUS <span className="text-[var(--neon-bull)]">OPTIMIZED</span>
+                <span className="text-[var(--neon-purple)]">DARK_VESSEL_SIGNAL:</span> <span className="text-[var(--neon-bull)]">NOMINAL</span> <span className="text-[var(--text-secondary)]">·</span> 0 OFAC_VIOLATIONS_DETECTED
               </span>
               <span className="text-[var(--border-default)]">//</span>
                <span className="flex items-center gap-2 min-w-0">
@@ -41,7 +41,7 @@ const DataStrip = () => {
                </span>
                <span className="text-[var(--border-default)] flex-shrink-0">//</span>
                <span className="flex items-center gap-2 flex-shrink-0">
-                 <span className="text-[var(--neon-signal)]">SAR TASKING</span> <span className="text-[var(--neon-bull)]">ENABLED</span> FOR BRTUB HUB
+                 <span className="text-[var(--neon-signal)]">SAR_TASKING</span> <span className="text-[var(--neon-bull)]">OPTIMIZED</span> FOR MULTI-AGENT_OPS
                </span>
            </div>
            {/* Loop */}

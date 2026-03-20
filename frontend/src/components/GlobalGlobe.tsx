@@ -17,7 +17,7 @@ import { countryLabels } from '../data/countries';
 // ==============================================================================
 // CONSTANTS
 // ==============================================================================
-const API_BASE = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8000';
+const API_BASE = (import.meta.env.VITE_API_URL as string) || '';
 const REFRESH_INTERVAL_MS = 15_000;
 
 // Globe textures — dark institutional aesthetic
@@ -533,28 +533,29 @@ const GlobalGlobe: React.FC = () => {
         // ── Elite OSINT Country Typography (Adaptive LOD) ──────────────────
         labelsData={useMemo(() => {
           const altitude = zoomLevel ? 4 / zoomLevel : 2.5;
-          if (altitude > 1.8) return []; // Hide labels to maintain clean macro view
-          const limit = altitude < 0.4 ? 195 : altitude < 0.8 ? 85 : 35;
+          // RELAXED THRESHOLD: Show labels even at higher altitudes for "Bloomberg Command" feel
+          if (altitude > 3.0) return []; 
+          const limit = altitude < 0.6 ? 208 : altitude < 1.2 ? 120 : 60;
           return countryLabels.slice(0, limit);
         }, [zoomLevel])}
         labelLat="lat"
         labelLng="lng"
         labelText={(d: any) => d.name.toUpperCase()}
-        labelSize={0.4}
-        labelColor={() => 'rgba(139, 148, 158, 0.95)'}
+        labelSize={(d: any) => 0.5}
+        labelColor={() => '#00D4FF'}
         labelResolution={4}
         labelIncludeDot={true}
-        labelDotRadius={0.12}
-        labelAltitude={0.01}
+        labelDotRadius={0.15}
+        labelAltitude={0.015}
 
-        // ── Globe Appearance (Bug 6 Fix - Deep Black) ────────────────────────
+        // ── Globe Appearance (Bug 6 Fix - Deep Institutional Black) ──────────
         backgroundColor="rgba(0,0,0,0)"
         globeMaterial={new THREE.MeshStandardMaterial({
           color: '#02040A',
           transparent: true,
-          opacity: 0.92,
-          metalness: 0.2,
-          roughness: 0.9,
+          opacity: 0.95,
+          metalness: 0.3,
+          roughness: 0.7,
         })}
 
         // ── Performance ───────────────────────────────────────────────────────

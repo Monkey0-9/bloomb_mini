@@ -61,7 +61,7 @@ const PortfolioView = () => {
       await Promise.allSettled(
         PAPER_PORTFOLIO.map(async (h) => {
           try {
-            const resp = await fetch(`http://localhost:8000/api/market/price/${h.ticker}`);
+            const resp = await fetch(`/api/market/price/${h.ticker}`);
             if (!resp.ok) throw new Error();
             const data = await resp.json();
             const price = data.price || data.regularMarketPrice || h.hist[h.hist.length-1];

@@ -1,56 +1,66 @@
 import asyncio
-import logging
-from typing import Dict, Any, List
-from datetime import datetime, timezone
-from src.api.agents.maritime import MaritimeAgent
-from src.api.agents.signal_alpha import SignalAgent
-from src.api.agents.macro import MacroAgent
-from src.api.agents.risk import RiskAgent
-from src.api.agents.analyst import AnalystAgent
-from src.api.agents.fundamentals import FundamentalAgent
-from src.api.agents.news import NewsAgent
-from src.api.agents.execution import ExecutionAgent
-from src.api.agents.flight import FlightAgent
-from src.api.agents.satellite import SatelliteAgent
-from src.api.agents.thermal import ThermalAgent
+from typing import List, Dict, Any
+import structlog
+from src.api.agents.base import BaseAgent
 
-log = logging.getLogger(__name__)
+log = structlog.get_logger()
 
-class SignalOrchestrator:
-    """Central nervous system of the SatTrade Terminal."""
+class Orchestrator:
+    """Coordinates multiple agents to fulfill complex queries."""
     
     def __init__(self):
-        self.agents = {
-            "maritime": MaritimeAgent(),
-            "flight": FlightAgent(),
-            "signals": SignalAgent(),
-            "macro": MacroAgent(),
-            "risk": RiskAgent(),
-            "analyst": AnalystAgent(),
-            "fundamentals": FundamentalAgent(),
-            "news": NewsAgent(),
-            "execution": ExecutionAgent(),
-            "satellite": SatelliteAgent(),
-            "thermal": ThermalAgent()
+        self.agents: Dict[str, BaseAgent] = {}
+        self.log = log.bind(component="orchestrator")
+
+    def register_agent(self, agent: BaseAgent):
+        self.agents[agent.name] = agent
+        self.log.info("agent_registered", agent=agent.name)
+
+    async def execute_dag(self, dag: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Executes a directed acyclic graph of agent tasks.
+        Format: {
+            "tasks": [
+                {"id": "t1", "agent": "thermal", "params": {...}},
+                {"id": "t2", "agent": "news", "params": {...}, "depends_on": ["t1"]},
+            ]
         }
-        self.status = "ACTIVE"
-        self._last_state = {}
-
-    async def get_unified_state(self) -> Dict[str, Any]:
-        """Aggregates state from all agents into a single unified context."""
-        states = await asyncio.gather(*[agent.get_state() for agent in self.agents.values()])
-        return {name: state for name, state in zip(self.agents.keys(), states)}
-
-    async def dispatch_task(self, agent_name: str, task_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Dispatches a specific task to an agent."""
-        agent = self.agents.get(agent_name)
-        if not agent:
-            return {"error": f"Agent {agent_name} not found"}
-        return await agent.process_task(task_type, params)
-
-    def get_system_health(self) -> Dict[str, Any]:
-        return {
-            "status": self.status,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "agents": [agent.get_health() for agent in self.agents.values()]
-        }
+        """
+        results = {}
+        tasks = dag.get("tasks", [])
+        
+        # Simple BFS/topological sort execution for now
+        # In a real system, we'd use a proper DAG runner
+        pending = list(tasks)
+        while pending:
+            current_batch = [t for t in pending if all(d in results for d in t.get("depends_on", []))]
+            if not current_batch:
+                if pending:
+                    self.log.error("dag_cycle_detected", pending=[t["id"] for t in pending])
+                    break
+                break
+                
+            async_tasks = []
+            for t in current_batch:
+                agent = self.agents.get(t["agent"])
+                if not agent:
+                    results[t["id"]] = {"error": f"Agent {t['agent']} not found"}
+                    continue
+                
+                # Merge dependency results into params
+                params = t.get("params", {})
+                for dep_id in t.get("depends_on", []):
+                    params[f"input_{dep_id}"] = results[dep_id]
+                
+                async_tasks.append((t["id"], agent.process(params)))
+            
+            ids, futures = zip(*async_tasks) if async_tasks else ([], [])
+            batch_results = await asyncio.gather(*futures)
+            
+            for tid, res in zip(ids, batch_results):
+                results[tid] = res
+                
+            for t in current_batch:
+                pending.remove(t)
+                
+        return results

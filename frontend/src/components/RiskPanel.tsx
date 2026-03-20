@@ -28,7 +28,7 @@ const RiskPanel = () => {
   useEffect(() => {
     const fetchRisk = async () => {
       try {
-        const resp = await fetch('http://localhost:8000/api/risk');
+        const resp = await fetch('/api/risk');
         if (resp.ok) {
           const data = await resp.json();
           setRisk(data);

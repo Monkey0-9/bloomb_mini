@@ -1,28 +1,29 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict
-from datetime import datetime, timezone
+from typing import Any, Dict, Optional
+import structlog
+from src.common.message_bus import bus
+
+log = structlog.get_logger()
 
 class BaseAgent(ABC):
-    """Base class for all institutional-grade intelligence agents."""
+    """Base interface for all specialized agents."""
     
     def __init__(self, name: str):
         self.name = name
-        self.status = "INITIALIZING"
-        self.last_sync = None
+        self.log = log.bind(agent=name)
 
     @abstractmethod
-    async def get_state(self) -> Dict[str, Any]:
-        """Returns the current state/data from this agent's domain."""
+    async def process(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Process a specific task and return a result."""
         pass
 
-    @abstractmethod
-    async def process_task(self, task_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Processes a specific task dispatched by the orchestrator."""
+    async def run(self):
+        """Main loop for the agent (if running as a service)."""
+        self.log.info("agent_started")
+        # In a microservice world, this would listen to a queue
         pass
 
-    def get_health(self) -> Dict[str, Any]:
-        return {
-            "agent": self.name,
-            "status": self.status,
-            "last_sync": self.last_sync.isoformat() if self.last_sync else None
-        }
+    async def emit_signal(self, topic: str, payload: Any):
+        """Emit a signal to the message bus."""
+        self.log.info("agent_emit_signal", topic=topic)
+        await bus.publish(topic, {"agent": self.name, "payload": payload})

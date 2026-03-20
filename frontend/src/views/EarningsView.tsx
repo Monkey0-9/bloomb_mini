@@ -38,7 +38,7 @@ const EarningsView = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        const resp = await fetch('http://localhost:8000/api/alpha/earnings');
+        const resp = await fetch('/api/alpha/earnings');
         if (!resp.ok) throw new Error();
         const data = await resp.json();
         setEarnings(data.earnings || []);

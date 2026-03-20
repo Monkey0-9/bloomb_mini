@@ -196,26 +196,28 @@ class FlightTracker:
 
 # --- SYNTHETIC HIGH-DENSITY POPULATION ---
 
-    async def populate_global_fleet(self, count: int = 500):
+    async def populate_global_fleet(self):
         """
-        Ensures 100% global coverage for terminal visualizers.
+        Fetches live aircraft from OpenSky Network via adsb.py.
+        100% Free. 100% Open Source.
         """
-        log.info("POPULATING_INSTITUTIONAL_FLIGHT_FLEET", count=count)
-        for i in range(count):
-            icao24 = f"a{i:05x}"
-            corridor = random.choice(list(FLIGHT_CORRIDORS.values()))
-            lat = corridor["lat"] + random.uniform(-15, 15)
-            lon = corridor["lon"] + random.uniform(-15, 15)
-            
+        from src.globe.adsb import fetch_all_aircraft
+        log.info("FETCHING_OPENSKY_AIRCRAFT_INSTITUTIONAL")
+        aircraft_list = await asyncio.to_thread(fetch_all_aircraft)
+        
+        for a in aircraft_list:
+            # Map into our Flight internal format
             await self.update_flight({
-                "icao24": icao24,
-                "callsign": f"{random.choice(['FDX', 'DAL', 'UAL', 'BAW'])}{random.randint(100, 999)}",
-                "lat": lat,
-                "lon": lon,
-                "altitude": random.randint(30000, 41000),
-                "speed": random.randint(430, 520),
-                "heading": random.uniform(0, 360),
-                "operator": random.choice(list(AIRLINE_TO_TICKERS.keys()))
+                "icao24": a.icao24,
+                "callsign": a.callsign,
+                "lat": a.lat,
+                "lon": a.lon,
+                "altitude": a.altitude_ft,
+                "speed": a.speed_knots,
+                "heading": a.heading,
+                "operator": a.origin_country, # Use country as operator proxy if unknown
+                "category": a.aircraft_category,
+                "status": "Emergency" if a.alert else "Normal"
             })
 
     def get_all_flights(self) -> List[Flight]:

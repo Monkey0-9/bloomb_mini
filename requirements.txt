@@ -49,3 +49,4 @@ axios==1.5.0
 date-fns==2.30.0
 clsx==2.0.0
 tailwind-merge==1.14.0
+apscheduler==3.10.1

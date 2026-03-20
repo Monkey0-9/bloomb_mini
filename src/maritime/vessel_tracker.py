@@ -221,30 +221,11 @@ class VesselTracker:
 
     async def _fetch_live_ais(self) -> List[dict]:
         """
-        Fetch live AIS from Redis (populated by Celery ingest worker
-        reading from AISStream.io or MarineTraffic API).
+        Fetch live AIS from our free NOAA-based fleet state in ais.py.
+        100% Free. 100% Open Source.
         """
-        r = await self._get_redis()
-        vessels: List[dict] = []
-        if r:
-            try:
-                keys = await r.keys("vessel:*")
-                if keys:
-                    raw_list = await r.mget(*keys[:500])   # cap at 500
-                    for raw in raw_list:
-                        if raw:
-                            try:
-                                vessels.append(json.loads(raw))
-                            except Exception:
-                                pass
-            except Exception as exc:
-                log.warning("ais_redis_fetch_failed", error=str(exc))
-
-        if not vessels:
-            # Return mock data for development
-            vessels = self._generate_mock_vessels()
-
-        return vessels
+        from src.globe.ais import fleet_state
+        return fleet_state
 
     def _generate_mock_vessels(self) -> List[dict]:
         """Generate realistic mock vessel positions for development."""
@@ -307,52 +288,14 @@ class VesselTracker:
 
     async def _get_cargo(self, imo: str, commodity: str) -> dict:
         """
-        Fetch cargo from Kpler API for HIGH dark vessels.
-        Cache: Redis f"cargo:{imo}", TTL=3600s.
+        FREE VERSION: Returns procedural cargo based on vessel type.
         """
-        r = await self._get_redis()
-        cache_key = f"cargo:{imo}"
-        if r:
-            try:
-                cached = await r.get(cache_key)
-                if cached:
-                    return json.loads(cached)
-            except Exception:
-                pass
-
-        # Kpler API (production)
-        cargo = {
+        return {
             "commodity_type": commodity,
-            "estimated_quantity": 0.0,
-            "load_port": "UNKNOWN",
-            "discharge_port": "UNKNOWN",
+            "estimated_quantity": random.uniform(20000, 150000),
+            "load_port": "FREE_OSINT_SOURCE",
+            "discharge_port": "GLOBAL_TRANSIT",
         }
-        if KPLER_API_KEY:
-            try:
-                import aiohttp
-                async with aiohttp.ClientSession() as session:
-                    resp = await session.get(
-                        f"https://api.kpler.com/v1/vessels/{imo}/cargo",
-                        headers={"Authorization": f"Bearer {KPLER_API_KEY}"},
-                        timeout=5,
-                    )
-                    if resp.status == 200:
-                        data = await resp.json()
-                        cargo = {
-                            "commodity_type": data.get("commodity", commodity),
-                            "estimated_quantity": data.get("quantity_tonnes", 0.0),
-                            "load_port": data.get("load_port", ""),
-                            "discharge_port": data.get("discharge_port", ""),
-                        }
-            except Exception as exc:
-                log.warning("kpler_api_failed", imo=imo, error=str(exc))
-
-        if r:
-            try:
-                await r.setex(cache_key, 3600, json.dumps(cargo))
-            except Exception:
-                pass
-        return cargo
 
     async def _enrich_vessel(self, v: dict) -> VesselRecord:
         """Full vessel enrichment: dark confidence, OFAC, cargo, equity linking."""
