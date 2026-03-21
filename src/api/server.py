@@ -1,76 +1,131 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Request
-from typing import Dict, Any, List
-from fastapi.middleware.cors import CORSMiddleware
-import asyncio
+import os
 import json
+import asyncio
 from datetime import datetime, timezone
+from typing import Any
 from contextlib import asynccontextmanager
 
-# Import all new modules
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Request
+from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+# Ingestion & Tools
 from src.globe.adsb import fetch_all_aircraft, get_squawk_alerts
 from src.globe.orbits import get_ground_track, SATELLITE_TLE_URLS
-from src.globe.thermal import fetch_firms_thermal, compute_signal_from_thermal
-from src.globe.ais_live import get_aishub_vessels
+from src.globe.thermal import fetch_firms_thermal
 from src.data.market_data import (get_bulk_prices, get_ohlcv_history,
                                    get_company_info, get_options_chain,
                                    get_earnings_calendar, GLOBAL_UNIVERSE)
 from src.data.macro import get_macro_dashboard, fetch_fred_series, FRED_SERIES
 from src.data.news import fetch_all_news
 from src.signals.composite_scorer import compute_all_signals
-from src.common.trackers import vessel_tracker as _vessel_tracker, flight_tracker as _flight_tracker
+from src.common.trackers import vessel_tracker, flight_tracker
 from src.scheduler.jobs import start_scheduler
 
-import os
+# Core Services
 from src.api.auth import get_current_user, require_role
 from src.api.monitoring import metrics_middleware, metrics_endpoint, tracing_middleware
 from src.api.orchestrator import Orchestrator
-from src.api.agents.thermal_agent import ThermalAgent
-from src.api.agents.news_agent import NewsAgent
-from src.api.agents.research_agent import ResearchAgent
+from src.api.agents.thermal import ThermalAgent
+from src.api.agents.news import NewsAgent
+from src.api.agents.analyst import AnalystAgent
+from src.api.agents.maritime import MaritimeAgent
+from src.api.agents.macro import MacroAgent
+from src.api.agents.risk import RiskAgent
+from src.api.agents.execution import ExecutionAgent
+from src.api.agents.flight import FlightAgent
+from src.api.agents.satellite import SatelliteAgent
+from src.api.routes import alpha, market, execution, portfolio, command
 from src.risk.engine import RiskEngine
 
+# Elite Broadcast Tier
+from src.api.broadcast import broadcast_manager
+from src.api.ticker import run_ticker
+
+# Rate Limiter for Top 0.1% protection
+limiter = Limiter(key_func=get_remote_address)
+
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> Any:
+    # Initialize SQLite tables if they don't exist
+    from src.db.session import init_db
+    await init_db()
+    
+    # Start the AIS maritime pipeline (Live AISStream.io)
+    from src.globe.ais import run_ais_pipeline
+    asyncio.create_task(run_ais_pipeline(lambda x: None)) # Populates fleet_state
+
+    # Start the central live broadcast ticker (One producer, many consumers)
+    asyncio.create_task(run_ticker())
     start_scheduler()
     yield
 
-
 app = FastAPI(title="SatTrade Intelligence Terminal", version="2.0.0", lifespan=lifespan)
+app.state.limiter = limiter
 
-# Configurable CORS
-TRUSTED_ORIGINS = os.getenv("TRUSTED_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
-app.add_middleware(CORSMiddleware,
-    allow_origins=TRUSTED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"])
-
-@app.middleware("http")
-async def add_metrics(request: Request, call_next):
-    return await metrics_middleware(request, call_next)
-
-@app.middleware("http")
-async def add_tracing(request: Request, call_next):
-    return await tracing_middleware(request, call_next)
-
-@app.get("/metrics")
-async def metrics():
-    return metrics_endpoint()
-
-
-# Singletons
-# Singletons imported from src.common.trackers
+# Initialize and register Orchestrator
 _orchestrator = Orchestrator()
 _orchestrator.register_agent(ThermalAgent())
 _orchestrator.register_agent(NewsAgent())
-_orchestrator.register_agent(ResearchAgent())
+_orchestrator.register_agent(AnalystAgent())
+_orchestrator.register_agent(MaritimeAgent())
+_orchestrator.register_agent(MacroAgent())
+_orchestrator.register_agent(RiskAgent())
+_orchestrator.register_agent(ExecutionAgent())
+_orchestrator.register_agent(FlightAgent())
+_orchestrator.register_agent(SatelliteAgent())
+
+app.state.orchestrator = _orchestrator
+
+# Include Routers
+app.include_router(alpha.router)
+app.include_router(market.router)
+app.include_router(execution.router)
+app.include_router(portfolio.router)
+app.include_router(command.router)
+
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Configurable CORS
+ALLOWED_HOSTS = os.getenv("TRUSTED_ORIGINS", "http://localhost:3000,http://localhost:5173")
+TRUSTED_ORIGINS = ALLOWED_HOSTS.split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=TRUSTED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
+
+@app.middleware("http")
+async def add_metrics(request: Request, call_next: Any) -> Any:
+    return await metrics_middleware(request, call_next)
+
+@app.middleware("http")
+async def add_tracing(request: Request, call_next: Any) -> Any:
+    return await tracing_middleware(request, call_next)
+
+@app.on_event("startup")
+async def startup_event():
+    start_scheduler()
+    import structlog
+    log = structlog.get_logger()
+    log.info("startup_complete", host="0.0.0.0", port=8000)
+
+@app.get("/metrics")
+async def metrics() -> Any:
+    return metrics_endpoint()
+
+# Singletons
 _risk_engine = RiskEngine()
 
 connected_clients: list[WebSocket] = []
 
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/health")
-async def health():
+async def health() -> dict[str, Any]:
     return {
         "status": "live",
         "version": "2.0.0",
@@ -85,38 +140,37 @@ async def health():
         }
     }
 
-# ── Globe — Aircraft ──────────────────────────────────────────────────────────
-@app.get("/api/globe/aircraft")
-async def get_aircraft():
-    flights = _flight_tracker.get_all_flights()
-    return _flight_tracker.to_geojson_feature_collection()
-
-@app.get("/api/globe/squawk-alerts")
-async def get_squawk_alerts_endpoint():
-    aircraft = await asyncio.to_thread(fetch_all_aircraft)
-    return {"alerts": get_squawk_alerts(aircraft),
-            "timestamp": datetime.now(timezone.utc).isoformat()}
-
-# ── Globe — Satellite Orbits ──────────────────────────────────────────────────
-@app.get("/api/globe/orbits/{satellite_name}")
-async def get_orbit(satellite_name: str):
-    if satellite_name not in SATELLITE_TLE_URLS:
-        raise HTTPException(404, f"Satellite {satellite_name} not tracked. "
-                               f"Available: {list(SATELLITE_TLE_URLS.keys())}")
-    return await asyncio.to_thread(get_ground_track, satellite_name)
-
+# ── Globe — Orbits ────────────────────────────────────────────────────────────
 @app.get("/api/globe/orbits")
-async def get_all_orbits():
+async def get_orbits() -> dict[str, Any]:
+    orbits = {name: get_ground_track(name) for name in SATELLITE_TLE_URLS.keys()}
     return {
-        "satellites": list(SATELLITE_TLE_URLS.keys()),
-        "orbits": {name: get_ground_track(name) for name in
-                   ["Sentinel-2A", "Sentinel-2B", "Landsat-9"]},  # 3 key ones
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "satellites": {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [o["current_position"]["lon"], o["current_position"]["lat"]] if o.get("current_position") else [0,0]},
+                    "properties": {
+                        "id": name,
+                        "name": name,
+                        "category": "EO",
+                        "owner": "ESA/USGS",
+                        "altitude": "786km",
+                        "velocity": "7.5km/s",
+                        "orbit": "SSO",
+                        "symbol": "🛰️",
+                        "color": "#00FF41"
+                    }
+                }
+                for name, o in orbits.items()
+            ]
+        }
     }
 
 # ── Globe — Thermal ───────────────────────────────────────────────────────────
 @app.get("/api/globe/thermal")
-async def get_thermal():
+async def get_thermal() -> dict[str, Any]:
     anomalies = await asyncio.to_thread(fetch_firms_thermal)
     return {
         "anomalies": [
@@ -143,9 +197,9 @@ async def get_thermal():
 
 # ── Globe — Vessels ───────────────────────────────────────────────────────────
 @app.get("/api/globe/vessels")
-async def get_vessels():
+async def get_vessels() -> dict[str, Any]:
     """Returns vessels in the flat object format expected by vesselStore.ts"""
-    vessels = await _vessel_tracker.get_all_vessels()
+    vessels = await vessel_tracker.get_all_vessels()
     return {
         "features": [
             {
@@ -167,44 +221,22 @@ async def get_vessels():
     }
 
 @app.get("/api/globe/vessels/{mmsi}")
-async def get_vessel_detail(mmsi: str):
-    vessels = {v["mmsi"]: v for v in _vessel_tracker.to_api_list()}
+async def get_vessel_detail(mmsi: str) -> Any:
+    vessels_list = await vessel_tracker.get_all_vessels()
+    vessels = {v.mmsi: v for v in vessels_list}
     if mmsi not in vessels:
         raise HTTPException(404, f"Vessel {mmsi} not tracked")
     return vessels[mmsi]
 
 # ── Globe — Flights ───────────────────────────────────────────────────────────
 @app.get("/api/flights")
-async def get_flights_legacy():
+async def get_flights_legacy() -> Any:
     # Legacy redirect or redundant endpoint
-    return _flight_tracker.to_geojson_feature_collection()
-    return {
-        "features": [
-            {
-                "type": "Feature",
-                "geometry": {"type": "Point", "coordinates": [f.position.lon, f.position.lat]},
-                "properties": {
-                    "icao24": f.flight_id,
-                    "callsign": f.callsign,
-                    "category": f.category,
-                    "operator": f.aircraft.operator,
-                    "alt_ft": f.position.altitude_ft,
-                    "speed_kts": f.position.speed_knots,
-                    "heading": f.position.heading,
-                    "origin": f.origin,
-                    "destination": f.destination,
-                    "signal": f.signal_direction,
-                    "reason": f.signal_reason,
-                    "tickers": f.affected_tickers,
-                }
-            }
-            for f in flights
-        ]
-    }
+    return flight_tracker.to_geojson_feature_collection()
 
 # ── Signals — Thermal ─────────────────────────────────────────────────────────
-@app.get("/api/alpha/thermal", dependencies=[Depends(get_current_user)])
-async def get_thermal_signals():
+@app.get("/api/alpha/thermal")
+async def get_thermal_signals() -> dict[str, Any]:
     """Returns thermal industrial signals for the globe heatmap"""
     anomalies = await asyncio.to_thread(fetch_firms_thermal)
     return {
@@ -223,237 +255,25 @@ async def get_thermal_signals():
     }
 
 # ── Signals ───────────────────────────────────────────────────────────────────
-@app.get("/api/signals", dependencies=[Depends(get_current_user)])
-async def get_signals():
+@app.get("/api/signals")
+async def get_signals() -> dict[str, Any]:
     thermal = await asyncio.to_thread(fetch_firms_thermal)
     earnings = await asyncio.to_thread(get_earnings_calendar, ["AMKBY","ZIM","MT","LNG","WMT","1919.HK"])
     signals = await asyncio.to_thread(compute_all_signals, thermal_anomalies=thermal, earnings_calendar=earnings)
-    return {
-        "signals": {
-            k: {
-                "signal_name": v.signal_name,
-                "location_display": v.location_display,
-                "score": v.score,
-                "direction": v.direction,
-                "delta_vs_baseline": v.delta_vs_baseline,
-                "ic": v.ic,
-                "icir": v.icir,
-                "n_observations": v.n_observations,
-                "primary_ticker": v.primary_ticker,
-                "primary_company": v.primary_company,
-                "affected_tickers": v.affected_tickers,
-                "signal_reason": v.signal_reason,
-                "pre_earnings": v.pre_earnings_signal,
-                "data_sources": v.data_sources,
-                "last_updated": v.last_updated.isoformat(),
-            }
-            for k, v in signals.items()
-        },
-        "count": len(signals),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
+    return {"signals": signals}
 
-# ── Market Data ───────────────────────────────────────────────────────────────
-@app.get("/api/market/prices", dependencies=[Depends(get_current_user)])
-async def get_prices():
-    prices = await asyncio.to_thread(get_bulk_prices)
-    return {"prices": prices, "count": len(prices),
-            "timestamp": datetime.now(timezone.utc).isoformat()}
-
-@app.get("/api/market/prices/{ticker}")
-async def get_single_price(ticker: str):
-    prices = get_bulk_prices([ticker])
-    if ticker not in prices:
-        raise HTTPException(404, f"Ticker {ticker} not found")
-    return prices[ticker]
-
-@app.get("/api/market/chart/{ticker}")
-async def get_chart(ticker: str, period: str = "3mo", interval: str = "1d"):
-    ohlcv = get_ohlcv_history(ticker, period=period, interval=interval)
-    if not ohlcv:
-        raise HTTPException(404, f"No chart data for {ticker}")
-    company = get_company_info(ticker)
-    # Get signal for this ticker
-    thermal = fetch_firms_thermal()
-    signals = compute_all_signals(thermal_anomalies=thermal)
-    ticker_signals = [
-        {"location": s.location_display, "score": s.score, "direction": s.direction,
-         "last_updated": s.last_updated.isoformat()}
-        for s in signals.values()
-        if ticker in s.affected_tickers
-    ]
-    return {
-        "ticker": ticker,
-        "company": company,
-        "ohlcv": ohlcv,
-        "satellite_signals": ticker_signals,
-        "period": period,
-        "interval": interval,
-    }
-
-@app.get("/api/market/options/{ticker}")
-async def get_options(ticker: str):
-    return get_options_chain(ticker)
-
-@app.get("/api/market/earnings")
-async def get_earnings():
-    tickers = list(GLOBAL_UNIVERSE.keys())[:50]
-    calendar = get_earnings_calendar(tickers)
-    return {"earnings": calendar, "count": len(calendar),
-            "timestamp": datetime.now(timezone.utc).isoformat()}
-
-@app.get("/api/market/screener")
-async def screener(sector: str = "", exchange: str = "", min_change: float = -100,
-                   max_change: float = 100, sat_signal: str = ""):
-    prices = get_bulk_prices()
-    results = []
-    for ticker, data in prices.items():
-        if sector and data.get("sector", "").lower() != sector.lower():
-            continue
-        if exchange and data.get("exchange", "").lower() != exchange.lower():
-            continue
-        change = data.get("change_pct", 0)
-        if change < min_change or change > max_change:
-            continue
-        results.append(data)
-    return {"results": results, "count": len(results)}
-
-# ── Macro ─────────────────────────────────────────────────────────────────────
-@app.get("/api/macro/dashboard")
-async def macro_dashboard():
-    return get_macro_dashboard()
-
-@app.get("/api/macro/{series_id}")
-async def macro_series(series_id: str, limit: int = 252):
-    if series_id.upper() not in FRED_SERIES:
-        raise HTTPException(404, f"Series {series_id} not found. "
-                               f"Available: {list(FRED_SERIES.keys())}")
-    series_def = FRED_SERIES[series_id.upper()]
-    data = fetch_fred_series(series_def[0], limit=limit)
-    return {"series_id": series_id, "label": series_def[1],
-            "unit": series_def[2], "data": data}
-
-# ── News ──────────────────────────────────────────────────────────────────────
-@app.get("/api/news")
-async def get_news(topic: str = "", ticker: str = "", limit: int = 50):
-    items = fetch_all_news()
-    if topic:
-        items = [i for i in items if topic.lower() in i.topics]
-    if ticker:
-        items = [i for i in items if ticker.upper() in i.tickers_mentioned]
-    return {
-        "news": [
-            {"title": i.title, "summary": i.summary, "url": i.url,
-             "source": i.source, "published": i.published,
-             "topics": i.topics, "tickers": i.tickers_mentioned}
-            for i in items[:limit]
-        ],
-        "count": len(items[:limit]),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
-
-# ── Risk Engine ───────────────────────────────────────────────────────────────
-@app.get("/api/risk/status")
-async def risk_status(user_id: str = "anonymous"):
-    status = await _risk_engine.get_status()
-    # Fetch real portfolio data for summary metrics
-    positions, equity = await _risk_engine._get_portfolio(user_id)
-    var_99, cvar_99 = await _risk_engine._mc.compute(positions, equity)
-    
-    return {
-        "system_state": "ACTIVE",
-        "gross_exposure_limit_pct": 150.0,
-        "nav_usd": equity,
-        "gross_exposure_pct": (sum(p.notional for p in positions) / equity * 100) if equity > 0 else 0,
-        "var_99_1d_pct": round(var_99 * 100, 2),
-        "cvar_99_1d_pct": round(cvar_99 * 100, 2),
-        "kill_switch": "ACTIVE" if status["kill_switch_active"] else "ARMED",
-        "gates_active": status["gates"],
-        "engine": status["engine"]
-    }
-
-@app.get("/api/risk")
-async def get_full_risk_status(user_id: str = "anonymous"):
-    """Returns detailed risk status including gates for the frontend RiskPanel."""
-    # 1. Fetch current portfolio and metrics
-    positions, equity = await _risk_engine._get_portfolio(user_id)
-    var_99, cvar_99 = await _risk_engine._mc.compute(positions, equity)
-    
-    # 2. To show gates, we run a "dummy" audit of the current portfolio 
-    # to populate the UI gates with active system limits.
-    status = await _risk_engine.get_status()
-    
-    # Construct a mock "current state" trade to trigger gate evaluation for visibility
-    # strictly for UI populating in this endpoint
-    dummy_trade = {"ticker": "NAV_SNAPSHOT", "qty": 0, "price": 0}
-    eval_res = await _risk_engine.evaluate_trade(dummy_trade)
-    
-    return {
-        "status": "GREEN" if not status["kill_switch_active"] else "RED",
-        "portfolio": {
-            "equity": equity,
-            "notional_exposure": sum(p.notional for p in positions),
-            "gross_exposure_pct": (sum(p.notional for p in positions) / equity) if equity > 0 else 0,
-            "net_exposure_pct": 0.0, # Simplified for demo
-            "var_99_1d_pct": var_99,
-            "kill_switch_active": status["kill_switch_active"],
-        },
-        "gates": [
-            {
-                "name": g["gate_name"],
-                "passed": g["result"] == "PASS",
-                "value": f"{g['computed_value']:.2f}" if g['computed_value'] is not None else "N/A",
-                "threshold": f"{g['threshold']:.2f}" if g['threshold'] is not None else "N/A"
-            } for g in eval_res["gates"]
-        ]
-    }
-
-@app.post("/api/risk/evaluate")
-async def evaluate_trade(trade: dict):
-    """Evaluates a proposed trade against 9 risk gates."""
-    return await _risk_engine.evaluate_trade(trade)
-
-@app.post("/api/execution/twap", dependencies=[Depends(require_role(["ADMIN", "TRADER"]))])
-async def execute_twap(ticker: str, side: str, quantity: int, duration: int):
-    from src.execution.service import execution_service
-    return await execution_service.execute_twap(ticker, side, quantity, duration)
-
-@app.post("/api/backtest", dependencies=[Depends(get_current_user)])
-async def backtest_strategy(ticker: str):
-    from src.backtest.engine import BacktestEngine
-    engine = BacktestEngine()
-    # In a real flow, we'd fetch actual prices and signals
-    return {"status": "simulation_started", "ticker": ticker}
-
-@app.websocket("/ws/live")
-async def websocket_live(websocket: WebSocket):
+# ── WebSocket ─────────────────────────────────────────────────────────────────
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()
     connected_clients.append(websocket)
     try:
         while True:
-            await asyncio.sleep(10)  # push every 10 seconds
-            aircraft = fetch_all_aircraft()
-            squawk_alerts = get_squawk_alerts(aircraft)
-            payload = {
-                "type": "LIVE_UPDATE",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "aircraft_count": len(aircraft),
-                "squawk_alerts": squawk_alerts,
-                "vessels": _vessel_tracker.to_api_list()[:20],  # top 20 for WS
-                "health": {
-                    "pipeline": "live",
-                    "signals_active": 6,
-                    "aircraft_tracked": len(aircraft),
-                    "vessels_tracked": len(_vessel_tracker.get_all_vessels()),
-                },
-            }
-            await websocket.send_text(json.dumps(payload))
+            # Keep connection alive
+            await websocket.receive_text()
     except WebSocketDisconnect:
         connected_clients.remove(websocket)
-    except Exception:
-        if websocket in connected_clients:
-            connected_clients.remove(websocket)
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("src.api.server:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

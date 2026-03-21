@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+from typing import cast
 
 SENTINEL2_BANDS: dict[str, float] = {
     "B02": 490.0,
@@ -119,5 +120,5 @@ def compute_ndvi(sr_path: str) -> np.ndarray:
         nir = src.read(4).astype(np.float32)
     denom = nir + red
     denom = np.where(denom == 0, 1e-10, denom)
-    return np.clip((nir - red) / denom, -1.0, 1.0)
+    return cast(np.ndarray, np.clip((nir - red) / denom, -1.0, 1.0))
 

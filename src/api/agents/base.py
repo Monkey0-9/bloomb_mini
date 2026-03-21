@@ -13,7 +13,7 @@ class BaseAgent(ABC):
         self.log = log.bind(agent=name)
 
     @abstractmethod
-    async def process(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def process_task(self, task_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
         """Process a specific task and return a result."""
         pass
 

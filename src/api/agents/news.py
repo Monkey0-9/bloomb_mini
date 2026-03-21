@@ -26,47 +26,34 @@ class NewsAgent(BaseAgent):
         }
 
     async def get_latest_news(self, ticker: str = None) -> List[Dict[str, Any]]:
-        """Fetches live news from yfinance and akshare."""
-        articles = []
+        """Fetches real-time news via RSS (Reuters, Lloyd's, etc.)"""
+        import feedparser
+        feeds = [
+            "https://www.reutersagency.com/feed/?best-topics=business&post_type=best",
+            "https://export.arxiv.org/rss/cs.AI", # AI Intel
+            "https://www.lloydslist.com/rss/ship-operations", # Maritime intel
+        ]
         
-        # 1. Fetch Ticker News via yfinance
-        if ticker:
+        articles = []
+        for url in feeds:
             try:
-                t = yf.Ticker(ticker)
-                yf_news = t.news
-                for n in yf_news[:5]:
+                # Use a thread pool for the blocking feedparser call
+                loop = asyncio.get_event_loop()
+                feed = await loop.run_in_executor(None, feedparser.parse, url)
+                
+                for entry in feed.entries[:5]:
                     articles.append({
-                        "title": n.get("title"),
-                        "source": n.get("publisher"),
-                        "sentiment": 0.0, # Placeholder for NLP scoring
+                        "title": entry.get("title", "No Title"),
+                        "url": entry.get("link", "#"),
+                        "source": feed.feed.get("title", "Unknown Source"),
+                        "sentiment": 0.0,
                         "urgency": "MEDIUM",
-                        "impacted": [ticker.upper()],
-                        "link": n.get("link")
+                        "impacted": [ticker.upper()] if ticker else ["GLOBAL"],
+                        "timestamp": entry.get("published", "")
                     })
             except Exception as e:
-                log.error(f"yfinance error for {ticker}: {e}")
-
-        # 2. Fetch Macro News via akshare (translated/English filtered)
-        try:
-            # Note: akshare often returns Chinese content. We filter for English markers or use specific datasets.
-            # Using stock_news_em as a proxy for global electronic news
-            macro_news = ak.stock_news_em(symbol=ticker if ticker else "US500")
-            for _, row in macro_news.head(5).iterrows():
-                title = str(row['新闻标题'])
-                # Simple heuristic: if it contains Chinese characters, skip or label for translation
-                if any('\u4e00' <= char <= '\u9fff' for char in title):
-                    continue 
-                articles.append({
-                    "title": title,
-                    "source": row.get('文章来源', 'AKShare'),
-                    "sentiment": 0.0,
-                    "urgency": "LOW",
-                    "impacted": ["MACRO"],
-                    "link": row.get('新闻链接')
-                })
-        except Exception as e:
-            log.error(f"akshare error: {e}")
-
+                log.error(f"news_rss_error for {url}: {e}")
+        
         # Fallback to institutional mocks if empty
         if not articles:
              articles = [
@@ -75,7 +62,8 @@ class NewsAgent(BaseAgent):
                     "source": "Lloyd's List",
                     "sentiment": -0.65,
                     "urgency": "HIGH",
-                    "impacted": ["ZIM", "MAERSK", "MATX"]
+                    "impacted": ["ZIM", "MAERSK", "MATX"],
+                    "url": "#"
                 }
             ]
         

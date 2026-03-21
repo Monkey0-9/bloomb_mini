@@ -50,6 +50,14 @@ class Position:
             return 0.0
         return mult * (self.current_price - self.entry_price) / self.entry_price
 
+@dataclass
+class PortfolioState:
+    equity: float
+    gross_exposure: float
+    net_exposure: float
+    positions: Dict[str, float]
+    sector_exposure: Dict[str, float]
+
 
 @dataclass
 class GateResult:
@@ -493,3 +501,12 @@ class RiskEngine:
             "engine": "Monte Carlo VaR (10,000 sims)",
             "gates": 9,
         }
+
+# ─── Singleton ───────────────────────────────────────────────────────────────
+_ENGINE: RiskEngine | None = None
+
+def get_risk_engine() -> RiskEngine:
+    global _ENGINE
+    if _ENGINE is None:
+        _ENGINE = RiskEngine()
+    return _ENGINE

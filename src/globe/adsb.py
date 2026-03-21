@@ -136,6 +136,77 @@ def fetch_all_aircraft() -> list[Aircraft]:
 
     except Exception as e:
         log.error("opensky_error", error=str(e))
+        return fetch_adsb_fi_aircraft()
+
+def fetch_adsb_fi_aircraft() -> list[Aircraft]:
+    """
+    Fallback: Fetch all aircraft from adsb.fi.
+    Completely free, no registration, global coverage.
+    """
+    try:
+        resp = httpx.get("https://api.adsb.fi/v1/aircraft", timeout=30)
+        if resp.status_code != 200:
+            log.warning("adsb_fi_failed", status=resp.status_code)
+            return _generate_mock_aircraft()
+
+        data = resp.json().get("aircraft", [])
+        aircraft = []
+        for a in data:
+            icao24 = (a.get("hex") or "").strip().lower()
+            callsign = (a.get("flight") or "").strip().upper()
+            squawk = (a.get("squawk") or "").strip()
+            
+            lat = a.get("lat")
+            lon = a.get("lon")
+            if lat is None or lon is None:
+                continue
+
+            # Determine category
+            category = "UNKNOWN"
+            vip_info = None
+            alert = None
+
+            if icao24 in VIP_AIRCRAFT:
+                category = "GOVERNMENT"
+                vip_info = VIP_AIRCRAFT[icao24]
+            elif any(icao24.startswith(p.lower()) for p in MILITARY_HEX_PREFIXES):
+                category = "MILITARY"
+            elif any(callsign.startswith(p) for p in CARGO_CALLSIGNS):
+                category = "CARGO"
+
+            # Check squawk alerts
+            if squawk in SQUAWK_ALERTS:
+                alert = {
+                    "squawk": squawk,
+                    **SQUAWK_ALERTS[squawk],
+                    "callsign": callsign,
+                    "lat": lat,
+                    "lon": lon,
+                }
+
+            # Filter for high-interest or alerts
+            if category in ("MILITARY","CARGO","GOVERNMENT") or alert:
+                aircraft.append(Aircraft(
+                    icao24=icao24,
+                    callsign=callsign,
+                    origin_country="", # adsb.fi doesn't always provide country
+                    lat=lat,
+                    lon=lon,
+                    altitude_ft=int(a.get("alt_baro", 0)),
+                    speed_knots=int(a.get("gs", 0)),
+                    heading=float(a.get("track", 0)),
+                    on_ground=bool(a.get("ground")),
+                    squawk=squawk,
+                    last_contact=datetime.now(timezone.utc),
+                    aircraft_category=category,
+                    vip_info=vip_info,
+                    alert=alert,
+                ))
+        
+        log.info("adsb_fi_fetched", count=len(aircraft))
+        return aircraft
+    except Exception as e:
+        log.error("adsb_fi_error", error=str(e))
         return _generate_mock_aircraft()
 
 def _generate_mock_aircraft() -> list[Aircraft]:

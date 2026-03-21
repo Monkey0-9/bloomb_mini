@@ -6,14 +6,14 @@ Completely async via aiohttp. No blocking requests.get().
 Priority queue for ticker-specific regions.
 """
 from __future__ import annotations
-
-import asyncio
 import json
+import math
 import os
 import time
 from datetime import datetime
-from typing import Optional
+from typing import Any, cast, Optional
 
+import asyncio
 import aiohttp
 import structlog
 
@@ -35,11 +35,11 @@ class SentinelIngester:
         self._token_expires: float = 0.0
         self._redis = None
 
-    async def _get_redis(self):
+    async def _get_redis(self) -> Any:
         if self._redis is None:
             try:
                 import redis.asyncio as aioredis
-                self._redis = await aioredis.from_url(REDIS_URL, decode_responses=True)
+                self._redis = await aioredis.from_url(REDIS_URL, decode_responses=True)  # type: ignore[no-untyped-call]
             except Exception:
                 pass
         return self._redis
@@ -47,7 +47,7 @@ class SentinelIngester:
     async def _authenticate(self) -> bool:
         """Fetch Sentinel Hub OAuth token asynchronously."""
         if not SENTINEL_HUB_CLIENT_ID or not SENTINEL_HUB_CLIENT_SECRET:
-            log.warning("sentinel_credentials_missing", msg="Using mock data mode")
+            log.warning("sentinel_credentials_missing", detail="Using mock data mode")
             return False
 
         if self._auth_token and time.time() < self._token_expires:
@@ -62,7 +62,7 @@ class SentinelIngester:
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(url, data=payload, timeout=10) as resp:
+                async with session.post(url, data=payload, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         self._auth_token = data.get("access_token")
@@ -74,7 +74,7 @@ class SentinelIngester:
                         log.error("sentinel_auth_failed", status=resp.status, text=await resp.text())
                         return False
         except Exception as exc:
-            log.error("sentinel_auth_error", error=str(exc))
+            log.error("sentinel_auth_error", exc_info=exc)
             return False
 
     async def fetch_regional_thermal(
@@ -83,11 +83,11 @@ class SentinelIngester:
         lon: float,
         radius_km: float = 5.0,
         days_back: int = 3,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Fetch latest FIRMS/Sentinel-3 thermal anomalies for a bounding box."""
         # Convert radius to rough bbox
         d_lat = radius_km / 111.0
-        d_lon = radius_km / (111.0 * os.path.cos(os.path.radians(lat)))
+        d_lon = radius_km / (111.0 * math.cos(math.radians(lat)))
         bbox = [lon - d_lon, lat - d_lat, lon + d_lon, lat + d_lat]
 
         r = await self._get_redis()
@@ -96,7 +96,7 @@ class SentinelIngester:
             try:
                 cached = await r.get(cache_key)
                 if cached:
-                    return json.loads(cached)
+                    return cast(dict[str, Any], json.loads(cached))
             except Exception:
                 pass
 
@@ -127,7 +127,7 @@ class SentinelIngester:
         async with self._sem:
             try:
                 async with aiohttp.ClientSession(headers=headers) as session:
-                    async with session.post(url, json=payload, timeout=12) as resp:
+                    async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=12)) as resp:
                         if resp.status == 200:
                             data = await resp.json()
                             features = data.get("features", [])
@@ -148,11 +148,11 @@ class SentinelIngester:
                                     pass
                             return res
             except Exception as exc:
-                log.warning("sentinel_catalog_search_failed", error=str(exc))
+                log.warning("sentinel_catalog_search_failed", exc_info=exc)
 
         return {"lat": lat, "lon": lon, "frp_mw": 0.0, "anomalies_count": 0, "age_s": 9999}
 
-    def _mock_thermal_response(self, lat: float, lon: float) -> dict:
+    def _mock_thermal_response(self, lat: float, lon: float) -> dict[str, Any]:
         """Dev mode mock data."""
         import random
         frp = random.uniform(0, 1500) if random.random() > 0.4 else 0.0
@@ -182,7 +182,7 @@ class SentinelIngester:
         os.makedirs(output_dir, exist_ok=True)
         # Bounding box
         d_lat = radius_km / 111.0
-        d_lon = radius_km / (111.0 * os.path.cos(os.path.radians(lat)))
+        d_lon = radius_km / (111.0 * math.cos(math.radians(lat)))
         bbox = [lon - d_lon, lat - d_lat, lon + d_lon, lat + d_lat]
 
         start_dt = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - days_back * 86400))
@@ -240,9 +240,9 @@ class SentinelIngester:
                             pass
                         log.info(
                             "sentinel2_metadata_extracted",
-                            solar_z=solar_z,
-                            solar_a=solar_a,
-                            view_z=view_z
+                            solar_z_val=solar_z,
+                            solar_a_val=solar_a,
+                            view_z_val=view_z
                         )
 
                         # Quality Gate Check
@@ -265,7 +265,7 @@ class SentinelIngester:
                                 log.warning("sentinel2_quality_gate_failed", reason=gate_res.reason)
                                 # In production, we might skip this tile, but for now we proceed with a warning
                         except Exception as e:
-                            log.error("quality_gate_error", error=str(e))
+                            log.error("quality_gate_error", exc_info=e)
 
         # 2. Process API call
         url = "https://services.sentinel-hub.com/api/v1/process"
@@ -295,7 +295,7 @@ class SentinelIngester:
             try:
                 import aiohttp
                 async with aiohttp.ClientSession(headers=headers) as session:
-                    async with session.post(url, json=payload, timeout=30) as resp:
+                    async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
                         if resp.status == 200:
                             filename = f"{output_dir}/S2_{lat:.2f}_{lon:.2f}_{int(time.time())}.tif"
                             with open(filename, "wb") as f:
@@ -322,20 +322,21 @@ class SentinelIngester:
                                 log.info("sentinel2_atmospheric_correction_done", output=result.output_path)
                                 return result.output_path
                             except Exception as e:
-                                log.warning("sentinel2_atmospheric_correction_failed", error=str(e))
+                                log.warning("sentinel2_atmospheric_correction_failed", exc_info=e)
                                 return filename
                         else:
                             text = await resp.text()
                             log.error("sentinel2_process_failed", status=resp.status, text=text)
                             return None
             except Exception as exc:
-                log.error("sentinel2_optical_error", error=str(exc))
+                log.error("sentinel2_optical_error", exc_info=exc)
                 return None
 
-    async def fetch_batch(self, locations: list[dict[str, float]]) -> list[dict]:
+    async def fetch_batch(self, locations: list[dict[str, float]]) -> list[dict[str, Any]]:
         """Fetch multiple locations concurrently via semaphore."""
         tasks = [
             self.fetch_regional_thermal(loc["lat"], loc["lon"])
             for loc in locations
         ]
-        return await asyncio.gather(*tasks, return_exceptions=True)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        return [r for r in results if isinstance(r, dict)]

@@ -1,7 +1,8 @@
 import httpx
 import pandas as pd
 import io
-import structlog
+import structlog  # type: ignore[import-untyped]
+from typing import Any
 from datetime import datetime, timezone
 
 log = structlog.get_logger()
@@ -23,7 +24,7 @@ FRED_SERIES = {
     "BALTIC_DRY":     ("WWGDPBL01", "Baltic Dry Index Proxy",         "index"),
 }
 
-def fetch_fred_series(series_id: str, limit: int = 252) -> list[dict]:
+def fetch_fred_series(series_id: str, limit: int = 252) -> list[dict[str, Any]]:
     """
     Fetch a FRED data series via free CSV endpoint.
     No API key needed. Returns last N observations.
@@ -44,7 +45,7 @@ def fetch_fred_series(series_id: str, limit: int = 252) -> list[dict]:
         return []
 
 
-def get_macro_dashboard() -> dict:
+def get_macro_dashboard() -> dict[str, Any]:
     """Get current values of all key macro indicators."""
     result = {}
     for key, (series_id, label, unit) in FRED_SERIES.items():

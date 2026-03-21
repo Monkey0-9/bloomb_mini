@@ -1,11 +1,16 @@
+import os
+import jwt
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import HTTPException, Security, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import jwt
+from dotenv import load_dotenv
 
-SECRET_KEY = "sat-trade-proprietary-v1"
-ALGORITHM = "HS256"
+load_dotenv()
+
+# Institutional Security: Load from environment
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "sat-trade-fallback-dev-only-7721")
+ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 auth_scheme = HTTPBearer()
 
 # Roles configuration
@@ -18,7 +23,9 @@ ROLES = {
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=60))
+    expire = datetime.now(timezone.utc) + (
+        expires_delta or timedelta(minutes=int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60")))
+    )
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 

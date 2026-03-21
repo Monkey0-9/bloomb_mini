@@ -1,6 +1,7 @@
 import hashlib
 import sqlite3
 from pathlib import Path
+from typing import Callable
 
 from src.common.schemas import QualityGateResult, TileMetadata
 
@@ -111,14 +112,15 @@ def gate_geolocation(m: TileMetadata) -> QualityGateResult:
 
 
 def run_all_gates(m: TileMetadata, catalog_db: str = "data/catalog.db") -> QualityGateResult:
-    for gate_fn in [
+    gates: list[Callable[[], QualityGateResult]] = [
         lambda: gate_schema(m),
         lambda: gate_geolocation(m),
         lambda: gate_license(m, catalog_db),
         lambda: gate_cloud_cover(m),
         lambda: gate_duplicate(m, catalog_db),
         lambda: gate_checksum(m.tile_id, m.file_path, m.checksum_sha256),
-    ]:
+    ]
+    for gate_fn in gates:
         result = gate_fn()
         if result.status != "PASS":
             return result

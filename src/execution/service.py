@@ -9,10 +9,10 @@ class ExecutionService:
     """
     Handles order execution with algorithms like TWAP.
     """
-    def __init__(self):
+    def __init__(self) -> None:
         self.log = log.bind(component="execution_service")
 
-    async def execute_twap(self, ticker: str, side: str, total_quantity: int, duration_minutes: int):
+    async def execute_twap(self, ticker: str, side: str, total_quantity: int, duration_minutes: int) -> Dict[str, Any]:
         """
         Executes a TWAP order by splitting it into small slices over time.
         """

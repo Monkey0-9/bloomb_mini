@@ -52,7 +52,10 @@ class Orchestrator:
                 for dep_id in t.get("depends_on", []):
                     params[f"input_{dep_id}"] = results[dep_id]
                 
-                async_tasks.append((t["id"], agent.process(params)))
+                # In DAG execution, we assume a default task type or use 'agent_specific_task'
+                # If the task dict has a 'type', use it, otherwise use 'default'
+                task_type = t.get("type", "execute")
+                async_tasks.append((t["id"], agent.process_task(task_type, params)))
             
             ids, futures = zip(*async_tasks) if async_tasks else ([], [])
             batch_results = await asyncio.gather(*futures)
@@ -63,4 +66,32 @@ class Orchestrator:
             for t in current_batch:
                 pending.remove(t)
                 
-        return results
+    async def dispatch_task(self, agent_name: str, task_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Convenience method for one-off agent tasks used by routers."""
+        agent = self.agents.get(agent_name)
+        if not agent:
+             # Fallback: check case-insensitive or common aliases
+             for name, a in self.agents.items():
+                 if name.lower() == agent_name.lower():
+                     agent = a
+                     break
+        
+        if not agent:
+            return {"status": "error", "message": f"Agent {agent_name} not found"}
+        
+        try:
+            # Most agents have a process_task or process method
+            return await agent.process_task(task_type, params)
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    async def get_unified_state(self) -> Dict[str, Any]:
+        """Aggregates state from all registered agents."""
+        state = {}
+        for name, agent in self.agents.items():
+            if hasattr(agent, "get_state"):
+                state[name] = await agent.get_state()
+        return state
+
+# Alias for router compatibility
+SignalOrchestrator = Orchestrator

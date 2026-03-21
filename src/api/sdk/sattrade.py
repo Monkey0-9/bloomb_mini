@@ -1,6 +1,6 @@
 import requests
-import json
-from typing import Dict, Any, List
+from typing import Dict, Any, List, cast
+
 
 class SatTrade:
     """
@@ -8,7 +8,7 @@ class SatTrade:
     Provides programmatic access to Satellite Alpha, Maritime AIS, and Macro Correlation.
     """
     
-    def __init__(self, api_key: str = None, base_url: str = "http://localhost:8000"):
+    def __init__(self, api_key: str | None = None, base_url: str = "http://localhost:8000"):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.session = requests.Session()
@@ -19,19 +19,19 @@ class SatTrade:
         """Fetches real-time institutional market data."""
         resp = self.session.get(f"{self.base_url}/api/market/price/{ticker}")
         resp.raise_for_status()
-        return resp.json()
+        return cast(Dict[str, Any], resp.json())
 
     def get_signals(self) -> List[Dict[str, Any]]:
         """Retrieves global signal conviction matrix."""
         resp = self.session.get(f"{self.base_url}/api/alpha/signals")
         resp.raise_for_status()
-        return resp.json()
+        return cast(List[Dict[str, Any]], resp.json())
 
     def get_macro(self, indicator: str = "CPI") -> List[Dict[str, Any]]:
         """Fetches macro-satellite correlation data."""
         resp = self.session.get(f"{self.base_url}/api/alpha/macro?indicator={indicator}")
         resp.raise_for_status()
-        return resp.json()
+        return cast(List[Dict[str, Any]], resp.json())
 
     def execute_trade(self, ticker: str, qty: int, side: str = "BUY") -> Dict[str, Any]:
         """
@@ -41,14 +41,14 @@ class SatTrade:
         payload = {"ticker": ticker, "qty": qty, "side": side}
         resp = self.session.post(f"{self.base_url}/api/execution/trade", json=payload)
         resp.raise_for_status()
-        return resp.json()
+        return cast(Dict[str, Any], resp.json())
 
     def query_analyst(self, prompt: str) -> Dict[str, Any]:
         """Interacts with the SatTrade AI Analyst for NLU intent synthesis."""
         payload = {"prompt": prompt}
         resp = self.session.post(f"{self.base_url}/api/command/route", json=payload)
         resp.raise_for_status()
-        return resp.json()
+        return cast(Dict[str, Any], resp.json())
 
 if __name__ == "__main__":
     # Example usage

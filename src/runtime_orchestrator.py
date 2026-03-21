@@ -11,6 +11,7 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 # Add project root to path for local imports
 project_root = Path(__file__).resolve().parent.parent
@@ -26,7 +27,7 @@ logging.basicConfig(
 logger = logging.getLogger("SatTrade-Daemon")
 
 
-def load_secrets():
+def load_secrets() -> Any:
     secrets_path = Path("config/secrets.json")
     if not secrets_path.exists():
         logger.error(
@@ -37,7 +38,7 @@ def load_secrets():
         return json.load(f)
 
 
-def run_iteration():
+def run_iteration() -> None:
     """Run one full cycle of the 8-phase pipeline."""
     now = datetime.now(UTC)
     logger.info(f"--- STARTING PIPELINE ITERATION AT {now} ---")
@@ -75,7 +76,7 @@ def run_iteration():
         # We don't exit; we wait for the next loop to retry.
 
 
-def main():
+def main() -> None:
     logger.info("SatTrade 24/7 Runtime Orchestrator Starting Up...")
 
     # Validation

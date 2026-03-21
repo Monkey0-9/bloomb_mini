@@ -7,7 +7,7 @@ class ResearchAgent(BaseAgent):
     Uses Retrieval-Augmented Generation (RAG) to synthesize 
     answers from multiple data sources.
     """
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("research")
 
     async def process(self, task: Dict[str, Any]) -> Dict[str, Any]:

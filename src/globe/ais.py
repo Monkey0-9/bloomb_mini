@@ -97,45 +97,42 @@ def generate_fleet():
             
     return fleet
 
-fleet_state = generate_fleet()
+import structlog
+log = structlog.get_logger()
 
-def interpolate_positions(fleet, dt_seconds):
-    """Move vessels linearly based on speed and heading."""
-    for v in fleet:
-        if v['speed_knots'] > 0:
-            # 1 knot = 1.852 km/h
-            dist_km = (v['speed_knots'] * 1.852) * (dt_seconds / 3600.0)
-            
-            # Rough km to degrees conversion (not perfect near poles, but ok for equatorial/mid-lats)
-            lat_change = (dist_km * math.cos(math.radians(v['heading']))) / 111.32
-            lon_change = (dist_km * math.sin(math.radians(v['heading']))) / (111.32 * math.cos(math.radians(v['lat'])))
-            
-            v['lat'] += lat_change
-            v['lon'] += lon_change
-            v['last_update'] = time.time()
-    return fleet
+fleet_state = {} # Use MMSI for deduplication
+
+def update_fleet_from_live(live_data):
+    """Callback to update fleet state from live AISstream data."""
+    global fleet_state
+    for v in live_data:
+        mmsi = v.get("mmsi")
+        fleet_state[mmsi] = {
+            'mmsi': mmsi,
+            'name': v.get("vessel_name", "UNKNOWN"),
+            'lat': v.get("lat"),
+            'lon': v.get("lon"),
+            'heading': v.get("heading", 0),
+            'speed_knots': v.get("sog", 0),
+            'type': 'CARGO',
+            'nav_status': 'UNDER WAY' if v.get("sog", 0) > 0.5 else 'DOCKED',
+            'last_update': time.time()
+        }
 
 async def run_ais_pipeline(update_callback):
-    """Push interpolated AIS positions every 5 seconds."""
-    global fleet_state
-    print(f"[AIS] Loaded {len(fleet_state)} strategic vessels into tracking grid.")
+    """
+    Start the AISStream.io pipeline and update the global fleet_state.
+    """
+    from src.globe.ais_live import run_aisstream_pipeline
     
-    last_time = time.time()
-    while True:
-        try:
-            now = time.time()
-            dt = now - last_time
-            fleet_state = interpolate_positions(fleet_state, dt)
-            last_time = now
-            
-            await update_callback({
-                '_topic': 'vessel',
-                'data': fleet_state
-            })
-        except Exception:
-            traceback.print_exc()
-            
-        await asyncio.sleep(5)
+    async def internal_callback(msg):
+        if msg.get("_topic") == "vessel":
+            update_fleet_from_live(msg.get("data", []))
+            # Also propagate to the main update_callback (ticker)
+            await update_callback(msg)
+
+    log.info("ais_pipeline.starting")
+    await run_aisstream_pipeline(internal_callback)
 
 if __name__ == "__main__":
-    print(interpolate_positions(fleet_state, 3600)[0])
+    print("AIS Pipeline module loaded.")

@@ -45,7 +45,7 @@ class COCOExporter:
         """
         accepted = [r for r in results if r.status == "accepted"]
 
-        coco = {
+        coco: dict[str, Any] = {
             "info": {
                 "description": dataset_name,
                 "version": self._taxonomy.version,

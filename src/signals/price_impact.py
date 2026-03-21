@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -279,9 +279,9 @@ class GBMModel:
                     if k not in ("n_estimators", "early_stopping_rounds")
                 },
                 train_data,
-                num_boost_round=self._params.get("n_estimators", 500),
+                num_boost_round=int(self._params.get("n_estimators", 500)),
                 valid_sets=[val_data],
-                callbacks=callbacks,
+                callbacks=cast("list[Any]", callbacks),
             )
 
             if self._model is None:

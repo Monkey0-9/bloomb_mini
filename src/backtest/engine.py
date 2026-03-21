@@ -8,7 +8,7 @@ class BacktestEngine:
     """
     Simulates trading strategies against historical data.
     """
-    def __init__(self):
+    def __init__(self) -> None:
         self.log = log.bind(component="backtest_engine")
 
     def run_simulation(self, ticker: str, signals: List[dict], prices: pd.DataFrame) -> Dict[str, Any]:

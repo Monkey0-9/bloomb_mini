@@ -3,7 +3,7 @@ import pandas as pd
 import structlog
 from datetime import datetime, timezone
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Any
 import time
 
 log = structlog.get_logger()
@@ -97,6 +97,11 @@ _price_cache: dict[str, dict] = {}
 _cache_timestamp: float = 0
 CACHE_TTL_SECONDS = 30  # refresh prices every 30 seconds
 
+
+def get_stock_price(ticker: str) -> dict[str, Any]:
+    """Get real-time price for a single ticker."""
+    prices = get_bulk_prices([ticker])
+    return prices.get(ticker, {"ticker": ticker, "error": "Price not found"})
 
 def get_bulk_prices(tickers: list[str] | None = None) -> dict[str, dict]:
     """

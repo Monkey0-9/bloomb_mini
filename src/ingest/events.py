@@ -21,7 +21,7 @@ import uuid
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Iterator
 
 logger = logging.getLogger(__name__)
 
@@ -118,9 +118,12 @@ class EventEmitter:
             payload_id = event.payload.get("tile_id") or event.payload.get("asset_id") or "N/A"
             logger.info(f"[LOCAL EVENT] {event.topic}: {event.event_id} — {payload_id}")
         else:
-            self._producer.send(event.topic, value=event.to_json())
-            self._producer.flush()
-            logger.info(f"[KAFKA EVENT] {event.topic}: {event.event_id}")
+            if self._producer is not None:
+                self._producer.send(event.topic, value=event.to_json())
+                self._producer.flush()
+                logger.info(f"[KAFKA EVENT] {event.topic}: {event.event_id}")
+            else:
+                logger.error("Kafka producer is None but use_local is False")
 
     def emit_tile_ingested(self, tile_id: str, source: str, metadata: dict[str, Any]) -> None:
         """Convenience: emit NEW_TILE event."""
@@ -188,12 +191,14 @@ class EventEmitter:
             return [e for e in self._local_events if e.topic == topic]
         return list(self._local_events)
 
-    def get_event_stream(self):
+    def get_event_stream(self) -> Iterator[PipelineEvent]:
         """Generator that yields events as they arrive, blocking if empty. (Local Dev Only)"""
         if not self._use_local or self._local_queue is None:
             raise NotImplementedError("Stream only implemented for local Thread queue mode")
 
-        def _stream():
+        def _stream() -> Iterator[PipelineEvent]:
+            if self._local_queue is None:
+                return
             while True:
                 event = self._local_queue.get()
                 if event is None:  # poison pill

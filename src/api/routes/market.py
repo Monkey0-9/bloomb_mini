@@ -14,4 +14,4 @@ async def get_options(ticker: str):
 
 @router.get("/earnings/{ticker}")
 async def get_earnings(ticker: str):
-    return get_earnings_calendar(ticker)
+    return get_earnings_calendar([ticker])

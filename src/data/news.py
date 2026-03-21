@@ -1,6 +1,6 @@
-import feedparser
+import feedparser  # type: ignore[import-untyped]
 import httpx
-import structlog
+import structlog  # type: ignore[import-untyped]
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from email.utils import parsedate_to_datetime
