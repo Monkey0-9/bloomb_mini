@@ -62,7 +62,7 @@ const SatelliteFeed = () => {
   }, [images, search]);
 
   return (
-    <div className="flex-1 flex flex-col bg-[var(--bg-base)] overflow-hidden font-mono select-none">
+    <div className="flex-1 flex flex-col bg-[var(--bg-base)] overflow-hidden font-mono">
       {/* FEED HEADER: OSINT STYLE */}
       <div className="h-10 border-b border-[var(--border-subtle)] flex items-center justify-between px-3 shrink-0 bg-[var(--bg-surface)]">
          <div className="flex items-center gap-4">

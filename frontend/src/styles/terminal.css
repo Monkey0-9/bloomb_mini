@@ -3,11 +3,11 @@
 
 :root {
   /* COLOR TOKENS */
-  --bg-base:          #070B0F;
-  --bg-surface:       #0D1117;
-  --bg-card:          #161B22;
-  --bg-hover:         #1C2128;
-  --bg-overlay:       rgba(7,11,15,0.92);
+  --bg-base:          rgba(7, 11, 15, 0.4);   /* Glassy Base */
+  --bg-surface:       rgba(13, 17, 23, 0.6);  /* Glassy Surface */
+  --bg-card:          rgba(22, 27, 34, 0.7);
+  --bg-hover:         rgba(28, 33, 40, 0.8);
+  --bg-overlay:       rgba(7, 11, 15, 0.92);
 
   /* NEON ACCENTS */
   --neon-bull:        #00FF9D;
