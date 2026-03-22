@@ -11,7 +11,8 @@ import {
   Layout,
   Newspaper,
   HelpCircle,
-  Bell
+  Bell,
+  Eye
 } from 'lucide-react';
 import { useTerminalStore } from '../store';
 
@@ -73,6 +74,8 @@ const NavRail = () => {
     { id: 'feed',      icon: <Satellite size={16} strokeWidth={1.5} />,    label: 'Raw STAC Feed',      shortcut: 'F' },
     { id: 'alerts',    icon: <Bell size={16} strokeWidth={1.5} />,         label: 'Alert Hub',          shortcut: 'A' },
     { id: 'workflow',  icon: <Layout size={16} strokeWidth={1.5} />,       label: 'Workflow Engine',    shortcut: 'W' },
+    { id: 'dark_pools',icon: <Search size={16} strokeWidth={1.5} />,       label: 'Dark Pool Sonar',    shortcut: 'D' },
+    { id: 'insider',   icon: <Eye size={16} strokeWidth={1.5} />,          label: 'Insider AI Tracker', shortcut: 'I' },
     { id: 'terminal',  icon: <Terminal size={16} strokeWidth={1.5} />,     label: 'Direct Kernel',      shortcut: 'K' },
   ];
 

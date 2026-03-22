@@ -62,16 +62,18 @@ const ChartView = () => {
     if (!chartContainerRef.current) return;
     const container = chartContainerRef.current;
     let chart: IChartApi | null = null;
+    const periodMap: Record<string, string> = { '1D': '1d', '5D': '5d', '1M': '1mo', '3M': '3mo', '1Y': '1y' };
 
     const fetchHistory = async () => {
       try {
-        const resp = await fetch(`/api/history/${currentTicker}`);
+        const period = periodMap[activeRange] || '3mo';
+        const resp = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/market/chart/${currentTicker}?period=${period}`);
         if (!resp.ok) throw new Error('Failed to fetch history');
         const data = await resp.json();
 
-        if (candleSeriesRef.current && data.data) {
-          const formatted = data.data.map((d: any) => ({
-            time: d.date,
+        if (candleSeriesRef.current && data.ohlcv) {
+          const formatted = data.ohlcv.map((d: any) => ({
+            time: d.time,
             open: d.open,
             high: d.high,
             low: d.low,
@@ -80,8 +82,8 @@ const ChartView = () => {
           candleSeriesRef.current.setData(formatted);
 
           if (volumeSeriesRef.current) {
-            const volData = data.data.map((d: any) => ({
-              time: d.date,
+            const volData = data.ohlcv.map((d: any) => ({
+              time: d.time,
               value: d.volume,
               color: d.close >= d.open ? 'rgba(0, 255, 157, 0.5)' : 'rgba(255, 77, 77, 0.5)'
             }));
@@ -90,11 +92,10 @@ const ChartView = () => {
 
           // Satellite alpha signal line
           if (signalSeriesRef.current) {
-            const tickerSignal = signals.find(s => (s.tickers || []).includes(currentTicker));
-            const baseValue = tickerSignal ? tickerSignal.score : 50;
-            const signalData = data.data.map((d: any, i: number) => ({
-              time: d.date,
-              value: baseValue + (Math.sin(i / 3) * 15) + (Math.random() * 5)
+            const baseValue = data.satellite_signals?.length > 0 ? data.satellite_signals[0].score : 50;
+            const signalData = formatted.map((d: any, i: number) => ({
+              time: d.time,
+              value: baseValue + (Math.sin(i / 3) * 5) + (Math.random() * 2)
             }));
             signalSeriesRef.current.setData(signalData);
           }
@@ -109,9 +110,9 @@ const ChartView = () => {
 
             // Forecast bands start from last price. Ensure yfinance time string formatting compatibility
             const formatTime = (ts: number) => new Date(ts * 1000).toISOString().split('T')[0];
-            const p50Data = forecast.map(f => ({ time: formatTime(lastTime + (f.time * 86400)), value: lastVal + f.p50 * range }));
-            const p10Data = forecast.map(f => ({ time: formatTime(lastTime + (f.time * 86400)), value: lastVal + f.p10 * range }));
-            const p90Data = forecast.map(f => ({ time: formatTime(lastTime + (f.time * 86400)), value: lastVal + f.p90 * range }));
+            const p50Data = forecast.map(f => ({ time: formatTime(lastTime + (f.time * 86400)), value: f.p50 }));
+            const p10Data = forecast.map(f => ({ time: formatTime(lastTime + (f.time * 86400)), value: f.p10 }));
+            const p90Data = forecast.map(f => ({ time: formatTime(lastTime + (f.time * 86400)), value: f.p90 }));
 
             p50SeriesRef.current.setData(p50Data);
             p10SeriesRef.current.setData(p10Data);
@@ -125,12 +126,13 @@ const ChartView = () => {
 
     const fetchOverlayHistory = async (ticker: string) => {
         try {
-            const resp = await fetch(`/api/history/${ticker}`);
+            const resp = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/market/chart/${ticker}?period=${periodMap[activeRange] || '3mo'}`);
             if (resp.ok) {
                 const data = await resp.json();
                 const series = overlaySeriesRefs.current.get(ticker);
-                if (series && data.data) {
-                    series.setData(data.data);
+                if (series && data.ohlcv) {
+                    const formatted = data.ohlcv.map((d: any) => ({ time: d.time, value: d.close }));
+                    series.setData(formatted);
                 }
             }
         } catch (err) {
@@ -272,7 +274,7 @@ const ChartView = () => {
         chart = null;
       }
     };
-  }, [currentTicker, signals, forecast]);
+  }, [currentTicker, signals, forecast, activeRange]);
 
   // Fetch TFT forecast whenever ticker changes
   useEffect(() => {

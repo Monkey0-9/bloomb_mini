@@ -13,6 +13,8 @@ interface VesselState {
   handleWSUpdate: (msg: any) => void;
 }
 
+const API_BASE = (import.meta.env.VITE_API_URL as string) || '';
+
 export const useVesselStore = create<VesselState>((set) => ({
   vessels: [],
   selectedVessel: null,
@@ -23,20 +25,19 @@ export const useVesselStore = create<VesselState>((set) => ({
   fetchVessels: async () => {
     set({ isLoading: true });
     try {
-      const response = await fetch('/api/globe/vessels');
+      const response = await fetch(`${API_BASE}/api/intelligence/ships`);
       const data = await response.json();
-      // data is GeoJSON, we want the objects for the store or just store the features
-      // For the store, we'll extract the properties and geometry
-      const vessels = data.features.map((f: any) => ({
-        ...f.properties,
+      const vessels = (data.ships || []).map((f: any) => ({
+        ...f,
+        mmsi: f.id,
         position: {
-          lat: f.geometry.coordinates[1],
-          lon: f.geometry.coordinates[0],
+          lat: f.lat,
+          lon: f.lon,
           timestamp: new Date().toISOString(),
-          speed_knots: f.properties.speed_knots || 0,
-          heading_degrees: f.properties.heading || 0,
-          navigational_status: "Under Way",
-          course_over_ground: f.properties.heading || 0,
+          speed_knots: f.velocity || 0,
+          heading_degrees: f.heading || 0,
+          navigational_status: f.status || "Under Way",
+          course_over_ground: f.heading || 0,
         }
       }));
       set({ vessels, isLoading: false });

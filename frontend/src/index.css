@@ -267,3 +267,17 @@
   animation: pulse-high 2s ease-out infinite;
 }
 
+
+/* -- MapLibre GL Popup Overrides (vessel-popup) -- */
+.vessel-popup .maplibregl-popup-content {
+  background: transparent !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.vessel-popup .maplibregl-popup-tip {
+  display: none !important;
+}
+.vessel-popup .maplibregl-popup-close-button {
+  display: none !important;
+}

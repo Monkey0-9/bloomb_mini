@@ -1,30 +1,13 @@
-/**
- * GlobalGlobe 2.0 — GPU-Instanced Institutional Intelligence Globe
- * 
- * Architecture:
- * - Uses react-globe.gl for base rendering (Three.js under the hood)
- * - Vessels & Flights rendered as THREE.InstancedMesh (handles 50k+ at 60fps)
- * - Thermal hotspots rendered as hex-binned heatmap points
- * - Real-time GeoJSON polling from maritime/flight/alpha agents
- * - SAR-confirmed dark vessel markers rendered as pulsing red rings
- */
 import React, { useEffect, useRef, useMemo, useCallback } from 'react';
 import Globe from 'react-globe.gl';
 import * as THREE from 'three';
 import { useTerminalStore, useVesselStore, useFlightStore, useSatelliteStore, Satellite } from '../store';
+import { useEquityStore } from '../store/equityStore';
 import { countryLabels } from '../data/countries';
 
-// ==============================================================================
-// CONSTANTS
-// ==============================================================================
 const API_BASE = (import.meta.env.VITE_API_URL as string) || '';
 const REFRESH_INTERVAL_MS = 15_000;
 
-// Globe textures — dark institutional aesthetic
-const GLOBE_IMG = '//unpkg.com/three-globe/example/img/earth-night.jpg';
-const BUMP_IMG = '//unpkg.com/three-globe/example/img/earth-topology.png';
-
-// Signal colour palette (matches terminal.css tokens)
 const COL = {
   bull:    '#00FF9D',
   bear:    '#FF4560',
@@ -34,402 +17,353 @@ const COL = {
   purple:  '#C084FC',
 };
 
-// ==============================================================================
-// TYPES
-// ==============================================================================
-interface PortPoint {
-  name: string;
-  lat: number;
-  lng: number;
-  size: number;
-  color: string;
-  type: string;
-  throughput?: number;
-  signal?: string;
-}
-
 interface HexBin {
   lat: number;
   lng: number;
   weight: number;
   ticker: string;
   label: string;
+  signal?: string;
+  score?: number;
 }
 
-// ==============================================================================
-// COMPONENT
-// ==============================================================================
 const GlobalGlobe: React.FC = () => {
-  const { activeLayers, zoomLevel } = useTerminalStore();
+  const { activeLayers, zoomLevel, setView, setCurrentTicker } = useTerminalStore();
+  const { addToWatchlist } = useEquityStore();
   const { vessels, fetchVessels } = useVesselStore();
   const { flights, fetchFlights } = useFlightStore();
   const { satellites, fetchSatellites } = useSatelliteStore();
   const globeEl = useRef<any>(null);
 
-  // ─── OSINT Vector Boundaries ────────────────────────────────────────────────
   const [countries, setCountries] = React.useState<any>({ features: [] });
   useEffect(() => {
-    fetch('https://unpkg.com/globe.gl/example/datasets/ne_110m_admin_0_countries.geojson')
+    fetch('/countries.json')
       .then(res => res.json())
       .then(setCountries)
-      .catch(() => {});
+      .catch((e) => console.error("GeoJSON load fail:", e));
   }, []);
 
-  // ─── Thermal HexBins from Signal API ────────────────────────────────────────
   const [thermalBins, setThermalBins] = React.useState<HexBin[]>([]);
+  const [quakes, setQuakes] = React.useState<any[]>([]);
+  const [conflicts, setConflicts] = React.useState<any[]>([]);
+  const [strategic, setStrategic] = React.useState<any>({
+    conflicts: [], military_bases: [], nuclear_sites: [], sanctions: [], chokepoints: [], infrastructure_events: [],
+  });
+
+  const fetchStrategic = useCallback(async () => {
+    try {
+      const r = await fetch(`${API_BASE}/api/intelligence/strategic`);
+      if (r.ok) setStrategic(await r.json());
+    } catch {}
+  }, []);
 
   const fetchThermal = useCallback(async () => {
     try {
-      const r = await fetch(`${API_BASE}/api/alpha/thermal`);
+      const r = await fetch(`${API_BASE}/api/intelligence/thermal`);
       if (!r.ok) return;
       const d = await r.json();
-      const sigs = d.signals || [];
+      const sigs = d.clusters || [];
       const bins: HexBin[] = sigs.map((s: any) => ({
-        lat: s.lat || s.location?.lat || 0,
-        lng: s.lon || s.location?.lon || 0,
-        weight: Math.min((s.avg_frp_mw || s.frp || 50) / 100, 1),
-        ticker: s.ticker || 'N/A',
-        label: s.facility_name || 'Industrial Facility',
+        lat: s.lat || 0,
+        lng: s.lon || 0,
+        weight: Math.min((s.frp_avg || 50) / 100, 1),
+        ticker: s.tickers?.[0] || 'N/A',
+        label: s.name || 'Industrial Facility',
+        signal: s.signal,
+        score: s.score
       }));
       setThermalBins(bins);
-    } catch {
-      // Silently fail — telemetry degraded mode
-    }
+    } catch {}
   }, []);
 
-  useEffect(() => {
-    const handleWsThermal = (e: any) => {
-      const msg = e.detail;
-      if (msg.data && Array.isArray(msg.data)) {
-        const bins: HexBin[] = msg.data.map((s: any) => ({
-          lat: s.lat || s.location?.lat || 0,
-          lng: s.lon || s.location?.lon || 0,
-          weight: Math.min((s.avg_frp_mw || s.frp || 50) / 100, 1),
-          ticker: s.ticker || 'N/A',
-          label: s.name || s.facility_name || 'Industrial Facility',
-        }));
-        setThermalBins(bins);
-      }
-    };
-    window.addEventListener('thermal-update', handleWsThermal);
-    return () => window.removeEventListener('thermal-update', handleWsThermal);
+  const fetchQuakes = useCallback(async () => {
+    try {
+      const r = await fetch(`${API_BASE}/api/intelligence/earthquakes`);
+      if (r.ok) setQuakes((await r.json()).earthquakes || []);
+    } catch {}
   }, []);
 
-  // ─── Polling ─────────────────────────────────────────────────────────────────
+  const fetchConflicts = useCallback(async () => {
+    try {
+      const r = await fetch(`${API_BASE}/api/intelligence/conflicts`);
+      if (r.ok) setConflicts((await r.json()).conflicts || []);
+    } catch {}
+  }, []);
+
   useEffect(() => {
     fetchVessels();
     fetchFlights();
     fetchSatellites();
     fetchThermal();
+    fetchQuakes();
+    fetchConflicts();
+    fetchStrategic();  // Load real OSINT intelligence layers
 
     const id = setInterval(() => {
       fetchVessels();
       fetchFlights();
       fetchThermal();
+      fetchQuakes();
+      fetchConflicts();
     }, REFRESH_INTERVAL_MS);
 
     return () => clearInterval(id);
-  }, [fetchVessels, fetchFlights, fetchSatellites, fetchThermal]);
+  }, [fetchVessels, fetchFlights, fetchSatellites, fetchThermal, fetchQuakes, fetchConflicts, fetchStrategic]);
 
-  // ─── Camera Sync ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!globeEl.current) return;
     const altitude = Math.max(0.2, 1.6 / (zoomLevel || 1));
     globeEl.current.pointOfView({ lat: 28, lng: 10, altitude }, 1200);
   }, [zoomLevel]);
 
-  // ─── Globe Setup (lighting, auto-rotate) ─────────────────────────────────────
   useEffect(() => {
     if (!globeEl.current) return;
     const globe = globeEl.current;
-
     globe.controls().autoRotate = true;
     globe.controls().autoRotateSpeed = 0.25;
     globe.controls().enableDamping = true;
     globe.controls().dampingFactor = 0.08;
 
     const scene = globe.scene();
-    // Ambient: cool institutional blue-white
     scene.add(new THREE.AmbientLight(0xaabbcc, 1.2));
-    // Key light: warm sun from upper-right
     const sun = new THREE.DirectionalLight(0xffeedd, 2.5);
     sun.position.set(5, 3, 2);
     scene.add(sun);
-    // Rim: subtle blue-violet for atmosphere depth
     const rim = new THREE.DirectionalLight(0x3366ff, 0.6);
     rim.position.set(-3, -2, -3);
     scene.add(rim);
   }, []);
 
-  // ─── Static Port Points ───────────────────────────────────────────────────────
-  const portPoints: PortPoint[] = useMemo(() => [
-    { name: 'Rotterdam',   lat: 51.9225, lng:  4.479,  size: 0.12, color: COL.bull,    type: 'PORTS', signal: 'BULLISH' },
-    { name: 'Singapore',   lat:  1.2833, lng: 103.833, size: 0.14, color: COL.bull,    type: 'PORTS', signal: 'BULLISH' },
-    { name: 'Shanghai',    lat: 31.2304, lng: 121.474, size: 0.16, color: COL.bear,    type: 'PORTS', signal: 'BEARISH' },
-    { name: 'Los Angeles', lat: 33.7292, lng:-118.262, size: 0.09, color: COL.neutral, type: 'PORTS', signal: 'NEUTRAL' },
-    { name: 'Jebel Ali',   lat: 25.0112, lng:  55.061, size: 0.11, color: COL.bull,    type: 'PORTS', signal: 'BULLISH' },
-    { name: 'Busan',       lat: 35.1796, lng: 129.076, size: 0.10, color: COL.bull,    type: 'PORTS', signal: 'BULLISH' },
-    { name: 'Hamburg',     lat: 53.5511, lng:   9.993, size: 0.09, color: COL.bull,    type: 'PORTS', signal: 'BULLISH' },
-    { name: 'Tokyo',       lat: 35.6762, lng: 139.650, size: 0.11, color: COL.neutral, type: 'PORTS', signal: 'NEUTRAL' },
-    { name: 'Antwerp',     lat: 51.2194, lng:   4.402, size: 0.09, color: COL.bull,    type: 'PORTS', signal: 'BULLISH' },
-    { name: 'Felixstowe',  lat: 51.9550, lng:   1.351, size: 0.07, color: COL.neutral, type: 'PORTS', signal: 'NEUTRAL' },
-    { name: 'Laem Chabang',lat: 13.0827, lng: 100.884, size: 0.09, color: COL.bull,    type: 'PORTS', signal: 'BULLISH' },
-    { name: 'Panama Canal',lat:  9.0800, lng: -79.680, size: 0.08, color: COL.warn,    type: 'PORTS', signal: 'CHOKE'   },
-    { name: 'Suez Canal',  lat: 30.5234, lng:  32.285, size: 0.08, color: COL.warn,    type: 'PORTS', signal: 'CHOKE'   },
-  ], []);
-
-  // ─── Points Layer (Ports + Thermal HexBins + Satellites) ─────────────────────
   const pointsData = useMemo(() => {
-    const ports = activeLayers.includes('PORTS') ? portPoints : [];
-
     const thermal = activeLayers.includes('THERMAL')
       ? thermalBins.map(b => ({
-          name: b.label,
-          lat: b.lat,
-          lng: b.lng,
+          name: b.label, lat: b.lat, lng: b.lng,
           size: 0.05 + b.weight * 0.12,
           color: `rgba(255, 122, 61, ${0.4 + b.weight * 0.6})`,
-          type: 'THERMAL',
-          ticker: b.ticker,
-          signal: 'THERMAL',
+          type: 'THERMAL', ticker: b.ticker, signal: b.signal,
         }))
       : [];
 
     const sats = activeLayers.includes('SATELLITES')
       ? satellites.map((s: Satellite) => ({
-          ...s,
-          size: 0.03,
-          color: COL.signal,
-          type: 'SATELLITE',
+          ...s, size: 0.03, color: COL.signal, type: 'SATELLITE',
         }))
       : [];
+      
+    const eq = activeLayers.includes('QUAKES')
+      ? quakes.map(q => ({
+          name: q.place, lat: q.lat, lng: q.lon,
+          size: 0.03 + (q.mag * 0.015), color: q.impact > 5 ? COL.bear : COL.warn,
+          type: 'QUAKE', ticker: q.tickers?.[0], signal: `MAG ${q.mag}`
+      })) : [];
 
-    return [...ports, ...thermal, ...sats];
-  }, [activeLayers, portPoints, thermalBins, satellites]);
+    return [...thermal, ...sats, ...eq];
+  }, [activeLayers, thermalBins, satellites, quakes]);
 
-  // ─── Vessel HTML Markers ──────────────────────────────────────────────────────
-  const filteredVessels = useMemo(
-    () => (activeLayers.includes('VESSELS') ? vessels : []),
-    [activeLayers, vessels]
-  );
+  const filteredVessels = useMemo(() => (activeLayers.includes('VESSELS') ? vessels : []), [activeLayers, vessels]);
+  const filteredFlights = useMemo(() => (activeLayers.includes('AIRCRAFT') ? flights : []), [activeLayers, flights]);
 
-  const filteredFlights = useMemo(
-    () => (activeLayers.includes('FLIGHTS') ? flights : []),
-    [activeLayers, flights]
-  );
-
-  // Build lightweight SVG HTML markers — heading-aware rotation
-  const htmlMarkersData = useMemo(() => {
-    const vesselEls = filteredVessels.map((v: any) => ({
-      lat: v.position?.lat ?? 0,
-      lng: v.position?.lon ?? 0,
-      size: 18,
-      heading: v.position?.heading_degrees ?? 0,
-      color: v.dark_vessel_confidence > 0.6 ? COL.bear : COL.bull,
-      shape: 'vessel',
-      label: `${v.vessel_name || v.mmsi} · ${v.vessel_type || 'CARGO'} · ${(v.speed_knots || 0).toFixed(1)}kts`,
-      isDark: v.dark_vessel_confidence > 0.6,
-      ticker: v.linked_ticker,
-    }));
-
-    const flightEls = filteredFlights.map((f: any) => {
-      let fColor = COL.purple;
-      if (f.signal === 'BULLISH') fColor = COL.bull;
-      else if (f.signal === 'BEARISH') fColor = COL.bear;
-      else if (f.type === 'MILITARY') fColor = '#FFD700'; // gold
-      else if (f.type === 'CARGO') fColor = '#FFA500'; // orange
-
-      return {
-        lat: f.position?.lat ?? 0,
-        lng: f.position?.lon ?? 0,
-        size: 16,
-        heading: f.position?.heading ?? 0,
-        color: fColor,
-        shape: 'flight',
-        label: `${f.callsign || f.icao24} · ${f.type || 'CIVIL'} · FL${Math.round((f.position?.alt_ft || 0) / 100)}`,
-        ticker: f.linked_ticker,
-      };
-    });
-
-    return [...vesselEls, ...flightEls];
-  }, [filteredVessels, filteredFlights]);
-
-  // ─── Arcs (Satellite Orbits + Active Flight Vectors) ─────────────────────────
   const arcsData = useMemo(() => {
     const satArcs = activeLayers.includes('SATELLITES')
       ? satellites.filter((s:any) => s.next_lat !== undefined).map((s:any) => ({
-          startLat: s.lat, startLng: s.lon,
-          endLat: s.next_lat, endLng: s.next_lon,
-          color: [COL.signal, COL.bull],
-          label: `${s.name} Orbit`
+          startLat: s.lat, startLng: s.lon, endLat: s.next_lat, endLng: s.next_lon,
+          color: [COL.signal, COL.bull], label: `${s.name} Orbit`
         }))
       : [];
+    return [...satArcs];
+  }, [satellites, activeLayers]);
 
-    const flightArcs = activeLayers.includes('FLIGHTS')
-      ? filteredFlights.slice(0, 80).map((f: any) => ({
-          startLat: f.origin_lat ?? 0,
-          startLng: f.origin_lon ?? 0,
-          endLat:   f.dest_lat ?? 0,
-          endLng:   f.dest_lon ?? 0,
-          color:    f.signal === 'BULLISH' ? [COL.bull, '#ffffff44'] : ['#ffffff22', COL.warn],
-          label: `${f.callsign} → ${f.dest || ''}`,
-        }))
-      : [];
+  const handleGlobeClick = useCallback((d: any) => {
+    if (!d) return;
+    const ticker = d.ticker;
+    if (ticker && ticker !== 'N/A') {
+      addToWatchlist(ticker);
+      setCurrentTicker(ticker);
+      setView('charts');
+    }
+  }, [addToWatchlist, setCurrentTicker, setView]);
 
-    return [...satArcs, ...flightArcs];
-  }, [filteredFlights, activeLayers]);
+  const handleHexClick = useCallback((hex: any) => {
+    if (hex && hex.points && hex.points.length > 0) {
+      handleGlobeClick(hex.points[0]);
+    }
+  }, [handleGlobeClick]);
 
-  // ─── Pulsing Rings (Bullish + Dark Vessel Alerts) ────────────────────────────
   const ringsData = useMemo(() => {
-    const portRings = portPoints
-      .filter(p => p.signal === 'BULLISH' && activeLayers.includes('PORTS'))
-      .map(p => ({ lat: p.lat, lng: p.lng, color: COL.bull, maxR: 2.5, propSpeed: 2, period: 2000 }));
-
     const darkVesselRings = filteredVessels
       .filter((v: any) => v.dark_vessel_confidence > 0.6)
       .map((v: any) => ({
-        lat:  v.position?.lat ?? 0,
-        lng:  v.position?.lon ?? 0,
-        color: COL.bear,
-        maxR:  3,
-        propSpeed: 4,
-        period:   1200,
+        lat: v.position?.lat ?? 0, lng: v.position?.lon ?? 0,
+        color: COL.bear, maxR: 3, propSpeed: 4, period: 1200,
       }));
+    const quakeRings = activeLayers.includes('QUAKES') ? quakes.filter(q => q.impact > 4).map(q => ({
+        lat: q.lat, lng: q.lon, color: COL.bear, maxR: q.mag, propSpeed: 2, period: 2000
+    })) : [];
+    return [...darkVesselRings, ...quakeRings];
+  }, [filteredVessels, quakes, activeLayers]);
 
-    return [...portRings, ...darkVesselRings];
-  }, [portPoints, filteredVessels, activeLayers]);
+  const htmlElementsData = useMemo(() => {
+    const data: any[] = [];
 
-  // ─── Historical Paths ─────────────────────────────────────────────────────────
-  const pathsData = useMemo(() => {
-    const vesselPaths = filteredVessels
-      .filter((v: any) => (v.historical_track || []).length > 1)
-      .map((v: any) => ({
-        coords: (v.historical_track as any[]).map((p: any) => [p.lon, p.lat, 0.004]),
-        color: v.dark_vessel_confidence > 0.6 ? COL.bear : '#00FF9D44',
+    // ── Active War Zones & Conflicts (OSINT, real GDELT) ──
+    if (activeLayers.includes('CONFLICTS')) {
+      // Historical GDELT conflicts
+      conflicts.forEach(c => data.push({
+        lat: c.lat, lng: c.lon, size: 24, color: COL.bear,
+        label: `CONFLICT: ${c.type}`, shape: 'conflict',
+        risk: c.financial?.risk_type, ticker: c.financial?.tickers?.[0]
       }));
-
-    const flightPaths = filteredFlights
-      .filter((f: any) => (f.historical_track || []).length > 1)
-      .map((f: any) => ({
-        coords: (f.historical_track as any[]).map((p: any) => [p.lon, p.lat, 0.02]),
-        color: `${COL.purple}66`,
+      // Real OSINT strategic conflict zones
+      (strategic.conflicts || []).forEach((c: any) => data.push({
+        lat: c.lat, lng: c.lon, size: c.intensity === 'EXTREME' ? 40 : c.intensity === 'SEVERE' ? 34 : 28,
+        color: c.intensity === 'EXTREME' ? '#ff0033' : c.intensity === 'SEVERE' ? '#ff4560' : COL.bear,
+        label: `⚔ ${c.name}\n${c.actors?.join(' vs ')}\n${c.fatalities_estimate?.toLocaleString()} casualties`,
+        name: c.name, type: c.type, shape: 'conflict',
+        ticker: c.ticker_impact?.[0], risk: c.intensity, summary: c.summary,
+        actors: c.actors, risk_score: c.risk_score,
       }));
+    }
 
-    return [...vesselPaths, ...flightPaths];
-  }, [filteredVessels, filteredFlights]);
+    // ── Military Bases (OSINT) ──
+    if (activeLayers.includes('BASES')) {
+      (strategic.military_bases || []).forEach((b: any) => data.push({
+        lat: b.lat, lng: b.lon, size: 22, color: '#38bdf8',
+        label: `🎯 ${b.name}\n${b.operator} | ${b.type}\n${b.significance}`,
+        name: b.name, type: b.type, shape: 'base',
+        operator: b.operator, significance: b.significance,
+      }));
+    }
 
-  // ─── HTML Element Factory ─────────────────────────────────────────────────────
+    // ── Nuclear Sites (IAEA/OSINT) ──
+    if (activeLayers.includes('NUCLEAR')) {
+      (strategic.nuclear_sites || []).forEach((n: any) => data.push({
+        lat: n.lat, lng: n.lon,
+        size: n.risk === 'CRITICAL' ? 40 : n.risk === 'HIGH' ? 32 : 24,
+        color: n.risk === 'CRITICAL' ? '#ffb800' : n.risk === 'HIGH' ? '#ff9a00' : '#e68a00',
+        label: `☢ ${n.name}\n${n.type} | ${n.status}\nRisk: ${n.risk}`,
+        name: n.name, type: n.type, shape: 'nuclear',
+        status: n.status, risk: n.risk, reactors: n.reactors,
+      }));
+    }
+
+    // ── Grid/Infrastructure Outages ──
+    if (activeLayers.includes('OUTAGES')) {
+      (strategic.infrastructure_events || []).forEach((e: any) => data.push({
+        lat: e.lat, lng: e.lon, size: 26, color: '#FF7A3D',
+        label: `⚡ ${e.name}\n${e.type} | ${e.status}`,
+        name: e.name, type: e.type, shape: 'outage',
+      }));
+    }
+
+    // ── Maritime Chokepoints ──
+    if (activeLayers.includes('HOTSPOTS') || activeLayers.includes('WATERWAYS')) {
+      (strategic.chokepoints || []).forEach((c: any) => data.push({
+        lat: c.lat, lng: c.lon, size: 30, color: '#00ccff',
+        label: `🚢 ${c.name}\nRisk: ${c.current_risk}\n${c.risk_note}`,
+        name: c.name, type: 'CHOKEPOINT', shape: 'hotspot',
+        risk: c.current_risk, alt_route: c.alt_route,
+      }));
+    }
+
+    // ── Sanctions Regimes ──
+    if (activeLayers.includes('SANCTIONS')) {
+      (strategic.sanctions || []).forEach((s: any) => data.push({
+        lat: s.lat, lng: s.lon, size: 20, color: '#f59e0b',
+        label: `🚫 ${s.name}\n${s.type}\nSectors: ${s.affected_sectors?.slice(0,3).join(', ')}`,
+        name: s.name, type: s.type, shape: 'hotspot',
+        ticker: s.ticker_impact?.[0],
+      }));
+    }
+
+    return data;
+  }, [conflicts, strategic, activeLayers]);
+
   const buildHtmlElement = useCallback((d: any) => {
     const el = document.createElement('div');
-    el.style.cssText = 'pointer-events:auto;cursor:pointer;position:relative;';
-    el.title = d.label || '';
+    el.style.cssText = `pointer-events:auto;cursor:pointer;position:relative;display:flex;align-items:center;justify-content:center;transform:translate(-50%,-50%);`;
+    el.title = d.label || d.name || '';
 
-    if (d.shape === 'vessel') {
-      el.innerHTML = `
-        <div style="
-          color:${d.color};
-          transform:rotate(${d.heading - 90}deg);
-          filter:drop-shadow(0 0 5px ${d.color});
-          opacity:0.92;
-          width:${d.size}px;
-          height:${d.size}px;
-        ">
-          <svg width="${d.size}" height="${d.size}" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2L2 20h20L12 2z"/>
-          </svg>
-          ${d.isDark ? `<div style="position:absolute;top:-2px;right:-4px;width:6px;height:6px;background:${COL.bear};border-radius:50%;animation:ping 1s infinite;"></div>` : ''}
-        </div>`;
-    } else {
-      el.innerHTML = `
-        <div style="
-          color:${d.color};
-          transform:rotate(${d.heading - 90}deg);
-          filter:drop-shadow(0 0 5px ${d.color});
-          opacity:0.88;
-          width:${d.size}px;
-          height:${d.size}px;
-        ">
-          <svg width="${d.size}" height="${d.size}" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M21 16l1 3h-7v3h-2v-3H7l-1-4H0v-2h6l1-4V2h2v7l1 4h7v-2h5v2z"/>
-          </svg>
-        </div>`;
+    const pulseAnim = d.shape === 'nuclear' ? '2.5s' : '1.5s';
+    const badge = d.name ? d.name.toUpperCase().slice(0, 20) : (d.risk ? d.risk.toUpperCase() : '');
+    const badgeColor = d.color || '#ff0033';
+
+    let iconSvg = '';
+    if (d.shape === 'conflict' || d.shape === 'hotspot') {
+      iconSvg = `<polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2" fill="none" stroke="${d.color}" stroke-width="1.5"/><circle cx="12" cy="12" r="3" fill="${d.color}" />`;
+    } else if (d.shape === 'base') {
+      iconSvg = `<rect x="4" y="4" width="16" height="16" fill="none" stroke="${d.color}" stroke-width="1.5"/><path d="M4 12h16 M12 4v16" stroke="${d.color}" stroke-width="1.5"/>`;
+    } else if (d.shape === 'nuclear') {
+      iconSvg = `<circle cx="12" cy="12" r="10" fill="none" stroke="${d.color}" stroke-width="1.5"/><path d="M12 12l5.5-3 M12 12l-5.5-3 M12 12v6" stroke="${d.color}" stroke-width="2"/>`;
+    } else if (d.shape === 'outage') {
+      iconSvg = `<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="${d.color}"/>`;
     }
+
+    const showBadge = d.type === 'WAR' || d.type === 'GEOPOLITICAL' || d.shape === 'nuclear' || (d.risk && d.risk !== 'LOW');
+
+    el.innerHTML = `
+      <div style="position:relative;width:${d.size}px;height:${d.size}px;display:flex;align-items:center;justify-content:center;">
+        <div style="position:absolute;inset:-12px;background:radial-gradient(circle, ${d.color} 0%, transparent 70%);opacity:0.35;border-radius:50%;animation:pulseRing ${pulseAnim} ease-out infinite;"></div>
+        <div style="position:absolute;inset:-4px;border:1px solid ${d.color};opacity:0.5;border-radius:50%;animation:spinRing 4s linear infinite;"></div>
+        <svg style="position:relative;z-index:2;filter:drop-shadow(0 0 10px ${d.color});" width="${d.size}" height="${d.size}" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          ${iconSvg}
+        </svg>
+        ${showBadge ? `<div style="position:absolute;top:-22px;left:50%;transform:translateX(-50%);background:rgba(2,6,15,0.95);border:1px solid ${badgeColor};color:${badgeColor};font-size:8px;padding:2px 5px;border-radius:2px;white-space:nowrap;font-family:'IBM Plex Mono',monospace;font-weight:bold;letter-spacing:0.08em;max-width:120px;overflow:hidden;text-overflow:ellipsis;">${badge}</div>` : ''}
+      </div>
+      <style>
+        @keyframes pulseRing { 0% { transform: scale(0.3); opacity: 0.8; } 100% { transform: scale(2.0); opacity: 0; } }
+        @keyframes spinRing { 100% { transform: rotate(360deg); } }
+      </style>
+    `;
     return el;
   }, []);
 
-  // ─── Point Label HTML ─────────────────────────────────────────────────────────
   const buildPointLabel = useCallback((d: any): string => `
     <div style="
-      background:rgba(7,11,15,0.95);
-      border:1px solid ${d.color || COL.signal};
-      padding:10px 14px;
-      font-family:'IBM Plex Mono',monospace;
-      border-radius:3px;
-      box-shadow:0 0 20px ${d.color || COL.signal}33;
-      min-width:180px;
+      background:rgba(7,11,15,0.95);border:1px solid ${d.color || COL.signal};
+      padding:10px 14px;font-family:'IBM Plex Mono',monospace;border-radius:3px;
+      box-shadow:0 0 20px ${d.color || COL.signal}33;min-width:180px;
     ">
       <div style="color:${d.color || COL.signal};font-weight:700;font-size:12px;margin-bottom:6px;letter-spacing:0.08em">
         ${d.name?.toUpperCase() || 'FACILITY'}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10px;color:#8B949E">
         <span>TYPE</span><span style="color:#E6EDF3;text-align:right">${d.type || d.signal || 'N/A'}</span>
-        ${d.throughput !== undefined ? `<span>THROUGHPUT</span><span style="color:#E6EDF3;text-align:right">${Math.round(d.throughput * 100)}%</span>` : ''}
         ${d.ticker ? `<span>TICKER</span><span style="color:${COL.bull};text-align:right;font-weight:700">${d.ticker}</span>` : ''}
       </div>
     </div>
   `, []);
 
-  // ─── Performance: InstancedMesh for Assets ──────────────────────────────────
   useEffect(() => {
     if (!globeEl.current) return;
-    const globe = globeEl.current;
-    const scene = globe.scene();
+    const scene = globeEl.current.scene();
 
-    // Create Vessel Geometry (Instanced)
     const vesselGeo = new THREE.ConeGeometry(0.5, 2, 8);
     vesselGeo.rotateX(Math.PI / 2);
-    const vesselMat = new THREE.MeshStandardMaterial({ 
-      color: 0x00FF9D, 
-      emissive: 0x00FF9D, 
-      emissiveIntensity: 0.5 
-    });
+    const vesselMat = new THREE.MeshPhysicalMaterial({ color: 0x00FF9D, emissive: 0x00FF9D, emissiveIntensity: 2.0, clearcoat: 1.0, roughness: 0.1 });
     const vesselMesh = new THREE.InstancedMesh(vesselGeo, vesselMat, 10000);
     vesselMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     vesselMesh.name = 'vessels_instanced';
     
-    // Create Flight Geometry (Instanced)
     const flightGeo = new THREE.BoxGeometry(0.8, 0.1, 0.8);
-    const flightMat = new THREE.MeshStandardMaterial({ 
-      color: 0xBD93F9, 
-      emissive: 0xBD93F9, 
-      emissiveIntensity: 0.5 
-    });
-    const flightMesh = new THREE.InstancedMesh(flightGeo, flightMat, 5000);
+    const flightMat = new THREE.MeshPhysicalMaterial({ color: 0xBD93F9, emissive: 0xBD93F9, emissiveIntensity: 1.8, clearcoat: 1.0, roughness: 0.1 });
+    const flightMesh = new THREE.InstancedMesh(flightGeo, flightMat, 25000);
     flightMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     flightMesh.name = 'flights_instanced';
 
     scene.add(vesselMesh);
     scene.add(flightMesh);
 
-    // Starfield Background
     const starsGeo = new THREE.BufferGeometry();
     const starsPos = [];
-    for (let i = 0; i < 15000; i++) {
-        starsPos.push((Math.random() - 0.5) * 2000, (Math.random() - 0.5) * 2000, (Math.random() - 0.5) * 2000);
-    }
+    for (let i = 0; i < 15000; i++) starsPos.push((Math.random() - 0.5) * 2000, (Math.random() - 0.5) * 2000, (Math.random() - 0.5) * 2000);
     starsGeo.setAttribute('position', new THREE.Float32BufferAttribute(starsPos, 3));
     const starsMat = new THREE.PointsMaterial({ color: 0x888888, size: 1.5, sizeAttenuation: true });
     const stars = new THREE.Points(starsGeo, starsMat);
     scene.add(stars);
 
-    return () => {
-      scene.remove(vesselMesh);
-      scene.remove(flightMesh);
-      scene.remove(stars);
-    };
+    return () => { scene.remove(vesselMesh); scene.remove(flightMesh); scene.remove(stars); };
   }, []);
 
-  // ─── Update Instanced Positions ───────────────────────────────────────────
   useEffect(() => {
     if (!globeEl.current) return;
     const globe = globeEl.current;
@@ -439,136 +373,101 @@ const GlobalGlobe: React.FC = () => {
 
     const dummy = new THREE.Object3D();
 
-    // Update Vessels
-    vessels.forEach((v, i) => {
+    filteredVessels.forEach((v: any, i: number) => {
       if (i >= 10000) return;
       const { lat, lon } = v.position || { lat: 0, lon: 0 };
       const pos = globe.getCoords(lat, lon, 0.01);
       dummy.position.set(pos.x, pos.y, pos.z);
-      dummy.lookAt(0, 0, 0); // Point away from center
-      dummy.rotateY(Math.PI / 2);
-      dummy.updateMatrix();
+      dummy.lookAt(0, 0, 0); dummy.rotateY(Math.PI / 2); dummy.updateMatrix();
       vMesh.setMatrixAt(i, dummy.matrix);
     });
-    vMesh.count = Math.min(vessels.length, 10000);
+    vMesh.count = Math.min(filteredVessels.length, 10000);
     vMesh.instanceMatrix.needsUpdate = true;
 
-    // Update Flights
-    flights.forEach((f, i) => {
-      if (i >= 5000) return;
-      const { lat, lon, alt_ft } = f.position || { lat: 0, lon: 0, alt_ft: 35000 };
-      const pos = globe.getCoords(lat, lon, 0.08); // Higher altitude
+    filteredFlights.forEach((f: any, i: number) => {
+      if (i >= 25000) return;
+      const lat = f.lat || f.position?.lat || 0;
+      const lon = f.lon || f.position?.lon || 0;
+      const heading = f.heading || f.position?.heading || 0;
+      const pos = globe.getCoords(lat, lon, 0.08); 
       dummy.position.set(pos.x, pos.y, pos.z);
       dummy.lookAt(0, 0, 0);
+      dummy.rotateY((heading - 90) * (Math.PI/180));
       dummy.updateMatrix();
+      
+      let c = new THREE.Color(0xBD93F9); // default purple (commercial)
+      if (f.category === 'MILITARY') c.setHex(0xFF4560);
+      else if (f.category === 'CARGO') c.setHex(0xFFA500);
+      else if (f.category === 'GOVERNMENT') c.setHex(0xFFD700);
+      fMesh.setColorAt(i, c);
       fMesh.setMatrixAt(i, dummy.matrix);
     });
-    fMesh.count = Math.min(flights.length, 5000);
+    fMesh.count = Math.min(filteredFlights.length, 25000);
+    if(fMesh.count > 0) fMesh.instanceColor.needsUpdate = true;
     fMesh.instanceMatrix.needsUpdate = true;
-  }, [vessels, flights]);
+  }, [filteredVessels, filteredFlights]);
 
-  // ──────────────────────────────────────────────────────────────────────────────
   return (
-    <div className={`w-full h-full relative transition-opacity duration-500 ${
-      activeLayers.includes('CLOUDS') ? 'opacity-90' : 'opacity-100'
-    }`}>
+    <div className={`w-full h-full relative transition-opacity duration-500`}>
       <Globe
         ref={globeEl}
-        globeImageUrl={undefined}
-        bumpImageUrl={undefined}
-
-        // ── OSINT Vector Map (monitorthesituation.org style) ────────────────
+        globeImageUrl={undefined} bumpImageUrl={undefined}
         polygonsData={countries.features}
-        polygonCapColor={() => 'rgba(2, 6, 15, 0.95)'}
-        polygonSideColor={() => 'rgba(0, 212, 255, 0.08)'}
-        polygonStrokeColor={() => '#00D4FF'}
-        showGraticules={true}
-
-        // ── Atmosphere (Improved) ───────────────────────────────────────────
-        showAtmosphere
-        atmosphereColor="#00D4FF"
-        atmosphereAltitude={0.25}
-
-        // ── Hex-bin Thermal Mapping (Institutional Standard) ─────────────────
+        polygonCapColor={() => '#040b16'}
+        polygonSideColor={() => 'rgba(0, 212, 255, 0.15)'}
+        polygonStrokeColor={() => '#38bdf8'}
+        showGraticules={true} showAtmosphere atmosphereColor="#38bdf8" atmosphereAltitude={0.25}
+        
         hexBinPointsData={activeLayers.includes('THERMAL') ? thermalBins : []}
-        hexBinPointWeight="weight"
-        hexBinResolution={4}
-        hexMargin={0.1}
-        hexColor={() => '#FF4560'}
-        hexLabel={buildPointLabel}
-
-        // ── Points (Ports / Satellites) ──────────────────────────────────────
-        pointsData={pointsData}
-        pointLat="lat"
-        pointLng="lng"
-        pointColor="color"
-        pointRadius="size"
-        pointAltitude={(d: any) => d.type === 'SATELLITE' ? 0.10 : 0.01}
-        pointLabel={buildPointLabel}
-
-        // ── Pulsing Rings ─────────────────────────────────────────────────────
-        ringsData={ringsData}
-        ringLat="lat"
-        ringLng="lng"
-        ringColor={(d: any) => d.color}
-        ringMaxRadius={(d: any) => d.maxR || 2.5}
-        ringPropagationSpeed={(d: any) => d.propSpeed || 3}
+        hexBinPointWeight="weight" hexBinResolution={4} hexMargin={0.1}
+        hexColor={() => '#FF4560'} hexLabel={buildPointLabel}
+        onHexPolygonClick={handleHexClick}
+        
+        pointsData={pointsData} pointLat="lat" pointLng="lng" pointColor="color" pointRadius="size"
+        pointAltitude={(d: any) => d.type === 'SATELLITE' ? 0.10 : 0.01} pointLabel={buildPointLabel}
+        onPointClick={handleGlobeClick}
+        
+        htmlElementsData={htmlElementsData} htmlElement={buildHtmlElement}
+        
+        ringsData={ringsData} ringLat="lat" ringLng="lng" ringColor={(d: any) => d.color}
+        ringMaxRadius={(d: any) => d.maxR || 2.5} ringPropagationSpeed={(d: any) => d.propSpeed || 3}
         ringRepeatPeriod={(d: any) => d.period || 1500}
-
-        // ── Orbital & Flight Arcs ─────────────────────────────────────────────
-        arcsData={arcsData}
-        arcColor={(d: any) => d.color}
-        arcDashLength={0.45}
-        arcDashGap={1.5}
-        arcDashAnimateTime={3500}
-        arcStroke={0.5}
-        arcAltitudeAutoScale={0.3}
-        arcLabel={(d: any) => `
-          <div style="background:rgba(7,11,15,0.95);padding:8px;border:1px solid ${COL.signal};font-family:monospace;font-size:10px;color:white;">
-            <strong>${d.label.toUpperCase()}</strong><br/>
-            STATUS: <span style="color:${COL.bull}">ACTIVE</span>
-          </div>
-        `}
-
-        // ── Elite OSINT Country Typography (Adaptive LOD) ──────────────────
+        
+        arcsData={arcsData} arcColor={(d: any) => d.color} arcDashLength={0.45} arcDashGap={1.5}
+        arcDashAnimateTime={3500} arcStroke={0.5} arcAltitudeAutoScale={0.3}
+        arcLabel={(d: any) => `<div style="background:rgba(7,11,15,0.95);padding:8px;border:1px solid ${COL.signal};font-family:monospace;font-size:10px;color:white;box-shadow: 0 0 10px ${COL.signal}40;"><strong>${d.label.toUpperCase()}</strong></div>`}
+        
         labelsData={useMemo(() => {
           const altitude = zoomLevel ? 4 / zoomLevel : 2.5;
-          // RELAXED THRESHOLD: Show labels even at higher altitudes for "Bloomberg Command" feel
           if (altitude > 3.0) return []; 
           const limit = altitude < 0.6 ? 208 : altitude < 1.2 ? 120 : 60;
           return countryLabels.slice(0, limit);
         }, [zoomLevel])}
-        labelLat="lat"
-        labelLng="lng"
-        labelText={(d: any) => d.name.toUpperCase()}
-        labelSize={(d: any) => 0.5}
-        labelColor={() => '#00D4FF'}
-        labelResolution={4}
-        labelIncludeDot={true}
-        labelDotRadius={0.15}
-        labelAltitude={0.015}
-
-        // ── Globe Appearance (Bug 6 Fix - Deep Institutional Black) ──────────
+        labelLat="lat" labelLng="lng" labelText={(d: any) => d.name.toUpperCase()}
+        labelSize={(d: any) => 0.5} labelColor={() => '#38bdf8'} labelResolution={4}
+        labelIncludeDot={true} labelDotRadius={0.15} labelAltitude={0.015}
+        
         backgroundColor="rgba(0,0,0,0)"
-        globeMaterial={new THREE.MeshStandardMaterial({
-          color: '#02040A',
+        globeMaterial={new THREE.MeshPhysicalMaterial({
+          color: '#000000',
+          metalness: 0.8,
+          roughness: 0.2,
           transparent: true,
-          opacity: 0.95,
-          metalness: 0.3,
-          roughness: 0.7,
+          opacity: 0.9,
+          emissive: '#020617',
+          emissiveIntensity: 0.5,
+          clearcoat: 1.0,
+          clearcoatRoughness: 0.2,
         })}
-
-        // ── Performance ───────────────────────────────────────────────────────
         rendererConfig={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
       />
-
-      {/* LIVE STATS OVERLAY */}
+      
       <div className="absolute top-4 right-4 pointer-events-none z-10 flex flex-col gap-1.5">
         {[
-          { label: 'VESSELS', val: vessels.length, col: COL.bull },
-          { label: 'FLIGHTS', val: flights.length, col: COL.purple },
+          { label: 'AIRCRAFT', val: filteredFlights.length, col: COL.purple },
           { label: 'THERMAL', val: thermalBins.length, col: '#FF7A3D' },
-          { label: 'DARK', val: vessels.filter((v: any) => v.dark_vessel_confidence > 0.6).length, col: COL.bear },
+          { label: 'QUAKES', val: quakes.length, col: COL.warn },
+          { label: 'CONFLICTS', val: conflicts.length, col: COL.bear },
         ].map(({ label, val, col }) => (
           <div key={label} style={{ borderColor: `${col}40` }} className="flex items-center gap-2 bg-black/70 backdrop-blur-sm border px-2.5 py-1 rounded-sm shadow-2xl">
             <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: col }}>{label}</span>

@@ -13,6 +13,8 @@ interface FlightState {
   handleWSUpdate: (msg: any) => void;
 }
 
+const API_BASE = (import.meta.env.VITE_API_URL as string) || '';
+
 export const useFlightStore = create<FlightState>((set) => ({
   flights: [],
   selectedFlight: null,
@@ -23,16 +25,16 @@ export const useFlightStore = create<FlightState>((set) => ({
   fetchFlights: async () => {
     set({ isLoading: true });
     try {
-      const response = await fetch('/api/globe/aircraft');
+      const response = await fetch(`${API_BASE}/api/intelligence/aircraft`);
       const data = await response.json();
-      const flights = data.features.map((f: any) => ({
-        ...f.properties,
+      const flights = (data.aircraft || []).map((f: any) => ({
+        ...f,
         position: {
-          lat: f.geometry.coordinates[1],
-          lon: f.geometry.coordinates[0],
-          alt_ft: f.properties.altitude_m ? f.properties.altitude_m * 3.28084 : (f.properties.alt_ft || 0),
-          speed_kts: f.properties.velocity_ms ? f.properties.velocity_ms * 1.94384 : (f.properties.speed_kts || 0),
-          heading: f.properties.heading_deg || f.properties.heading || 0,
+          lat: f.lat,
+          lon: f.lon,
+          alt_ft: f.alt_ft || 0,
+          speed_kts: f.speed_kts || 0,
+          heading: f.heading || 0,
           timestamp: new Date().toISOString(),
         }
       }));

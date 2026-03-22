@@ -29,13 +29,20 @@ export const useSatelliteStore = create<SatelliteState>((set) => ({
     try {
       const response = await fetch('/api/alpha/satellites');
       const data = await response.json();
-      const features = data.satellites.features;
+      const rawSats = data.satellites || [];
       
-      const satellites = features.map((f: any) => ({
-        id: f.properties.id,
-        ...f.properties,
-        lat: f.geometry.coordinates[1],
-        lon: f.geometry.coordinates[0]
+      const satellites = rawSats.map((s: any) => ({
+        id: s.name,
+        name: s.name,
+        category: 'EO',
+        owner: 'Global',
+        altitude: `${s.alt_km} km`,
+        velocity: '7.5 km/s',
+        orbit: 'LEO',
+        symbol: 'S',
+        color: '#38bdf8',
+        lat: s.lat,
+        lon: s.lon
       }));
       
       set({ satellites, isLoading: false });

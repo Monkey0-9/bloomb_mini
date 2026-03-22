@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useTerminalStore, useSignalStore, useVesselStore, useFlightStore } from './store';
+import { 
+  useTerminalStore, 
+  useSignalStore, 
+  useVesselStore, 
+  useFlightStore,
+  useSatelliteStore
+} from './store';
 import { executeCommand } from './lib/commandEngine';
 import type { ViewType } from './store/uiStore';
 
@@ -22,12 +28,14 @@ import SettingsView from './views/SettingsView';
 import HelpView from './views/HelpView';
 import AlertsView from './views/AlertsView';
 import WorkflowView from './views/WorkflowView';
+import DarkPoolView from './views/DarkPoolView';
+import InsiderView from './views/InsiderView';
 import { useEquityStore } from './store/equityStore';
 
 // Components
 import Masthead from './components/Masthead';
 import NavRail from './components/NavRail';
-import SignalPanel from './components/SignalPanel';
+import IntelligenceFeed from './components/IntelligenceFeed';
 import WatchlistPanel from './components/WatchlistPanel';
 import GlobalGlobe from './components/GlobalGlobe';
 import TerminalOutput from './components/TerminalOutput';
@@ -41,6 +49,28 @@ export default function TerminalApp() {
   const { selectedView, sidebarExpanded, setView } = useTerminalStore();
   const [command, setCommand] = useState('');
   const terminalRef = useRef<HTMLDivElement>(null);
+
+  const { fetchSignals } = useSignalStore();
+  const { fetchFlights } = useFlightStore();
+  const { fetchVessels } = useVesselStore();
+  const { fetchSatellites } = useSatelliteStore();
+
+  // Global Data Induction for Terminal Parity
+  useEffect(() => {
+    fetchSignals();
+    fetchFlights();
+    fetchVessels();
+    fetchSatellites();
+    
+    const interval = setInterval(() => {
+      fetchSignals();
+      fetchFlights();
+      fetchVessels();
+      fetchSatellites();
+    }, 30000); // 30s refresh cycle
+    
+    return () => clearInterval(interval);
+  }, [fetchSignals, fetchFlights, fetchVessels, fetchSatellites]);
 
   // Keyboard layout for Terminal Parity
   useEffect(() => {
@@ -100,6 +130,10 @@ export default function TerminalApp() {
         return <WorkflowView />;
       case 'settings':
         return <SettingsView />;
+      case 'dark_pools':
+        return <DarkPoolView />;
+      case 'insider':
+        return <InsiderView />;
       case 'help':
         return <HelpView />;
       default:
@@ -150,8 +184,8 @@ export default function TerminalApp() {
              <div className="flex-1 min-h-0 flex flex-col border-b border-border-1">
                 <WatchlistPanel />
              </div>
-             <div className="h-2/5 min-h-0">
-                <SignalPanel />
+             <div className="flex-1 flex flex-col min-h-0 border-t border-border-1">
+                <IntelligenceFeed />
              </div>
           </aside>
         </div>

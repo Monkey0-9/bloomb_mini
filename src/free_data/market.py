@@ -15,37 +15,29 @@ GLOBAL_UNIVERSE = {
     "ZIM": "ZIM Integrated Shipping",
 }
 
-@dataclass
-class TickerPrice:
-    ticker: str
-    price: float
-    currency: str
-    timestamp: datetime
-
-def fetch_market_prices(tickers: list[str] | None = None) -> dict[str, TickerPrice]:
+def get_prices(tickers: list[str] | None = None) -> dict:
     """
-    Fetch bulk prices for the global universe.
-    Using yfinance fast_info for efficient data retrieval.
+    Fetch bulk prices for any tickers on demand.
+    Using yfinance for efficient data retrieval.
     """
+    # If no tickers, use a diverse sample of global leaders
     if tickers is None:
-        tickers = list(GLOBAL_UNIVERSE.keys())
+        tickers = ["AAPL", "TSLA", "MSFT", "NVDA", "AMZN", "META", "BABA", "ASML", "BHP", "SHEL"]
     
     prices = {}
     try:
-        # Fetching bulk data in one go for efficiency
-        group = yf.Tickers(" ".join(tickers))
         for symbol in tickers:
-            ticker_obj = group.tickers[symbol]
+            ticker_obj = yf.Ticker(symbol)
             try:
-                # Use fast_info if available, or currentPrice from info
                 info = ticker_obj.info
                 price = info.get("currentPrice") or info.get("regularMarketPrice") or 0.0
-                prices[symbol] = TickerPrice(
-                    ticker=symbol,
-                    price=price,
-                    currency=info.get("currency", "USD"),
-                    timestamp=datetime.now()
-                )
+                prices[symbol] = {
+                    "ticker": symbol,
+                    "price": price,
+                    "currency": info.get("currency", "USD"),
+                    "name": info.get("longName", symbol),
+                    "timestamp": datetime.now().isoformat()
+                }
             except Exception as inner_e:
                 log.warning("fetch_ticker_failed", ticker=symbol, error=str(inner_e))
         return prices
@@ -53,7 +45,40 @@ def fetch_market_prices(tickers: list[str] | None = None) -> dict[str, TickerPri
         log.error("fetch_market_failed", error=str(e))
         return {}
 
-if __name__ == "__main__":
-    market_data = fetch_market_prices()
-    for symbol, data in market_data.items():
-        print(f"{symbol}: ${data.price} {data.currency}")
+
+def get_ohlcv(ticker: str, period: str = "3mo") -> list[dict]:
+    """Get historical OHLCV data."""
+    try:
+        data = yf.Ticker(ticker).history(period=period)
+        result = []
+        for index, row in data.iterrows():
+            result.append({
+                "time": index.strftime("%Y-%m-%d"),
+                "open": float(row["Open"]),
+                "high": float(row["High"]),
+                "low": float(row["Low"]),
+                "close": float(row["Close"]),
+                "volume": int(row["Volume"])
+            })
+        return result
+    except Exception as e:
+        log.error("fetch_ohlcv_failed", ticker=ticker, error=str(e))
+        return []
+
+def get_options(ticker: str) -> dict:
+    """Get options chain summary."""
+    try:
+        t = yf.Ticker(ticker)
+        dates = t.options
+        if not dates:
+            return {"ticker": ticker, "options": []}
+        chain = t.option_chain(dates[0])
+        return {
+            "ticker": ticker,
+            "expiry": dates[0],
+            "calls": len(chain.calls),
+            "puts": len(chain.puts)
+        }
+    except Exception as e:
+        log.error("fetch_options_failed", ticker=ticker, error=str(e))
+        return {"ticker": ticker, "options": []}

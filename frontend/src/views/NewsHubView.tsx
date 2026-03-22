@@ -22,9 +22,9 @@ const NewsHubView = () => {
   useEffect(() => {
     const loadNews = async () => {
       try {
-        const response = await fetch('/api/alpha/news');
+        const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/news/live`);
         const data = await response.json();
-        setNewsArticles(data.news || []);
+        setNewsArticles(data.articles || data.news || []);
       } catch (err) {
         console.error('Failed to fetch text news:', err);
       }

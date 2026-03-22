@@ -379,9 +379,10 @@ const SignalMatrix = () => {
 
           {/* Empty state */}
           {rows.length === 0 && !loading && (
-            <div className="flex flex-col items-center justify-center h-32 text-[#1A2332] font-mono text-xs tracking-widest uppercase">
-              <Activity size={24} className="mb-3 text-[#2D3748]" />
-              Waiting for signal data…
+            <div className="flex flex-col items-center justify-center h-64 text-slate-500 font-mono text-xs tracking-widest uppercase">
+              <Activity size={32} className="mb-4 text-[#00D4FF] animate-pulse" />
+              <span className="text-[#00D4FF]">Awaiting Tactical Signal Induction…</span>
+              <span className="text-[9px] mt-2 opacity-40">Verifying REST Bridge at {API_BASE || 'LOCAL'}</span>
             </div>
           )}
         </div>

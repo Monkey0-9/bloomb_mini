@@ -23,7 +23,7 @@ FRED_SERIES = {
     "INDUSTRIAL": "INDPRO"
 }
 
-def get_fred_data(series_id: str) -> pd.DataFrame:
+def get_series(series_id: str) -> pd.DataFrame:
     """Fetch FRED data via direct CSV download."""
     url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
     try:
@@ -56,12 +56,12 @@ def get_world_bank_indicator(indicator: str, country: str = "USA") -> list[dict]
         log.error("world_bank_fetch_failed", indicator=indicator, error=str(e))
         return []
 
-def get_macro_summary() -> dict:
+def get_snapshot() -> dict:
     """Consolidate high-level macro indicators."""
     summary = {}
     # Fetch key FRED series
     for name, sid in FRED_SERIES.items():
-        df = get_fred_data(sid)
+        df = get_series(sid)
         if not df.empty:
             last_val = df.iloc[-1]
             prev_val = df.iloc[-2] if len(df) > 1 else last_val
