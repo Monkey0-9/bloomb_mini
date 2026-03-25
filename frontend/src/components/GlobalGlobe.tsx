@@ -464,6 +464,7 @@ const GlobalGlobe: React.FC = () => {
       
       <div className="absolute top-4 right-4 pointer-events-none z-10 flex flex-col gap-1.5">
         {[
+          { label: 'VESSELS', val: filteredVessels.length, col: COL.signal },
           { label: 'AIRCRAFT', val: filteredFlights.length, col: COL.purple },
           { label: 'THERMAL', val: thermalBins.length, col: '#FF7A3D' },
           { label: 'QUAKES', val: quakes.length, col: COL.warn },
