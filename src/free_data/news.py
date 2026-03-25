@@ -50,12 +50,19 @@ async def get_rss_news(category: str) -> list[NewsArticle]:
 async def query_gdelt(query: str) -> list[NewsArticle]:
     """Query GDELT live API for real-time global events. No key needed."""
     try:
-        url = GDELT_URL.format(query=query)
+        # GDELT requires specific query formatting for multiple terms
+        formatted_query = query.replace(" ", " OR ")
+        params = {
+            "query": formatted_query,
+            "mode": "artlist",
+            "format": "json",
+            "maxresults": 50
+        }
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(url)
+            resp = await client.get("https://api.gdeltproject.org/api/v2/doc/doc", params=params)
             data = resp.json()
             articles = []
-            for art in data.get("articles", [])[:15]:
+            for art in data.get("articles", [])[:20]:
                 articles.append(NewsArticle(
                     source="GDELT",
                     title=art["title"],
