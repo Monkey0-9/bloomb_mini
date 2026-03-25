@@ -58,7 +58,7 @@ async def query_gdelt(query: str) -> list[NewsArticle]:
             "format": "json",
             "maxresults": 50
         }
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=5) as client:
             resp = await client.get("https://api.gdeltproject.org/api/v2/doc/doc", params=params)
             # If GDELT fails or is throttled, it might not return valid JSON or empty articles
             if resp.status_code != 200:
