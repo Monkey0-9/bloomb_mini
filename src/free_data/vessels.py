@@ -76,7 +76,7 @@ async def _noaa_ais() -> list[dict]:
         async with httpx.AsyncClient(timeout=25, follow_redirects=True) as client:
             resp = await client.get(url)
         if resp.status_code != 200:
-            log.warning("noaa_ais_non_200", status=resp.status_code)
+            logger.warning("noaa_ais_non_200", status=resp.status_code)
             return []
 
         lines = resp.text.strip().split("\n")
@@ -136,6 +136,7 @@ async def _kystverket_ais() -> list[dict]:
                 "User-Agent": "SatTrade-Intelligence/2.0",
             })
         if resp.status_code != 200:
+            logger.warning("kystverket_non_200", status=resp.status_code)
             return []
         data = resp.json()
         vessels = []
@@ -246,18 +247,18 @@ async def get_global_ships(limit: int = 2000) -> list[dict]:
     # Source 1: NOAA (most reliable — US coastal waters)
     noaa = await _noaa_ais()
     all_vessels.extend(noaa)
-    log.info("noaa_vessels", count=len(noaa))
+    logger.info("noaa_vessels", count=len(noaa))
 
     # Source 2: Norway (free API, Nordic waters)
     kyst = await _kystverket_ais()
     all_vessels.extend(kyst)
-    log.info("kystverket_vessels", count=len(kyst))
+    logger.info("kystverket_vessels", count=len(kyst))
 
     # Source 3: Public aggregator fallback
     if len(all_vessels) < 50:
         pub = await _aisstream_public()
         all_vessels.extend(pub)
-        log.info("public_ais_vessels", count=len(pub))
+        logger.info("public_ais_vessels", count=len(pub))
 
     # Deduplicate by MMSI
     seen_mmsi: set[str] = set()
@@ -269,7 +270,7 @@ async def get_global_ships(limit: int = 2000) -> list[dict]:
             unique.append(v)
 
     if not unique:
-        log.warning("all_ais_sources_failed", strategy="simulated_fallback")
+        logger.warning("all_ais_sources_failed", strategy="simulated_fallback")
         unique = [
             {
                 "id": f"ship-{i}", "mmsi": f"123456{i:03d}",
@@ -282,7 +283,7 @@ async def get_global_ships(limit: int = 2000) -> list[dict]:
             } for i in range(40)
         ]
 
-    log.info("total_real_ais_vessels", count=len(unique))
+    logger.info("total_real_ais_vessels", count=len(unique))
     _vessel_cache = unique
     _vessel_ts = now_ts
     return unique[:limit]
