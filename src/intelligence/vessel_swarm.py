@@ -5,16 +5,55 @@ Predicts Global Trade Flow Index (GTFI) by correlating real-time seeds:
 2. Seismic Data (quakes.py)
 3. News OSINT (news.py)
 """
-from __future__ import annotations
-
 import logging
-from dataclasses import dataclass
+import random
+from enum import Enum
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import asyncio
 
 from src.free_data import vessels, quakes, news
 
 logger = logging.getLogger(__name__)
+
+class AgentPersona(Enum):
+    CAUTIOUS = "cautious"      # Extremely sensitive to risk/quakes
+    AGGRESSIVE = "aggressive"  # Ignores minor risks to maintain schedule
+    STANDARD = "standard"    # Balanced reaction
+
+@dataclass
+class MaritimeAgent:
+    """A MiroFish-inspired maritime intelligence agent."""
+    id: str
+    name: str
+    type: str         # Tanker, Container, etc.
+    persona: AgentPersona
+    location: str
+    health: float = 1.0  # 0.0 to 1.0
+    memory: list[str] = field(default_factory=list)
+    risk_stance: float = 0.5
+
+    def observe(self, seeds: dict):
+        """Update agent state based on world seeds."""
+        impact = 0.0
+        
+        # 1. Seismic Reactivity
+        for q in seeds.get('quakes', []):
+            dist = 5.0 # simplified distance check
+            if q.mag > 5.0:
+                sensitivity = 1.5 if self.persona == AgentPersona.CAUTIOUS else 0.8
+                impact += (q.mag * 0.02 * sensitivity)
+                self.memory.append(f"Felt M{q.mag} quake at {q.place}")
+
+        # 2. News/Geopolitical Reactivity
+        for n in seeds.get('news', []):
+            if any(word in n.title.lower() for word in ["blockade", "conflict", "attack"]):
+                sensitivity = 2.0 if self.persona == AgentPersona.AGGRESSIVE else 1.0
+                impact += 0.1 * sensitivity
+                self.memory.append(f"Alerted: {n.title[:30]}...")
+
+        self.health = max(0.0, min(1.0, self.health - impact))
+        if len(self.memory) > 5: self.memory.pop(0)
 
 @dataclass
 class SwarmAlert:
