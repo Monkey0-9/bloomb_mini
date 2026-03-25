@@ -27,26 +27,83 @@ satellite_trade/
 └── tests/                   # Comprehensive unit and integration test suite
 ```
 
-## ⚡ Quick Start
+## 📋 Prerequisites
 
-### Backend (Python 3.11+)
+- **Python**: 3.11+
+- **Node.js**: 18+ (LTS recommended)
+- **C++ Build Tools**: Required for some native Python dependencies (Windows: Visual Studio Build Tools).
+- **Docker** (Optional): For containerized deployment.
+
+## ⚙️ Environment Setup
+
+Copy `.env.example` to `.env` and fill in the required keys:
+
 ```bash
-pip install -r requirements.txt
-python src/api/server.py
+# Data Sources
+SENTINEL_HUB_CLIENT_ID=...
+SENTINEL_HUB_CLIENT_SECRET=...
+ALPACAS_API_KEY=...
+
+# Backend Config
+DATABASE_URL=sqlite:///./sattrade.db
+REDIS_URL=redis://localhost:6379
 ```
 
-### Frontend (Node 18+)
-```bash
-cd frontend
-npm install
-npm run dev
-```
+## 🛠️ Quick Start
+
+### Backend (Python)
+
+1. Create a virtual environment:
+
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # Windows: .venv\Scripts\activate
+   ```
+
+2. Install dependencies:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Run the server:
+
+   ```bash
+   python src/api/server.py
+   ```
+
+### Frontend (Node)
+
+1. Navigate to the frontend directory:
+
+   ```bash
+   cd frontend
+   ```
+
+2. Install dependencies:
+
+   ```bash
+   npm install
+   ```
+
+3. Start the dev server:
+
+   ```bash
+   npm run dev
+   ```
+
+## ❓ Troubleshooting
+
+For common errors (e.g., Windows Permission errors, Syntax errors), please refer to [TROUBLESHOOTING.md](./TROUBLESHOOTING.md).
 
 ## 🧪 Verification
+
 The system has been verified for institutional use:
+
 - **Build**: `npm run build` verified.
 - **Signals**: Weighted IC-logic verified.
 - **Intelligence**: SAR-validated dark vessel detection operational.
 
 ## License
+
 Proprietary — Internal Research & Alpha Generation.

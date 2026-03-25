@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import structlog
 from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal, Optional
 
 log = structlog.get_logger()
 
@@ -12,7 +14,7 @@ class SignalOutput:
     location_key: str
     location_display: str
     score: float                    # 0-100
-    direction: Literal["BULLISH","BEARISH","NEUTRAL","INSUFFICIENT_DATA"]
+    direction: Literal["BULLISH", "BEARISH", "NEUTRAL", "INSUFFICIENT_DATA", "STABLE"]
     delta_vs_baseline: str          # e.g. "+34%"
     ic: float | None                # None if insufficient data
     icir: float | None
@@ -21,7 +23,7 @@ class SignalOutput:
     primary_company: str
     affected_tickers: list[str]
     signal_reason: str              # plain English
-    pre_earnings_signal: dict | None  # None if no upcoming earnings
+    pre_earnings_signal: dict[str, Any] | None  # None if no upcoming earnings
     last_updated: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     data_sources: list[str] = field(default_factory=list)
 

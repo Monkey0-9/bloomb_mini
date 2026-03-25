@@ -1,124 +1,160 @@
 """
-Sentinel-2 atmospheric correction using py6S.
-NOT DOS. Real surface reflectance computation.
+Optical Preprocessing Pipeline (Sentinel-2 / Landsat).
+
+Steps:
+1. Download Sentinel-2 COG tile from AWS public bucket
+2. Compute surface reflectance using simple scaling
+3. Calculate indices (NDVI)
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass
+import logging
 from pathlib import Path
-
-import numpy as np
 from typing import cast
 
-SENTINEL2_BANDS: dict[str, float] = {
-    "B02": 490.0,
-    "B03": 560.0,
-    "B04": 665.0,
-    "B08": 842.0,
-    "B11": 1610.0,
-    "B12": 2190.0,
-}
+import numpy as np
+import rasterio
+
+logger = logging.getLogger(__name__)
 
 
-@dataclass
-class CorrectionResult:
-    band_stats: dict[str, dict[str, float]]
-    output_path: str
-    pixels_clipped: int
-    tile_id: str
-    preprocessing_ver: str = "1.0.0"
-
-
-def correct_atmospheric_6s(
-    input_path: str,
-    output_path: str,
-    solar_zenith: float = 40.0,
-    solar_azimuth: float = 160.0,
-    view_zenith: float = 0.0,
-    view_azimuth: float = 0.0,
-    acquisition_month: int = 6,
-    acquisition_day: int = 15,
-    aerosol_optical_depth: float = 0.1,
-    aerosol_profile: str = "continental",
-    tile_id: str = "",
-) -> CorrectionResult:
-    import rasterio
-    from Py6S import AeroProfile, AtmosProfile, Geometry, SixS, Wavelength
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    pixels_clipped_total = 0
-    band_stats: dict[str, dict[str, float]] = {}
-    s = SixS()
+def download_sentinel_tile(
+    tile_id: str,
+    band: str = "B04",
+    date: str = "2024-01-01",
+    output_dir: str = "./data/tiles",
+) -> str:
+    """
+    Download Sentinel-2 COG tile from AWS public bucket.
+    
+    Args:
+        tile_id: MGRS tile ID (e.g., "31UET")
+        band: Band name (B02=blue, B03=green, B04=red, B08=nir)
+        date: Date string YYYY-MM-DD
+        output_dir: Local directory to save tiles
+        
+    Returns:
+        Path to downloaded tile
+    """
+    import requests
+    
+    # AWS S3 public bucket URL structure
+    base_url = "https://sentinel-cogs.s3.us-west-2.amazonaws.com"
+    
+    # Parse tile ID
+    utm_zone = tile_id[:2]
+    latitude_band = tile_id[2]
+    grid_square = tile_id[3:]
+    
+    # Parse date
+    year, month, day = date.split("-")
+    
+    # Construct URL
+    url = f"{base_url}/sentinel-s2-l2a-cogs/{utm_zone}/{latitude_band}/{grid_square}/{year}/{int(month)}/S2A_{tile_id}_{date.replace('-', '')}_0_L2A/{band}.tif"
+    
+    output_path = Path(output_dir) / f"{tile_id}_{date}_{band}.tif"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    logger.info(f"Downloading {url} to {output_path}")
+    
     try:
-        s.geometry = Geometry.User()
-        s.geometry.solar_z = solar_zenith
-        s.geometry.solar_a = solar_azimuth
-        s.geometry.view_z = view_zenith
-        s.geometry.view_a = view_azimuth
-        s.geometry.month = acquisition_month
-        s.geometry.day = acquisition_day
-        s.aero_profile = AeroProfile.PredefinedType(1)
-        s.aot550 = aerosol_optical_depth
-        s.atmos_profile = AtmosProfile.PredefinedType(AtmosProfile.MidlatitudeSummer)
-        corrections = []
-        for band_name, wavelength_nm in SENTINEL2_BANDS.items():
-            s.wavelength = Wavelength(wavelength_nm / 1000.0)
-            s.run()
-            corrections.append(
-                (s.outputs.coef_xa, s.outputs.coef_xb, s.outputs.coef_xc)
-            )
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        output_path.write_bytes(response.content)
+        return str(output_path)
     except Exception as e:
-        # Fallback to DOS (Dark Object Subtraction) if 6S fails
-        print(f"6S Correction failed: {e}. Falling back to DOS.")
-        with rasterio.open(input_path) as src:
-            corrections = []
-            for i in range(1, src.count + 1):
-                # Calculate 1% percentile as the dark object offset
-                band_data = src.read(i)
-                dark_pixel = np.percentile(band_data[band_data > 0], 1) / 10000.0
-                # In DOS: result = (TOA - dark_pixel)
-                # We map this to (xa*TOA - xb) where xa=1, xb=dark_pixel, xc=0
-                corrections.append((1.0, float(dark_pixel), 0.0))
+        logger.error(f"Failed to download {url}: {e}")
+        raise
+
+
+def correct_atmospheric_simple(input_path: str) -> np.ndarray:
+    """
+    Apply simple atmospheric correction using Sentinel-2 scaling.
+    
+    Sentinel-2 L2A products are already atmospherically corrected.
+    We just apply the scaling factor to get surface reflectance.
+    
+    Returns:
+        Surface reflectance array [0.0, 1.0]
+    """
     with rasterio.open(input_path) as src:
-        profile = src.profile.copy()
-        n_bands = min(src.count, len(SENTINEL2_BANDS))
-        profile.update(driver="GTiff", dtype="float32", count=n_bands, compress="lzw")
-        with rasterio.open(output_path, "w", **profile) as dst:
-            dst.update_tags(TILE_ID=tile_id, PREPROCESSING_VER="1.0.0")
-            iterator = zip(SENTINEL2_BANDS.keys(), corrections)
-            for i, (band_name, (xa, xb, xc)) in enumerate(iterator, start=1):
-                if i > src.count:
-                    break
-                toa = src.read(i).astype(np.float32) / 10000.0
-                y = xa * toa - xb
-                denom = 1.0 + xc * y
-                denom = np.where(denom == 0, 1e-10, denom)
-                sr = y / denom
-                n_clipped = int(np.sum((sr < 0.0) | (sr > 1.0)))
-                pixels_clipped_total += n_clipped
-                sr = np.clip(sr, 0.0, 1.0)
-                dst.write(sr, i)
-                band_stats[band_name] = {
-                    "mean": float(np.nanmean(sr)),
-                    "std": float(np.nanstd(sr)),
-                    "min": float(np.nanmin(sr)),
-                    "max": float(np.nanmax(sr)),
-                    "n_clipped": n_clipped,
-                }
-    return CorrectionResult(
-        band_stats=band_stats,
-        output_path=output_path,
-        pixels_clipped=pixels_clipped_total,
-        tile_id=tile_id,
-    )
+        data = src.read(1).astype(np.float32)
+    
+    # Sentinel-2 scaling: divide by 10000 to get reflectance
+    reflectance = data / 10000.0
+    
+    # Clamp to valid range
+    reflectance = np.clip(reflectance, 0.0, 1.0)
+    
+    return reflectance
 
 
-def compute_ndvi(sr_path: str) -> np.ndarray:
-    """NDVI = (NIR - Red) / (NIR + Red)."""
-    import rasterio
-    with rasterio.open(sr_path) as src:
-        red = src.read(3).astype(np.float32)
-        nir = src.read(4).astype(np.float32)
+def compute_ndvi(red_path: str, nir_path: str) -> np.ndarray:
+    """
+    Calculate Normalized Difference Vegetation Index (NDVI).
+    
+    NDVI = (NIR - Red) / (NIR + Red)
+    
+    Args:
+        red_path: Path to Red band (B04) COG
+        nir_path: Path to NIR band (B08) COG
+        
+    Returns:
+        NDVI array [-1.0, 1.0]
+    """
+    red = correct_atmospheric_simple(red_path)
+    nir = correct_atmospheric_simple(nir_path)
+    
+    # Avoid division by zero
     denom = nir + red
-    denom = np.where(denom == 0, 1e-10, denom)
-    return cast(np.ndarray, np.clip((nir - red) / denom, -1.0, 1.0))
+    denom = np.where(denom == 0, 1e-6, denom)
+    
+    ndvi = (nir - red) / denom
+    return cast(np.ndarray, np.clip(ndvi, -1.0, 1.0))
 
+
+def process_sentinel_tile(tile_id: str, date: str, output_dir: str = "./data/processed") -> dict:
+    """
+    Complete processing pipeline for a Sentinel-2 tile.
+    
+    Args:
+        tile_id: MGRS tile ID
+        date: Date string YYYY-MM-DD
+        output_dir: Output directory for processed data
+        
+    Returns:
+        Dictionary with paths to processed outputs
+    """
+    logger.info(f"Processing {tile_id} for {date}")
+    
+    # Download bands
+    red_path = download_sentinel_tile(tile_id, "B04", date)
+    nir_path = download_sentinel_tile(tile_id, "B08", date)
+    
+    # Compute NDVI
+    ndvi = compute_ndvi(red_path, nir_path)
+    
+    # Save NDVI
+    output_path = Path(output_dir) / f"{tile_id}_{date}_ndvi.tif"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    with rasterio.open(red_path) as src:
+        profile = src.profile
+        profile.update(dtype=rasterio.float32, count=1)
+        
+        with rasterio.open(output_path, "w", **profile) as dst:
+            dst.write(ndvi.astype(rasterio.float32), 1)
+    
+    return {
+        "tile_id": tile_id,
+        "date": date,
+        "ndvi_path": str(output_path),
+        "ndvi_mean": float(np.mean(ndvi)),
+        "ndvi_std": float(np.std(ndvi)),
+    }
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    print("Optical preprocessing module loaded.")
