@@ -60,9 +60,13 @@ async def query_gdelt(query: str) -> list[NewsArticle]:
         }
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get("https://api.gdeltproject.org/api/v2/doc/doc", params=params)
+            # If GDELT fails or is throttled, it might not return valid JSON or empty articles
+            if resp.status_code != 200:
+                raise Exception(f"GDELT status {resp.status_code}")
+                
             data = resp.json()
             articles = []
-            for art in data.get("articles", [])[:20]:
+            for art in data.get("articles", [])[:30]:
                 articles.append(NewsArticle(
                     source="GDELT",
                     title=art["title"],
@@ -70,7 +74,18 @@ async def query_gdelt(query: str) -> list[NewsArticle]:
                     pub_date=art["seendate"],
                     summary=art.get("sourcecountry", "")
                 ))
+            
+            if not articles:
+                # Fallback to RSS if GDELT is empty
+                logger.info("GDELT empty, falling back to RSS")
+                m_news = await get_rss_news("Maritime")
+                d_news = await get_rss_news("Defense")
+                return sorted(m_news + d_news, key=lambda x: x.pub_date, reverse=True)
+                
             return articles
     except Exception as e:
-        logger.error(f"GDELT error for %s: %s", query, e)
-        return []
+        logger.error(f"GDELT error for %s: %s. Falling back to RSS.", query, e)
+        # Final fallback
+        m_news = await get_rss_news("Maritime")
+        d_news = await get_rss_news("Defense")
+        return sorted(m_news + d_news, key=lambda x: x.pub_date, reverse=True)
