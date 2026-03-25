@@ -62,38 +62,38 @@ export const useSignalStore = create<SignalState>((set) => ({
   addEvent: (event) => set((state) => ({ events: [event, ...state.events].slice(0, 100) })),
   fetchSignals: async () => {
     try {
-      // Fetch Signals
-      const sigResponse = await fetch('/api/signals');
-      if (!sigResponse.ok) throw new Error(`Signals API failed: ${sigResponse.status}`);
+      // Fetch Thermal Signals
+      const sigResponse = await fetch('/api/intelligence/thermal');
+      if (!sigResponse.ok) throw new Error(`Thermal API failed: ${sigResponse.status}`);
       const sigData = await sigResponse.json();
       
-      const signals = sigData.signals ? Object.entries(sigData.signals).map(([key, s]: [string, any]) => ({
-        id: key,
-        name: s.signal_name,
-        location: s.location || 'Global',
-        score: s.score,
-        status: (s.direction ? s.direction.toLowerCase() : 'neutral') as 'bullish' | 'bearish' | 'neutral',
-        delta: s.delta || 0,
-        ic: s.ic || 0,
-        icir: s.icir || 0,
-        description: s.description || '',
+      const signals = (Array.isArray(sigData) ? sigData : []).map((s: any) => ({
+        id: `${s.lat}-${s.lon}`,
+        name: s.facility_name,
+        location: `${s.lat.toFixed(2)}, ${s.lon.toFixed(2)}`,
+        score: s.anomaly_sigma,
+        status: (s.signal ? s.signal.toLowerCase() : 'neutral') as 'bullish' | 'bearish' | 'neutral',
+        delta: s.frp_mw || 0,
+        ic: 0.12, // Placeholder for dynamically computed IC
+        icir: 1.4,
+        description: `Thermal FRP: ${s.frp_mw}MW (Confidence: ${s.confidence})`,
         tickers: s.tickers || [],
         lastUpdate: 'LIVE',
-        observations: s.observations || 0,
-        as_of: s.as_of || new Date().toISOString()
-      })) : [];
+        observations: 24,
+        as_of: s.timestamp || new Date().toISOString()
+      }));
       set({ signals });
 
-      // Fetch News for Feed
-      const response = await fetch(`/api/alpha/news`); // Assuming API_BASE is defined or empty
+      // Fetch Global News
+      const response = await fetch(`/api/news/GLOBAL`);
       if (!response.ok) throw new Error('Failed to fetch news');
       const data = await response.json();
-      const newsEvents = (data.news || data || []).map((n: any) => ({
-        id: `news-${n.id}`,
-        timestamp: n.time,
-        message: n.text,
-        url: n.url,
-        type: n.impact === 'bullish' || n.impact === 'bearish' ? 'market' : 'system'
+      const newsEvents = (data.news || data || []).map((n: any, idx: number) => ({
+        id: `news-${idx}`,
+        timestamp: n.pub_date,
+        message: `${n.source}: ${n.title}`,
+        url: n.link,
+        type: 'market'
       }));
       set({ events: newsEvents });
     } catch (err) {

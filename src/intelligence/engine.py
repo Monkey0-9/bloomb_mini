@@ -7,7 +7,6 @@ from __future__ import annotations
 import csv
 import io
 import logging
-import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -88,7 +87,8 @@ class GlobalIntelligenceEngine:
             signals = []
             for (lat, lon), frps in grid_24h.items():
                 avg_frp = np.mean(frps)
-                if avg_frp < 15.0: continue  # Filter small/transient fires
+                if avg_frp < 15.0:
+                    continue
                 
                 baseline_frps = grid_7d.get((lat, lon), frps)
                 baseline_avg = np.mean(baseline_frps)
@@ -104,7 +104,7 @@ class GlobalIntelligenceEngine:
                         anomaly_sigma=round(float(sigma), 2),
                         signal=direction, tickers=tickers,
                         frp_mw=round(float(avg_frp), 2),
-                        confidence=float(np.mean([float(r.get("confidence", 0)) for r in rows_24h if round(float(r["latitude"]),2) == lat]))
+                        confidence=float(np.mean([float(r.get("confidence", 0)) for r in rows_24h if round(float(r["latitude"]), 2) == lat]))
                     ))
             
             return sorted(signals, key=lambda x: abs(x.anomaly_sigma), reverse=True)[:50]

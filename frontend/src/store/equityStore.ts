@@ -36,18 +36,18 @@ export const useEquityStore = create<EquityState>()(
       fetchEquities: async () => {
         try {
           const wl = get().watchlist;
-          const tickers = wl.length > 0 ? wl.join(',') : 'AAPL,TSLA,MSFT';
-          const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/market/prices?tickers=${tickers}`);
+          const tickers = wl.length > 0 ? wl.join(',') : 'AAPL,TSLA,MSFT,MT,ZIM';
+          const API_BASE = import.meta.env.VITE_API_URL || '';
+          const response = await fetch(`${API_BASE}/api/market/snapshot?tickers=${tickers}`);
           if (!response.ok) throw new Error('Network response was not ok');
           const data = await response.json();
-          const prices = data.prices || {};
           
-          const newEquities = Object.values(prices).map((p: any) => ({
+          const newEquities = (Array.isArray(data) ? data : []).map((p: any) => ({
              ticker: p.ticker,
              name: p.ticker,
              exchange: 'GLOBAL',
              price: p.price,
-             change: (Math.random() * 4) - 2, // Mock day change
+             change: p.change_pct,
              bid: p.price,
              ask: p.price,
              sat_signal: 'NEUTRAL'

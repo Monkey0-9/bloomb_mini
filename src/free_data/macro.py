@@ -8,7 +8,6 @@ import csv
 import io
 import logging
 from dataclasses import dataclass
-from datetime import datetime
 
 import httpx
 
@@ -35,18 +34,20 @@ async def get_macro_data(series_name: str) -> list[MacroPoint]:
     """Fetch macro series from FRED CSV endpoint. No key needed."""
     try:
         series_id = MACRO_SERIES.get(series_name)
-        if not series_id: return []
-        
+        if not series_id:
+            return []
+
         url = FRED_CSV_URL.format(id=series_id)
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(url)
             rows = list(csv.DictReader(io.StringIO(resp.text)))
-            
+
             points = []
             for r in rows:
                 try:
                     val = r.get("VALUE", ".")
-                    if val == ".": continue
+                    if val == ".":
+                        continue
                     points.append(MacroPoint(
                         series_id=series_id,
                         date=r["DATE"],
@@ -54,7 +55,7 @@ async def get_macro_data(series_name: str) -> list[MacroPoint]:
                     ))
                 except Exception:
                     continue
-            return points[-30:] # Last 30 days/points
+            return points[-30:]  # Last 30 days/points
     except Exception as e:
         logger.error(f"Macro data error for %s: %s", series_name, e)
         return []

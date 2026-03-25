@@ -27,9 +27,9 @@ export const useSatelliteStore = create<SatelliteState>((set) => ({
   fetchSatellites: async () => {
     set({ isLoading: true });
     try {
-      const response = await fetch('/api/alpha/satellites');
+      const response = await fetch('/api/intelligence/orbits');
       const data = await response.json();
-      const rawSats = data.satellites || [];
+      const rawSats = Array.isArray(data) ? data : [];
       
       const satellites = rawSats.map((s: any) => ({
         id: s.name,

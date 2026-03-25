@@ -29,7 +29,11 @@ export const useFlightStore = create<FlightState>((set) => ({
       if (!response.ok) throw new Error('Failed to fetch aircraft');
       const data = await response.json();
       const flights = (data.aircraft || data || []).map((f: any) => ({
-        ...f,
+        icao24: f.icao24,
+        callsign: f.callsign,
+        category: f.category,
+        operator: f.operator,
+        is_emergency: f.is_emergency,
         position: {
           lat: f.lat,
           lon: f.lon,
