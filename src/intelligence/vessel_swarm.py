@@ -43,17 +43,16 @@ class VesselSwarmEngine:
         try:
             # Gather intelligence seeds
             tasks = [
-                vessels.get_port_congestion() if hasattr(vessels, 'get_port_congestion') else asyncio.sleep(0, []),
+                vessels.get_port_congestion(),
                 quakes.get_latest_quakes(),
                 news.query_gdelt("maritime defense shipping"),
                 vessels.get_global_ships(limit=100)
             ]
-            # Handle the case where vessels.py might not have get_port_congestion yet
             port_data, quake_data, news_data, ship_data = await asyncio.gather(*tasks)
             
-            alerts = []
-            congestion_map = {}
-            risk_points = 0
+            alerts: list[SwarmAlert] = []
+            congestion_map: dict[str, float] = {}
+            risk_points: float = 0.0
             
             # 1. Seismic Disruption Agent
             for q in quake_data:

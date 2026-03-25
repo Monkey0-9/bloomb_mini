@@ -9,19 +9,21 @@ Data Sources (all 100% free, no registration required):
 4. OpenSea aggregated AIS (public endpoint)
 5. MarineCadastre ERDDAP latest data
 """
-import httpx
-import json
+import logging
 import csv
 import io
 import time
-import structlog
 from datetime import datetime, timezone, timedelta
+from dataclasses import dataclass
+import random
 
-log = structlog.get_logger()
+import httpx
+
+logger = logging.getLogger(__name__)
 
 _vessel_cache: list[dict] = []
 _vessel_ts: float = 0
-VESSEL_TTL = 120  # 2 min cache — AIS updates every 2-3 min
+VESSEL_TTL = 120  # 2 min cache
 
 # ── Source 1: NOAA MarineCadastre AIS (real US coastal, updated every 6 min) ──
 NOAA_AIS_URL = (
@@ -118,7 +120,7 @@ async def _noaa_ais() -> list[dict]:
                 })
             except (ValueError, KeyError, TypeError):
                 pass
-        log.info("noaa_ais_fetched", count=len(vessels))
+        logger.info("noaa_ais_fetched", count=len(vessels))
         return vessels
     except Exception as e:
         log.error("noaa_ais_error", error=str(e))
@@ -185,7 +187,7 @@ async def _kystverket_ais() -> list[dict]:
         log.info("kystverket_fetched", count=len(vessels))
         return vessels
     except Exception as e:
-        log.error("kystverket_error", error=str(e))
+        logger.error("kystverket_error", error=str(e))
         return []
 
 
@@ -335,5 +337,4 @@ async def get_port_congestion() -> list[dict]:
         })
     return results
 
-from dataclasses import dataclass
-import random
+# Cleanup legacy imports
