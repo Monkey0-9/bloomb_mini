@@ -1,93 +1,63 @@
-import yfinance as yf
-import structlog
+"""
+Market Data Engine — Zero-key yfinance integration.
+Fetches bulk prices, charts, options, and earnings calendars.
+"""
+from __future__ import annotations
+
+import logging
 from dataclasses import dataclass
-from datetime import datetime
+from typing import Any
 
-log = structlog.get_logger()
+import yfinance as yf
 
-# Sample universe for the SatTrade terminal
-GLOBAL_UNIVERSE = {
-    "AAPL": "Apple Inc.",
-    "TSLA": "Tesla, Inc.",
-    "MSFT": "Microsoft Corp.",
-    "MT": "ArcelorMittal",
-    "LNG": "Cheniere Energy",
-    "ZIM": "ZIM Integrated Shipping",
-}
+logger = logging.getLogger(__name__)
 
-import asyncio
+@dataclass
+class MarketSnapshot:
+    ticker: str
+    price: float
+    change_pct: float
+    volume: int
+    earnings_date: str | None = None
 
-async def get_prices(tickers: list[str] | None = None) -> dict:
-    """
-    Fetch bulk prices for any tickers on demand.
-    Using yfinance for efficient data retrieval.
-    """
-    # If no tickers, use a diverse sample of global leaders
-    if tickers is None:
-        tickers = ["AAPL", "TSLA", "MSFT", "NVDA", "AMZN", "META", "BABA", "ASML", "BHP", "SHEL"]
-    
-    prices = {}
+async def get_market_snapshot(tickers: list[str]) -> list[MarketSnapshot]:
+    """Fetch real-time prices for a list of tickers via yfinance."""
     try:
-        # Optimization: Fetch in parallel using threads
-        async def _fetch_one(symbol):
-            ticker_obj = yf.Ticker(symbol)
-            return await asyncio.to_thread(lambda: ticker_obj.info)
-
-        tasks = [asyncio.create_task(_fetch_one(s)) for s in tickers]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        for symbol, info in zip(tickers, results):
-            if isinstance(info, Exception): 
-                log.warning("fetch_ticker_failed", ticker=symbol, error=str(info))
+        if not tickers: return []
+        data = yf.download(tickers, period="2d", group_by="ticker", progress=False)
+        
+        snapshots = []
+        for t in tickers:
+            try:
+                hist = data[t] if len(tickers) > 1 else data
+                current = float(hist["Close"].iloc[-1])
+                prev = float(hist["Close"].iloc[-2]) if len(hist) > 1 else current
+                snapshots.append(MarketSnapshot(
+                    ticker=t, price=current,
+                    change_pct=round((current/prev - 1) * 100, 2),
+                    volume=int(hist["Volume"].iloc[-1])
+                ))
+            except Exception:
                 continue
-            price = info.get("currentPrice") or info.get("regularMarketPrice") or 0.0
-            prices[symbol] = {
-                "ticker": symbol,
-                "price": price,
-                "currency": info.get("currency", "USD"),
-                "name": info.get("longName", symbol),
-                "timestamp": datetime.now().isoformat()
-            }
-        return prices
+        return snapshots
     except Exception as e:
-        log.error("fetch_market_failed", error=str(e))
-        return {}
-
-
-async def get_ohlcv(ticker: str, period: str = "3mo") -> list[dict]:
-    """Get historical OHLCV data."""
-    try:
-        t = yf.Ticker(ticker)
-        data = await asyncio.to_thread(t.history, period=period)
-        result = []
-        for index, row in data.iterrows():
-            result.append({
-                "time": index.strftime("%Y-%m-%d"),
-                "open": float(row["Open"]),
-                "high": float(row["High"]),
-                "low": float(row["Low"]),
-                "close": float(row["Close"]),
-                "volume": int(row["Volume"])
-            })
-        return result
-    except Exception as e:
-        log.error("fetch_ohlcv_failed", ticker=ticker, error=str(e))
+        logger.error(f"Market data error: {e}")
         return []
 
-def get_options(ticker: str) -> dict:
-    """Get options chain summary."""
+async def get_ticker_details(ticker: str) -> dict[str, Any]:
+    """Get full details including options, analyst estimates, and earnings."""
     try:
         t = yf.Ticker(ticker)
-        dates = t.options
-        if not dates:
-            return {"ticker": ticker, "options": []}
-        chain = t.option_chain(dates[0])
         return {
-            "ticker": ticker,
-            "expiry": dates[0],
-            "calls": len(chain.calls),
-            "puts": len(chain.puts)
+            "calendar": t.calendar,
+            "analyst_price_target": t.analyst_price_target,
+            "major_holders": t.major_holders.to_dict() if t.major_holders is not None else {},
+            "options": t.options
         }
     except Exception as e:
-        log.error("fetch_options_failed", ticker=ticker, error=str(e))
-        return {"ticker": ticker, "options": []}
+        logger.error(f"Ticker details error for %s: %s", ticker, e)
+        return {}
+
+def get_ohlcv_history(ticker: str, period: str = "3mo") -> Any:
+    """Download historical OHLCV data for charting."""
+    return yf.download(ticker, period=period, progress=False)

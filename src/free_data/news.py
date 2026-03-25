@@ -1,60 +1,69 @@
 """
-Free news data layer using GDELT Summary API (Zero Key).
+Global News & OSINT Engine — Zero-key RSS and GDELT integration.
+Fetches real-time maritime, defense, and financial news globally.
 """
-import httpx
-import structlog
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
 from datetime import datetime
 
-log = structlog.get_logger(__name__)
+import feedparser
+import httpx
 
-def fetch_all_news(limit: int = 50, query: str = "finance") -> list[dict]:
-    """Fetch real-time global news intelligence via GDELT Summary API."""
-    # GDELT Summary API is 100% free and provides live global monitoring
-    url = f"https://api.gdeltproject.org/api/v2/summary/summary?query={query}&num=20&output=json"
+logger = logging.getLogger(__name__)
+
+GDELT_URL = "https://api.gdeltproject.org/api/v2/doc/doc?query={query}&mode=artlist&format=json"
+
+RSS_FEEDS = {
+    "Maritime": ["https://www.tradewindsnews.com/rss/", "https://www.hellenicshippingnews.com/feed/"],
+    "Defense": ["https://www.defenseone.com/rss/all/"],
+    "Financial": ["https://feeds.reuters.com/reuters/businessNews", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=8-K&owner=exclude&output=atom"]
+}
+
+@dataclass
+class NewsArticle:
+    source: str
+    title: str
+    link: str
+    pub_date: str
+    summary: str = ""
+
+async def get_rss_news(category: str) -> list[NewsArticle]:
+    """Fetch news from multiple RSS feeds by category."""
+    feeds = RSS_FEEDS.get(category, [])
+    articles = []
+    for f_url in feeds:
+        try:
+            feed = feedparser.parse(f_url)
+            for entry in feed.entries[:10]:
+                articles.append(NewsArticle(
+                    source=category,
+                    title=entry.get("title", "No Title"),
+                    link=entry.get("link", ""),
+                    pub_date=entry.get("published", "")
+                ))
+        except Exception as e:
+            logger.error(f"RSS error for %s: %s", f_url, e)
+    return articles
+
+async def query_gdelt(query: str) -> list[NewsArticle]:
+    """Query GDELT live API for real-time global events. No key needed."""
     try:
-        resp = httpx.get(url, timeout=10)
-        if resp.status_code == 200:
+        url = GDELT_URL.format(query=query)
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(url)
             data = resp.json()
-            articles = data.get("articles", [])
-            results = []
-            for a in articles:
-                results.append({
-                    "source": a.get("source", "GDELT"),
-                    "title": a.get("title", "Global Intel Report"),
-                    "link": a.get("url", "#"),
-                    "summary": a.get("excerpt", "Live intelligence stream active."),
-                    "published": a.get("date", datetime.now().isoformat()),
-                })
-            return results[:limit]
+            articles = []
+            for art in data.get("articles", [])[:15]:
+                articles.append(NewsArticle(
+                    source="GDELT",
+                    title=art["title"],
+                    link=art["url"],
+                    pub_date=art["seendate"],
+                    summary=art.get("sourcecountry", "")
+                ))
+            return articles
     except Exception as e:
-        log.error("gdelt_fetch_failed", error=str(e))
-    
-    # Fallback to a few high-signal mocks if API is down
-    return [
-        {"source": "INTEL", "title": "Global Maritime Congestion Spikes", "summary": "Supply chain disruptions detected in Malacca.", "published": datetime.now().isoformat()},
-        {"source": "MARKETS", "title": "Tech Sector Volatility Increases", "summary": "Earnings season preview show mixed signals.", "published": datetime.now().isoformat()},
-    ]
-
-def get_sentiment_for_ticker(ticker: str) -> dict:
-    """Compute sentiment for any ticker using live GDELT data."""
-    news = fetch_all_news(limit=20, query=ticker)
-    if not news:
-        return {"sentiment": "NEUTRAL", "count": 0}
-        
-    pos_keywords = ["surge", "gain", "buy", "growth", "up", "bullish", "beat"]
-    neg_keywords = ["drop", "fall", "sell", "loss", "down", "bearish", "miss"]
-    
-    score = 0
-    for n in news:
-        text = (n["title"] + n["summary"]).lower()
-        score += sum(1 for w in pos_keywords if w in text)
-        score -= sum(1 for w in neg_keywords if w in text)
-    
-    return {
-        "sentiment": "BULLISH" if score > 0 else "BEARISH" if score < 0 else "NEUTRAL",
-        "score": score,
-        "count": len(news)
-    }
-
-def gdelt_search(query: str, max: int = 25) -> list[dict]:
-    return fetch_all_news(limit=max, query=query)
+        logger.error(f"GDELT error for %s: %s", query, e)
+        return []
