@@ -15,7 +15,9 @@ GLOBAL_UNIVERSE = {
     "ZIM": "ZIM Integrated Shipping",
 }
 
-def get_prices(tickers: list[str] | None = None) -> dict:
+import asyncio
+
+async def get_prices(tickers: list[str] | None = None) -> dict:
     """
     Fetch bulk prices for any tickers on demand.
     Using yfinance for efficient data retrieval.
@@ -26,30 +28,37 @@ def get_prices(tickers: list[str] | None = None) -> dict:
     
     prices = {}
     try:
-        for symbol in tickers:
+        # Optimization: Fetch in parallel using threads
+        async def _fetch_one(symbol):
             ticker_obj = yf.Ticker(symbol)
-            try:
-                info = ticker_obj.info
-                price = info.get("currentPrice") or info.get("regularMarketPrice") or 0.0
-                prices[symbol] = {
-                    "ticker": symbol,
-                    "price": price,
-                    "currency": info.get("currency", "USD"),
-                    "name": info.get("longName", symbol),
-                    "timestamp": datetime.now().isoformat()
-                }
-            except Exception as inner_e:
-                log.warning("fetch_ticker_failed", ticker=symbol, error=str(inner_e))
+            return await asyncio.to_thread(lambda: ticker_obj.info)
+
+        tasks = [asyncio.create_task(_fetch_one(s)) for s in tickers]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for symbol, info in zip(tickers, results):
+            if isinstance(info, Exception): 
+                log.warning("fetch_ticker_failed", ticker=symbol, error=str(info))
+                continue
+            price = info.get("currentPrice") or info.get("regularMarketPrice") or 0.0
+            prices[symbol] = {
+                "ticker": symbol,
+                "price": price,
+                "currency": info.get("currency", "USD"),
+                "name": info.get("longName", symbol),
+                "timestamp": datetime.now().isoformat()
+            }
         return prices
     except Exception as e:
         log.error("fetch_market_failed", error=str(e))
         return {}
 
 
-def get_ohlcv(ticker: str, period: str = "3mo") -> list[dict]:
+async def get_ohlcv(ticker: str, period: str = "3mo") -> list[dict]:
     """Get historical OHLCV data."""
     try:
-        data = yf.Ticker(ticker).history(period=period)
+        t = yf.Ticker(ticker)
+        data = await asyncio.to_thread(t.history, period=period)
         result = []
         for index, row in data.iterrows():
             result.append({

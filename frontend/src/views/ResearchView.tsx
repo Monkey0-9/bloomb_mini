@@ -320,7 +320,7 @@ const ResearchView = () => {
                 <div className="absolute inset-0 bg-accent-primary/10 blur-md opacity-0 group-focus-within:opacity-100 transition-opacity pointer-events-none"></div>
                 <div className="relative bg-void border-2 border-border-active flex items-center p-1 focus-within:border-accent-primary/80 transition-colors shadow-inner">
                     <div className="px-4 text-accent-primary font-bold type-h1 border-r border-border-ghost mr-2 h-full flex items-center">
-                        <span className="animate-pulse mr-2">_</span>CMD
+                        <span className="animate-pulse mr-2">_</span>CTRL
                     </div>
                     <input 
                         type="text"

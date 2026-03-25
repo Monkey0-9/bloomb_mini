@@ -59,7 +59,7 @@ const HelpView = () => {
               "/SIGNAL [TICKER] — Unified alpha score",
               "/THERMAL [LAT,LON] — FIRMS anomaly fetch",
               "/VESSEL [MMSI] — AIS + SAR dark analysis",
-              "CMD+K — Interactive AI analyst (LLM)",
+              "CTRL+K — Interactive AI analyst (LLM)",
               "/ALERT CREATE [PARAMS] — Smart alerts"
             ]}
           />

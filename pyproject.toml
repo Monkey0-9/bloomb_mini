@@ -38,6 +38,7 @@ dependencies = [
     "feedparser==6.0.11",
     "sgp4==2.23",
     "apscheduler==3.10.4",
+    "vaderSentiment==3.3.2",
 ]
 
 [project.optional-dependencies]

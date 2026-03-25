@@ -7,13 +7,13 @@ class ThermalAgent(BaseAgent):
     def __init__(self):
         super().__init__("thermal")
 
-    async def process(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        self.log.info("processing_thermal_task", task_id=task.get("id"))
+    async def process_task(self, task_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        self.log.info("processing_thermal_task", task_type=task_type)
         # Use to_thread since fetch_firms_thermal is blocking
         anomalies = await asyncio.to_thread(fetch_firms_thermal)
         
         # Simple filtering logic if params provided
-        ticker = task.get("ticker")
+        ticker = params.get("ticker")
         if ticker:
             anomalies = [a for a in anomalies if ticker in a.tickers]
             

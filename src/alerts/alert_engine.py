@@ -1,9 +1,8 @@
 """
-SatTrade Alert Engine — Bloomberg FA Lite + Satellite Unique Alerts
-===================================================================
-Alert types that Bloomberg CANNOT offer: THERMAL_THRESHOLD, DARK_VESSEL_GEO, etc.
-Evaluates O(n) against user subscriptions. 30min Redis deduplication.
-Delivery via WS + SendGrid + Webhooks.
+SatTrade Alert Engine — Real-time satellite + market alerts via WebSocket.
+Alert types Bloomberg can't offer: THERMAL_THRESHOLD, DARK_VESSEL_GEO, etc.
+Evaluates events against user subscriptions. 30-min deduplication.
+Delivery: WebSocket broadcast (100% free, no third-party email service).
 """
 from __future__ import annotations
 
@@ -20,7 +19,6 @@ import structlog
 log = structlog.get_logger(__name__)
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "")
 
 
 @dataclass
@@ -157,10 +155,9 @@ class AlertEngine:
     def _format_message(self, rule: dict, event: dict) -> str:
         return json.dumps(event)
 
-    async def _dispatch(self, alerts: List[FiredAlert]) -> None:
-        """Dispatch via WS, Email, and Webhooks."""
+    async def _dispatch(self, alerts: list[FiredAlert]) -> None:
+        """Dispatch via WebSocket broadcast (Redis pub/sub channel)."""
         r = await self._get_redis()
-        # 1. WS Push (via 'alerts' topic consumed by API BroadcastManager)
         if r:
             try:
                 for a in alerts:
@@ -168,12 +165,3 @@ class AlertEngine:
                 log.info("alerts_dispatched_ws", count=len(alerts))
             except Exception as exc:
                 log.error("alert_ws_dispatch_failed", error=str(exc))
-
-        # 2. Email (SendGrid)
-        if SENDGRID_API_KEY:
-            # send emails in background
-            pass
-
-        # 3. Webhooks
-        # trigger configured user webhooks
-        pass

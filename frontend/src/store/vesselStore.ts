@@ -26,8 +26,9 @@ export const useVesselStore = create<VesselState>((set) => ({
     set({ isLoading: true });
     try {
       const response = await fetch(`${API_BASE}/api/intelligence/ships`);
+      if (!response.ok) throw new Error('Failed to fetch vessels');
       const data = await response.json();
-      const vessels = (data.ships || []).map((f: any) => ({
+      const vessels = (data.ships || data || []).map((f: any) => ({
         ...f,
         mmsi: f.id,
         position: {

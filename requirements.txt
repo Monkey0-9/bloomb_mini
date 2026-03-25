@@ -42,3 +42,8 @@ apscheduler==3.10.1
 pytest==7.4.2
 pytest-asyncio==0.21.1
 pytest-cov==4.1.0
+vaderSentiment==3.3.2
+blazingmq-sdk-python==1.0.1
+# Bloomberg Performance Tools (Needs C++ compiler for native setup)
+# memray
+# pystack

@@ -1,84 +1,75 @@
 import logging
-import os
 import asyncio
 from typing import Dict, Any, List
 from datetime import datetime, timezone
-from alpaca.trading.client import TradingClient
-from alpaca.trading.requests import MarketOrderRequest, GetOrdersRequest
-from alpaca.trading.enums import OrderSide, TimeInForce
+import yfinance as yf
 from src.api.agents.base import BaseAgent
 
 log = logging.getLogger(__name__)
 
+# In-memory portfolio store (simulated paper trading)
+_portfolio: dict = {"cash": 100_000.0, "positions": {}}
+
+
 class ExecutionAgent(BaseAgent):
     """
-    The Order Management System (OMS): Routes signals to Alpaca Brokerage.
+    Simulated Order Management System (OMS).
+    Uses yfinance for live pricing. 100% free, no broker API key needed.
+    Operates as a paper-trading engine.
     """
-    
+
     def __init__(self):
         super().__init__("EXECUTION_OMS")
         self.status = "ACTIVE"
         self.last_sync = datetime.now(timezone.utc)
-        
-        # Initialize Alpaca Client
-        api_key = os.getenv("ALPACA_API_KEY")
-        secret_key = os.getenv("ALPACA_SECRET_KEY")
-        base_url = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
-        
-        try:
-            self.client = TradingClient(api_key, secret_key, paper=True)
-            log.info("OMS Connected to Alpaca Paper Trading")
-        except Exception as e:
-            log.error(f"OMS Fail to connect: {e}")
-            self.client = None
-            self.status = "ERROR_AUTH"
+        log.info("OMS: Paper trading engine initialised (yfinance pricing)")
 
     async def get_state(self) -> Dict[str, Any]:
-        if not self.client:
-            return {"error": "Alpaca not connected"}
-        
-        try:
-            account = self.client.get_account()
-            return {
-                "buying_power": float(account.buying_power),
-                "portfolio_value": float(account.equity),
-                "status": account.status,
-                "currency": account.currency
-            }
-        except Exception as e:
-            return {"error": str(e)}
+        return {
+            "cash": round(_portfolio["cash"], 2),
+            "positions": _portfolio["positions"],
+            "status": "PAPER_TRADING",
+            "currency": "USD"
+        }
 
     async def place_order(self, ticker: str, qty: int, side: str) -> Dict[str, Any]:
-        """Executes a market order with institutional safety checks."""
-        if not self.client:
-            return {"error": "No execution engine available"}
-        
-        side_enum = OrderSide.BUY if side.upper() == "BUY" else OrderSide.SELL
-        
-        order_data = MarketOrderRequest(
-            symbol=ticker,
-            qty=qty,
-            side=side_enum,
-            time_in_force=TimeInForce.GTC
-        )
-        
+        """Simulate a market order using the live bid/ask from yfinance."""
+        if not ticker:
+            return {"error": "Ticker is required"}
         try:
-            order = self.client.submit_order(order_data=order_data)
-            return {
-                "order_id": str(order.id),
-                "status": str(order.status),
-                "ticker": ticker,
-                "qty": qty,
-                "side": side
-            }
+            t = yf.Ticker(ticker)
+            info = t.fast_info
+            price = info.last_price or 0.0
         except Exception as e:
-            log.error(f"Execution failed for {ticker}: {e}")
-            return {"error": str(e)}
+            return {"error": f"Price fetch failed: {e}"}
+
+        cost = price * qty
+        if side.upper() == "BUY":
+            if _portfolio["cash"] < cost:
+                return {"error": "Insufficient paper capital"}
+            _portfolio["cash"] -= cost
+            _portfolio["positions"][ticker] = _portfolio["positions"].get(ticker, 0) + qty
+        else:
+            held = _portfolio["positions"].get(ticker, 0)
+            if held < qty:
+                return {"error": f"Only {held} shares held"}
+            _portfolio["cash"] += cost
+            _portfolio["positions"][ticker] = held - qty
+
+        return {
+            "order_id": f"PAPER-{int(datetime.utcnow().timestamp())}",
+            "status": "FILLED",
+            "ticker": ticker,
+            "qty": qty,
+            "side": side.upper(),
+            "fill_price": round(price, 4),
+            "total": round(cost, 2)
+        }
 
     async def process_task(self, task_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
         if task_type == "EXECUTE_TRADE":
             return await self.place_order(
-                params.get("ticker"),
+                params.get("ticker", ""),
                 params.get("qty", 1),
                 params.get("side", "BUY")
             )

@@ -64,28 +64,31 @@ export const useSignalStore = create<SignalState>((set) => ({
     try {
       // Fetch Signals
       const sigResponse = await fetch('/api/signals');
+      if (!sigResponse.ok) throw new Error(`Signals API failed: ${sigResponse.status}`);
       const sigData = await sigResponse.json();
-      const signals = Object.entries(sigData.signals).map(([key, s]: [string, any]) => ({
+      
+      const signals = sigData.signals ? Object.entries(sigData.signals).map(([key, s]: [string, any]) => ({
         id: key,
         name: s.signal_name,
-        location: s.location,
+        location: s.location || 'Global',
         score: s.score,
-        status: s.direction.toLowerCase() as 'bullish' | 'bearish' | 'neutral',
-        delta: s.delta,
-        ic: s.ic,
-        icir: s.icir,
-        description: s.description,
+        status: (s.direction ? s.direction.toLowerCase() : 'neutral') as 'bullish' | 'bearish' | 'neutral',
+        delta: s.delta || 0,
+        ic: s.ic || 0,
+        icir: s.icir || 0,
+        description: s.description || '',
         tickers: s.tickers || [],
         lastUpdate: 'LIVE',
         observations: s.observations || 0,
-        as_of: s.as_of
-      }));
+        as_of: s.as_of || new Date().toISOString()
+      })) : [];
       set({ signals });
 
       // Fetch News for Feed
-      const newsResponse = await fetch('/api/alpha/news');
-      const newsData = await newsResponse.json();
-      const newsEvents = (newsData.news || []).map((n: any) => ({
+      const response = await fetch(`/api/alpha/news`); // Assuming API_BASE is defined or empty
+      if (!response.ok) throw new Error('Failed to fetch news');
+      const data = await response.json();
+      const newsEvents = (data.news || data || []).map((n: any) => ({
         id: `news-${n.id}`,
         timestamp: n.time,
         message: n.text,

@@ -50,7 +50,7 @@ const NavButton = ({ item, isActive, onClick }: any) => (
       }}
     >
       <div className="flex items-center gap-2">
-         {item.label} <span className="text-[8px] text-[var(--text-secondary)] px-1 bg-[var(--bg-card)]">CMD + {item.shortcut}</span>
+         {item.label} <span className="text-[8px] text-[var(--text-secondary)] px-1 bg-[var(--bg-card)]">CTRL + {item.shortcut}</span>
       </div>
     </div>
   </button>

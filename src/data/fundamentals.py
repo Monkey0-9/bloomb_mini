@@ -1,9 +1,9 @@
 """
-SatTrade Fundamentals Engine — Financial Modeling Prep + SEC EDGAR
-==================================================================
-Primary: FMP API (institutional grade)
-Fallback: SEC EDGAR API (free, rate-limited)
-Caching: PostgreSQL (permanent), Redis TTL=86400 (hot).
+SatTrade Fundamentals Engine — SEC EDGAR + yfinance (100% Free)
+==============================================================
+Primary: yfinance (Yahoo Finance, no key needed)
+Fallback: SEC EDGAR API (free, rate-limited, no key needed)
+Caching: In-memory TTL dict (no Redis dependency).
 """
 from __future__ import annotations
 
@@ -17,8 +17,8 @@ import structlog
 
 log = structlog.get_logger(__name__)
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-FMP_API_KEY = os.getenv("FMP_API_KEY", "")
+_CACHE: dict = {}
+_CACHE_TS: dict = {}
 
 
 class FundamentalsEngine:

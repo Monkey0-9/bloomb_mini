@@ -11,7 +11,7 @@ class BacktestEngine:
     def __init__(self) -> None:
         self.log = log.bind(component="backtest_engine")
 
-    def run_simulation(self, ticker: str, signals: List[dict], prices: pd.DataFrame) -> Dict[str, Any]:
+    def run_simulation(self, ticker: str, signals: List[Dict[str, Any]], prices: pd.DataFrame) -> Dict[str, Any]:
         """
         Runs a simulation of a strategy based on provided signals.
         """

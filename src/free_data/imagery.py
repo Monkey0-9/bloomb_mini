@@ -5,9 +5,9 @@ Sources:
 - Google Cloud Public Dataset
 - ESA CopHub (Open Access Hub)
 """
+from datetime import datetime, timedelta
 import httpx
 import structlog
-from datetime import datetime
 
 log = structlog.get_logger(__name__)
 

@@ -41,8 +41,8 @@ const Masthead = () => {
         </div>
       </div>
       
-      {/* Search Input (BLOOMBERG STYLE Cmd+K) */}
-      {/* Search Input (BLOOMBERG STYLE Cmd+K) - Bug 5 Fix */}
+      {/* Search Input (BLOOMBERG STYLE Ctrl+K) */}
+      {/* Search Input (BLOOMBERG STYLE Ctrl+K) - Bug 5 Fix */}
       <div className="flex-[0.4] max-w-[400px] ml-4 bg-surface-1 border border-surface-5 flex items-center px-2 py-0.5 focus-within:border-accent-primary transition-colors overflow-hidden">
          <span className="text-accent-primary font-bold text-[11px] mr-2 flex-shrink-0"> {`>`} </span>
          <input 

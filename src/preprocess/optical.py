@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import cast
+from typing import cast, Any, Dict
 
 import numpy as np
 import rasterio
@@ -68,7 +68,7 @@ def download_sentinel_tile(
         raise
 
 
-def correct_atmospheric_simple(input_path: str) -> np.ndarray:
+def correct_atmospheric_simple(input_path: str) -> np.ndarray[Any, Any]:
     """
     Apply simple atmospheric correction using Sentinel-2 scaling.
     
@@ -90,7 +90,7 @@ def correct_atmospheric_simple(input_path: str) -> np.ndarray:
     return reflectance
 
 
-def compute_ndvi(red_path: str, nir_path: str) -> np.ndarray:
+def compute_ndvi(red_path: str, nir_path: str) -> np.ndarray[Any, Any]:
     """
     Calculate Normalized Difference Vegetation Index (NDVI).
     
@@ -114,7 +114,7 @@ def compute_ndvi(red_path: str, nir_path: str) -> np.ndarray:
     return cast(np.ndarray, np.clip(ndvi, -1.0, 1.0))
 
 
-def process_sentinel_tile(tile_id: str, date: str, output_dir: str = "./data/processed") -> dict:
+def process_sentinel_tile(tile_id: str, date: str, output_dir: str = "./data/processed") -> Dict[str, Any]:
     """
     Complete processing pipeline for a Sentinel-2 tile.
     

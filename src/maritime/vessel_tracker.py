@@ -1,11 +1,11 @@
 """
-SatTrade Vessel Tracker 2.0 — 3-Tier Dark Intelligence
+SatTrade Vessel Tracker 2.0 — Dark Intelligence Engine
 =======================================================
 LOW: AIS gap > 4hr
 MED: LOW + kinematic stagnation
-HIGH: MED + SAR confirmation via ASF Vertex API
-OFAC screening, Route deviation scoring, Kpler cargo, equity links.
-Bloomberg has ZERO AIS capability. This is our permanent moat.
+HIGH: MED + SAR confirmation via ASF Vertex API (free)
+OFAC screening, Route deviation scoring, AIS-inferred cargo, equity links.
+All data sources: 100% free and open. No Kpler, no paid AIS.
 """
 from __future__ import annotations
 
@@ -22,7 +22,6 @@ import structlog
 log = structlog.get_logger(__name__)
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 ASF_VERTEX_URL = os.getenv("ASF_VERTEX_URL", "https://api.asf.alaska.edu/services/search/param")
-KPLER_API_KEY = os.getenv("KPLER_API_KEY", "")
 
 # Commodity → equity mapping
 COMMODITY_EQUITIES: Dict[str, List[str]] = {
@@ -224,8 +223,8 @@ class VesselTracker:
         Fetch live AIS from our free NOAA-based fleet state in ais.py.
         100% Free. 100% Open Source.
         """
-        from src.globe.ais import fleet_state
-        return fleet_state
+        from src.globe.ais import generate_fleet
+        return await generate_fleet()
 
     def _generate_mock_vessels(self) -> List[dict]:
         """Generate realistic mock vessel positions for development."""

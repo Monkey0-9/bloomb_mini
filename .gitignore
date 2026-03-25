@@ -152,9 +152,38 @@ status.txt
 .qoder/
 .qodo/
 .openclaw/
+tmp/
 
 # Secrets
 .env
 secrets.json
 *.pem
 *.key
+
+# CI / debug artefacts — DO NOT COMMIT
+*.log
+risk_audit.jsonl
+*_verify.json
+api_test.json
+ruff_errors.json
+mypy_*.txt
+pytest_*.txt
+tests_*.txt
+test_results.txt
+src_listing.txt
+demo_output.txt
+demo_certification.txt
+*.log
+backend*.log
+server*.log
+server*.txt
+stderr.log
+last_server_log.txt
+.coverage
+.coverage.*
+# Root-level scratch scripts (use tests/ instead)
+test_news.py
+test_server.py
+list_collections.py
+summarize_mypy.py
+demo_full_system.py

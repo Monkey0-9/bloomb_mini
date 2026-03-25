@@ -1,7 +1,6 @@
 import logging
 import asyncio
 import yfinance as yf
-import akshare as ak
 from typing import Dict, Any, List
 from datetime import datetime, timezone
 from src.api.agents.base import BaseAgent

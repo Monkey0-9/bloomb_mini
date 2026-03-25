@@ -3,7 +3,7 @@ from __future__ import annotations
 import structlog
 from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass, field
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, List, Dict
 
 log = structlog.get_logger()
 
@@ -90,9 +90,9 @@ SIGNAL_DEFINITIONS = {
 }
 
 
-def compute_all_signals(thermal_anomalies: list = None,
-                        vessel_data: list = None,
-                        earnings_calendar: list = None) -> dict[str, SignalOutput]:
+def compute_all_signals(thermal_anomalies: Optional[List[Dict[str, Any]]] = None,
+                        vessel_data: Optional[List[Dict[str, Any]]] = None,
+                        earnings_calendar: Optional[List[Dict[str, Any]]] = None) -> Dict[str, SignalOutput]:
     """
     Compute all 6 signals from available real data.
     Uses thermal anomalies where available, vessel data for ports,
@@ -235,16 +235,16 @@ def compute_all_signals(thermal_anomalies: list = None,
         results[key] = SignalOutput(
             signal_name=key,
             location_key=key,
-            location_display=defn["display"],
+            location_display=str(defn["display"]),
             score=round(score, 1),
-            direction=direction,
+            direction=str(direction),
             delta_vs_baseline=delta,
             ic=round(ic, 3) if ic else None,
             icir=round(icir, 2) if icir else None,
             n_observations=n_obs,
-            primary_ticker=defn["primary_ticker"],
-            primary_company=defn["primary_company"],
-            affected_tickers=defn["affected_tickers"],
+            primary_ticker=str(defn["primary_ticker"]),
+            primary_company=str(defn["primary_company"]),
+            affected_tickers=list(defn["affected_tickers"]),
             signal_reason=reason,
             pre_earnings_signal=pre_earnings,
             data_sources=data_sources,

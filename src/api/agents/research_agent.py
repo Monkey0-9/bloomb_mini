@@ -1,32 +1,57 @@
-from typing import Any, Dict, List
+from typing import Any
 from src.api.agents.base import BaseAgent
-import asyncio
+from src.intelligence.engine import GlobalIntelligenceEngine
+from src.signals.composite_score import CompositeScorer
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ResearchAgent(BaseAgent):
     """
-    Uses Retrieval-Augmented Generation (RAG) to synthesize 
-    answers from multiple data sources.
+    Uses Multi-Signal Fusion (Alternative Data) to synthesize 
+    institutional-grade investment research.
     """
     def __init__(self) -> None:
         super().__init__("research")
+        self.engine = GlobalIntelligenceEngine()
+        self.scorer = CompositeScorer()
 
-    async def process(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        query = task.get("query")
+    async def process_task(self, task_type: str, params: dict[str, Any]) -> dict[str, Any]:
+        query = (params.get("query") or "").upper()
         self.log.info("processing_research_query", query=query)
         
-        # In a real system, this would:
-        # 1. Search vector DB for news/docs
-        # 2. Extract signals from other agents
-        # 3. Call LLM to synthesize answer
+        # 1. Fetch high-fidelity composite score (Alternative Data Fusion)
+        result = await self.scorer.score(query)
         
-        # Mocking the RAG process for now
-        context = task.get("input_news", {}).get("news", [])
-        signals = task.get("input_thermal", {}).get("anomalies", [])
+        # 2. Extract synthesis from the score result
+        sentiment = result["direction"]
+        score = result["final_score"] * 50 + 50  # -1..1 -> 0..100
         
+        # 3. Build detailed synthesis (The "Bloomberg" Why)
+        reasons = []
+        for sig in result.get("contributing_signals", []):
+            if sig.get("impact") != "NEUTRAL":
+                reasons.append(f"{sig['headline']} ({sig['impact']})")
+        
+        if not reasons:
+            reasons.append("No strong physical anomalies detected; sentiment is baseline neutral.")
+
         return {
             "status": "success",
-            "answer": f"Based on {len(context)} news articles and {len(signals)} thermal anomalies, "
-                      f"the sentiment for {query} is skewed positive due to industrial activity spikes.",
-            "citations": [n["title"] for n in context[:3]],
-            "confidence_score": 0.85
+            "ticker": query,
+            "sentiment": sentiment,
+            "score": round(score, 1),
+            "synthesis": (
+                f"SatTrade Intelligence Synthesis for {query}: {result['headline']}. "
+                f"Contributing factors: " + " | ".join(reasons[:3])
+            ),
+            "data_points": {
+                "composite_score": result["composite_score"],
+                "regime": result["regime"],
+                "confidence": result["confidence"],
+                "freshness": result["ic_half_life_tag"]
+            },
+            "signals": result["contributing_signals"],
+            "ticker_confirm": query,
+            "confidence_score": result["confidence"]
         }

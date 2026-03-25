@@ -203,7 +203,7 @@ class FlightTracker:
         """
         from src.globe.adsb import fetch_all_aircraft
         log.info("FETCHING_OPENSKY_AIRCRAFT_INSTITUTIONAL")
-        aircraft_list = await asyncio.to_thread(fetch_all_aircraft)
+        aircraft_list = await fetch_all_aircraft()
         
         for a in aircraft_list:
             # Map into our Flight internal format

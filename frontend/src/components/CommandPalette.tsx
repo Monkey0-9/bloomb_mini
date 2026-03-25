@@ -2,7 +2,7 @@
  * CommandPalette — Satellite-Grounded AI Intelligence Hub
  *
  * Architecture:
- * - Triggered by Cmd/Ctrl+K or the `>` command line
+ * - Triggered by Ctrl+K or the `>` command line
  * - Sends natural-language queries to /api/command via POST (AnalystAgent)
  * - AnalystAgent routes intent → correct agent → view navigation
  * - Streaming response via SSE (EventSource) for live token output
@@ -12,6 +12,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Search, Satellite, Ship, Plane, TrendingUp, X, ArrowRight, Loader2, Command } from 'lucide-react';
 import { useTerminalStore } from '../store';
 import type { ViewType } from '../store/uiStore';
+import { terminalCli } from '../lib/bloomberg-cli';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface IntentResult {
@@ -110,8 +111,26 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose }) => {
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-    const submit = useCallback(async (q: string) => {
+  const submit = useCallback(async (q: string) => {
     if (!q.trim()) return;
+
+    // 1. Try Institutional Typed CLI first (Stricli pattern)
+    const cliOutput = await terminalCli.execute(q);
+    if (!cliOutput.startsWith("Unknown command")) {
+      setOutput(cliOutput);
+      setStreaming(false);
+      // If it suggested a view (e.g. RESEARCH), handle it
+      if (cliOutput.includes("Research View")) {
+        const ticker = q.split(/\s+/)[1]?.toUpperCase();
+        if (ticker) {
+          setSelectedView('signals' as ViewType);
+          setTimeout(onClose, 800);
+        }
+      }
+      return;
+    }
+
+    // 2. Fallback to Natural Language Synthesis (SSE)
     setStreaming(true);
     setOutput('');
     setResult(null);

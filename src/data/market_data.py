@@ -3,7 +3,7 @@ import pandas as pd
 import structlog
 from datetime import datetime, timezone
 from functools import lru_cache
-from typing import Literal, Any
+from typing import Literal, Any, Dict, List
 import time
 
 log = structlog.get_logger()
@@ -93,7 +93,7 @@ GLOBAL_UNIVERSE = {
     "PDBC": ("Invesco Optimum Yield", "NYSE", "Commodities"),
 }
 
-_price_cache: dict[str, dict] = {}
+_price_cache: Dict[str, Dict[str, Any]] = {}
 _cache_timestamp: float = 0
 CACHE_TTL_SECONDS = 30  # refresh prices every 30 seconds
 
@@ -103,7 +103,7 @@ def get_stock_price(ticker: str) -> dict[str, Any]:
     prices = get_bulk_prices([ticker])
     return prices.get(ticker, {"ticker": ticker, "error": "Price not found"})
 
-def get_bulk_prices(tickers: list[str] | None = None) -> dict[str, dict]:
+def get_bulk_prices(tickers: List[str] | None = None) -> Dict[str, Dict[str, Any]]:
     """
     Fetch real prices for all tickers via yfinance.
     Cached for 30 seconds to avoid rate limiting.
@@ -193,7 +193,7 @@ def get_ohlcv_history(ticker: str,
         return []
 
 
-def get_company_info(ticker: str) -> dict:
+def get_company_info(ticker: str) -> Dict[str, Any]:
     """Get company fundamentals — sector, PE, market cap, description."""
     try:
         t = yf.Ticker(ticker)
@@ -221,7 +221,7 @@ def get_company_info(ticker: str) -> dict:
         return {}
 
 
-def get_options_chain(ticker: str) -> dict:
+def get_options_chain(ticker: str) -> Dict[str, Any]:
     """Get full options chain with PCR and max pain calculation."""
     try:
         t = yf.Ticker(ticker)
@@ -262,7 +262,7 @@ def get_options_chain(ticker: str) -> dict:
         return {"ticker": ticker, "error": str(e)}
 
 
-def get_earnings_calendar(tickers: list[str]) -> list[dict]:
+def get_earnings_calendar(tickers: List[str]) -> List[Dict[str, Any]]:
     """Get upcoming earnings dates for a list of tickers."""
     calendar = []
     for ticker in tickers:

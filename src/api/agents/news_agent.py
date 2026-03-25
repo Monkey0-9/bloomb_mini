@@ -7,12 +7,12 @@ class NewsAgent(BaseAgent):
     def __init__(self):
         super().__init__("news")
 
-    async def process(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        self.log.info("processing_news_task", task_id=task.get("id"))
+    async def process_task(self, task_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        self.log.info("processing_news_task", task_type=task_type)
         news_items = await asyncio.to_thread(fetch_all_news)
         
         # Check if we have input from a previous task
-        thermal_input = task.get("input_t1", {})
+        thermal_input = params.get("input_t1", {})
         if thermal_input:
             # Maybe filter news based on tickers found in thermal anomalies
             tickers = set()
