@@ -96,6 +96,33 @@ export const useSignalStore = create<SignalState>((set) => ({
         type: 'market'
       }));
       set({ events: newsEvents });
+      // Fetch Maritime Swarm Intelligence
+      const vesselResponse = await fetch('/api/intelligence/vessels/swarm');
+      if (vesselResponse.ok) {
+        const vesselData = await vesselResponse.json();
+        // Add Swarm Index to indices
+        set((state) => ({
+          indices: [
+            ...state.indices.filter(i => i.id !== 'GTFI'),
+            { 
+              id: 'GTFI', 
+              name: 'GLOBAL TRADE FLOW', 
+              value: (vesselData.global_index * 100).toFixed(1), 
+              change: vesselData.global_index > 0.8 ? 'Optimal' : 'Disrupted',
+              status: vesselData.global_index > 0.8 ? 'bullish' : 'bearish' 
+            }
+          ]
+        }));
+        
+        // Add Swarm Alerts to events
+        const swarmEvents = (vesselData.alerts || []).map((a: any) => ({
+          id: a.id,
+          timestamp: new Date(a.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          message: `[MARITIME SWARM] ${a.reason} (${a.location})`,
+          type: 'system'
+        }));
+        set((state) => ({ events: [...swarmEvents, ...state.events].slice(0, 100) }));
+      }
     } catch (err) {
       console.error('Failed to fetch intelligence data:', err);
     }

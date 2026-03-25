@@ -11,7 +11,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.intelligence.engine import GlobalIntelligenceEngine
-from src.free_data import aircraft, quakes, orbits, market, macro, news
+from src.free_data import aircraft, quakes, orbits, market, macro, news, vessels
 
 app = FastAPI(title="SatTrade Intelligence API", version="2.0.0")
 
@@ -71,6 +71,17 @@ async def get_news(category: str):
     if category.upper() == "GLOBAL":
         return await news.query_gdelt("maritime defense finance")
     return await news.get_rss_news(category)
+
+@app.get("/api/intelligence/vessels")
+async def get_vessels():
+    """Live global AIS tracking (NOAA/Norway)."""
+    return await vessels.get_global_ships()
+
+@app.get("/api/intelligence/vessels/swarm")
+async def get_vessel_swarm():
+    """MiroFish-inspired maritime trade flow simulation."""
+    from src.intelligence.vessel_swarm import swarm_engine
+    return await swarm_engine.run_simulation()
 
 # Live WebSocket for Aircraft Alerts
 class ConnectionManager:
