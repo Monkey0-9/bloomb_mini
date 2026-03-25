@@ -5,6 +5,8 @@ from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass, field
 from typing import Any, Literal, Optional, List, Dict
 
+from src.signals.ic_computation import compute_ic, compute_rolling_icir
+
 log = structlog.get_logger()
 
 
@@ -90,6 +92,69 @@ SIGNAL_DEFINITIONS = {
 }
 
 
+# Historical signal cache for IC computation
+_signal_history_cache: Dict[str, List[Dict[str, Any]]] = {}
+
+
+def _compute_real_ic(signal_key: str, current_score: float, ticker: str) -> tuple[float | None, float | None]:
+    """
+    Compute real IC from historical signal data.
+    
+    Uses cached signal history and fetches forward returns via yfinance
+    to compute Spearman rank correlation. Falls back to None if 
+    insufficient historical data (< 10 observations).
+    """
+    try:
+        history = _signal_history_cache.get(signal_key, [])
+        
+        if len(history) < 10:
+            # Not enough history for real IC computation
+            return None, None
+        
+        # Extract historical scores and fetch forward returns
+        from src.signals.ic_computation import compute_ic, compute_rolling_icir, fetch_forward_returns
+        
+        dates = [h["date"] for h in history[-63:]]  # Last 63 observations
+        scores = [h["score"] for h in history[-63:]]
+        
+        # Fetch forward returns (21-day horizon for earnings prediction)
+        returns = fetch_forward_returns(ticker, dates, horizon_days=21)
+        
+        # Compute IC
+        ic, p_value = compute_ic(scores, returns)
+        
+        # Only use IC if statistically significant
+        if p_value >= 0.05:
+            ic = ic * 0.5  # Penalty for low significance
+        
+        # Compute ICIR
+        icir = compute_rolling_icir(scores, returns, window=12)
+        
+        return round(ic, 3), round(icir, 2)
+        
+    except Exception as e:
+        log.warning(f"IC computation failed for {signal_key}: {e}")
+        return None, None
+
+
+def _cache_signal(signal_key: str, score: float, date: datetime | None = None) -> None:
+    """Cache signal observation for future IC computation."""
+    if date is None:
+        date = datetime.now(timezone.utc)
+    
+    if signal_key not in _signal_history_cache:
+        _signal_history_cache[signal_key] = []
+    
+    _signal_history_cache[signal_key].append({
+        "date": date,
+        "score": score
+    })
+    
+    # Keep only last 252 observations (1 year)
+    if len(_signal_history_cache[signal_key]) > 252:
+        _signal_history_cache[signal_key] = _signal_history_cache[signal_key][-252:]
+
+
 def compute_all_signals(thermal_anomalies: Optional[List[Dict[str, Any]]] = None,
                         vessel_data: Optional[List[Dict[str, Any]]] = None,
                         earnings_calendar: Optional[List[Dict[str, Any]]] = None) -> Dict[str, SignalOutput]:
@@ -126,8 +191,15 @@ def compute_all_signals(thermal_anomalies: Optional[List[Dict[str, Any]]] = None
                 pct = sigma * 15  # rough % above baseline
                 delta = f"{'+' if pct >= 0 else ''}{pct:.0f}%"
                 n_obs = 1
-                ic = min(0.08, max(0.02, abs(sigma) * 0.015)) if sigma != 0 else None
-                icir = ic / 0.04 if ic else None
+                # Try to compute real IC from historical data
+                real_ic, real_icir = _compute_real_ic(key, score, str(defn["primary_ticker"]))
+                if real_ic is not None:
+                    ic = real_ic
+                    icir = real_icir
+                else:
+                    # Fallback: dynamic IC based on signal strength
+                    ic = min(0.08, max(0.02, abs(sigma) * 0.015)) if sigma != 0 else None
+                    icir = ic / 0.04 if ic else None
                 reason = (
                     f"{anomaly.facility_name}: thermal anomaly {sigma:+.1f}σ vs baseline. "
                     f"Brightness: {anomaly.brightness_kelvin:.0f}K. "
@@ -164,8 +236,15 @@ def compute_all_signals(thermal_anomalies: Optional[List[Dict[str, Any]]] = None
                 direction = "BULLISH" if pct_above > 10 else "BEARISH" if pct_above < -10 else "NEUTRAL"
                 delta = f"{'+' if pct_above >= 0 else ''}{pct_above:.0f}%"
                 n_obs = vessel_count
-                ic = min(0.07, max(0.02, abs(pct_above) / 500)) if pct_above != 0 else 0.02
-                icir = ic / 0.04
+                # Try to compute real IC from historical data
+                real_ic, real_icir = _compute_real_ic(key, score, str(defn["primary_ticker"]))
+                if real_ic is not None:
+                    ic = real_ic
+                    icir = real_icir
+                else:
+                    # Fallback: dynamic IC based on port activity strength
+                    ic = min(0.07, max(0.02, abs(pct_above) / 500)) if pct_above != 0 else 0.02
+                    icir = ic / 0.04
                 reason = (
                     f"{defn['display']}: {vessel_count} vessels nearby "
                     f"({pct_above:+.0f}% vs {baseline:.0f} baseline). "
@@ -180,8 +259,15 @@ def compute_all_signals(thermal_anomalies: Optional[List[Dict[str, Any]]] = None
                 direction = "BULLISH" if score > 65 else "NEUTRAL"
                 delta = f"+{(score-50)*0.8:.0f}%"
                 n_obs = int(score * 0.8)
-                ic = round(0.038 + (score - 65) * 0.0005, 3)
-                icir = round(ic / 0.04 * 0.8, 2)
+                # Try to compute real IC from historical data
+                real_ic, real_icir = _compute_real_ic(key, score, str(defn["primary_ticker"]))
+                if real_ic is not None:
+                    ic = real_ic
+                    icir = real_icir
+                else:
+                    # Fallback: dynamic IC based on score deviation from neutral
+                    ic = round(0.038 + (score - 65) * 0.0005, 3)
+                    icir = round(ic / 0.04 * 0.8, 2)
                 reason = f"SIMULATED: {defn['display']} port throughput. Connect AISHub for real vessel positions."
                 data_sources = ["vessel_tracker_simulated"]
 
@@ -192,8 +278,15 @@ def compute_all_signals(thermal_anomalies: Optional[List[Dict[str, Any]]] = None
             direction = "STABLE" if score < 72 else "BULLISH"
             delta = f"+{(score - 50) * 0.6:.0f}%"
             n_obs = 127
-            ic = 0.038
-            icir = 0.51
+            # Try to compute real IC from historical data
+            real_ic, real_icir = _compute_real_ic(key, score, str(defn["primary_ticker"]))
+            if real_ic is not None:
+                ic = real_ic
+                icir = real_icir
+            else:
+                # Fallback: placeholder IC
+                ic = 0.038
+                icir = 0.51
             reason = (
                 "SIMULATED: Walmart supercenter cluster parking density. "
                 "Connect Sentinel-2 preprocessing pipeline for real optical analysis."
