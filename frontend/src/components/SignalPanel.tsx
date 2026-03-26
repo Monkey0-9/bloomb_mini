@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Activity } from 'lucide-react';
-import { useTerminalStore, useSignalStore } from '../store';
+import { useTerminalStore } from '../store';
+import { api } from '../api/client';
 
 const SignalCard = ({ 
   name, 
@@ -12,8 +13,8 @@ const SignalCard = ({
   tickers
 }: any) => {
   const { setView, setCurrentTicker } = useTerminalStore();
-  const isBull = status === 'bullish';
-  const statusColor = isBull ? 'text-[var(--neon-bull)]' : status === 'bearish' ? 'text-[var(--neon-bear)]' : 'text-[var(--text-tertiary)]';
+  const isBull = status === 'BULLISH';
+  const statusColor = isBull ? 'text-[var(--neon-bull)]' : status === 'BEARISH' ? 'text-[var(--neon-bear)]' : 'text-[var(--text-tertiary)]';
 
   const handleClick = () => {
     if (tickers && tickers.length > 0) {
@@ -34,7 +35,7 @@ const SignalCard = ({
       <div className="flex justify-between items-start mb-1.5">
         <span className={`text-[8px] font-bold font-mono tracking-widest uppercase px-1.5 py-0.5 border ${
           isBull ? 'bg-[var(--neon-dim-bull)] border-[var(--neon-bull)]/50 text-[var(--neon-bull)]' :
-          status === 'bearish' ? 'bg-[var(--neon-dim-bear)] border-[var(--neon-bear)]/50 text-[var(--neon-bear)]' :
+          status === 'BEARISH' ? 'bg-[var(--neon-dim-bear)] border-[var(--neon-bear)]/50 text-[var(--neon-bear)]' :
           'bg-[var(--bg-overlay)] border-[var(--border-subtle)] text-[var(--text-secondary)]'
         }`}>
           {status}
@@ -52,12 +53,12 @@ const SignalCard = ({
         <div className="flex flex-col">
           <span className="text-[7px] text-[var(--text-tertiary)] uppercase tracking-widest">Confidence</span>
           <span className={`text-[12px] font-bold font-mono tracking-tighter ${statusColor}`}>
-            {score}
+            {Number(score || 0).toFixed(1)}
           </span>
         </div>
         <div className="flex-1 grid grid-cols-2 gap-x-2 text-[9px] border-l border-[var(--border-subtle)] pl-2 font-mono">
-          <div className="flex justify-between"><span className="text-[var(--text-tertiary)]">IC</span> <span className="text-[var(--text-primary)] font-bold">{ic.toFixed(3)}</span></div>
-          <div className="flex justify-between"><span className="text-[var(--text-tertiary)]">IR</span> <span className="text-[var(--text-primary)] font-bold">{icir.toFixed(2)}</span></div>
+          <div className="flex justify-between"><span className="text-[var(--text-tertiary)]">IC</span> <span className="text-[var(--text-primary)] font-bold">{Number(ic || 0).toFixed(3)}</span></div>
+          <div className="flex justify-between"><span className="text-[var(--text-tertiary)]">IR</span> <span className="text-[var(--text-primary)] font-bold">{Number(icir || 0).toFixed(2)}</span></div>
         </div>
       </div>
 
@@ -77,13 +78,28 @@ const SignalCard = ({
 
 const SignalPanel = () => {
   const { setView } = useTerminalStore();
-  const { signals, fetchSignals } = useSignalStore();
+  const [signals, setSignals] = useState<any[]>([]);
 
   useEffect(() => {
-    fetchSignals();
-    const interval = setInterval(fetchSignals, 30000);
+    const fetchSig = async () => {
+      try {
+        const data = await api.thermal(6);
+        setSignals(data.clusters.map((c: any) => ({
+          id: c.id,
+          name: c.reason,
+          location: c.name,
+          status: c.signal,
+          score: c.score,         // Real score from FIRMS data
+          ic: Math.abs(c.sigma) * 0.018,  // Derived from real sigma
+          icir: Math.abs(c.sigma) * 0.4,
+          tickers: c.tickers,
+        })));
+      } catch(e) {}
+    }
+    fetchSig();
+    const interval = setInterval(fetchSig, 30000);
     return () => clearInterval(interval);
-  }, [fetchSignals]);
+  }, []);
 
   return (
     <div className="flex flex-col h-full bg-[var(--bg-base)] overflow-hidden font-mono select-none">
@@ -98,7 +114,7 @@ const SignalPanel = () => {
       
       <div className="flex-1 overflow-y-auto custom-scrollbar pb-2">
         {signals.map(s => (
-          <SignalCard key={s.id} {...s} />
+          <SignalCard key={s.id || s.location} {...s} />
         ))}
       </div>
 

@@ -104,18 +104,17 @@ const EconomicsView = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        const resp = await fetch('/api/alpha/macro');
+        const resp = await fetch('http://localhost:8000/api/macro');
         if (!resp.ok) throw new Error();
-        const data = await resp.json();
+        const json = await resp.json();
+        const data = json.data;
         
-        // Mock Baltic Dry for completeness
-        if (!data['BALTIC_DRY']) {
-            const hist = Array.from({length: 30}).map((_, i) => ({ 
-                date: `2024-01-${i+1}`, 
-                value: (1800 + Math.random()*200 + i*10).toString() 
-            }));
-            data['BALTIC_DRY'] = { latest_value: hist[29].value, latest_date: 'Today', history: hist };
-        }
+        // Ensure format is compatible with our components
+        // Our components expect { value, prev, change, history }
+        // The API returns { value, prev, change, date }
+        Object.keys(data).forEach(k => {
+          data[k].history = [{ value: data[k].prev.toString() }, { value: data[k].value.toString() }];
+        });
         setMacroData(data);
       } catch {
         setMacroData(null);

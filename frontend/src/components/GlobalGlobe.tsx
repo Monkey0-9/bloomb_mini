@@ -1,12 +1,10 @@
 import React, { useEffect, useRef, useMemo, useCallback } from 'react';
 import Globe from 'react-globe.gl';
 import * as THREE from 'three';
-import { useTerminalStore, useVesselStore, useFlightStore, useSatelliteStore, Satellite } from '../store';
+import { useTerminalStore } from '../store';
 import { useEquityStore } from '../store/equityStore';
 import { countryLabels } from '../data/countries';
-
-const API_BASE = (import.meta.env.VITE_API_URL as string) || '';
-const REFRESH_INTERVAL_MS = 15_000;
+import { api, connectLive } from '../api/client';
 
 const COL = {
   bull:    '#00FF9D',
@@ -30,9 +28,6 @@ interface HexBin {
 const GlobalGlobe: React.FC = () => {
   const { activeLayers, zoomLevel, setView, setCurrentTicker } = useTerminalStore();
   const { addToWatchlist } = useEquityStore();
-  const { vessels, fetchVessels } = useVesselStore();
-  const { flights, fetchFlights } = useFlightStore();
-  const { satellites, fetchSatellites } = useSatelliteStore();
   const globeEl = useRef<any>(null);
 
   const [countries, setCountries] = React.useState<any>({ features: [] });
@@ -47,21 +42,23 @@ const GlobalGlobe: React.FC = () => {
   const [quakes, setQuakes] = React.useState<any[]>([]);
   const [conflicts, setConflicts] = React.useState<any[]>([]);
   const [strategic, setStrategic] = React.useState<any>({
-    conflicts: [], military_bases: [], nuclear_sites: [], sanctions: [], chokepoints: [], infrastructure_events: [],
+    chokepoints: [],
   });
+  
+  const [vessels, setVessels] = React.useState<any[]>([]);
+  const [flights, setFlights] = React.useState<any[]>([]);
+  const [satellites, setSatellites] = React.useState<any[]>([]);
 
   const fetchStrategic = useCallback(async () => {
     try {
-      const r = await fetch(`${API_BASE}/api/intelligence/strategic`);
-      if (r.ok) setStrategic(await r.json());
+      const data = await api.chokepoints();
+      setStrategic({ chokepoints: data.chokepoints || [] });
     } catch {}
   }, []);
 
   const fetchThermal = useCallback(async () => {
     try {
-      const r = await fetch(`${API_BASE}/api/intelligence/thermal`);
-      if (!r.ok) return;
-      const d = await r.json();
+      const d = await api.thermal();
       const sigs = d.clusters || [];
       const bins: HexBin[] = sigs.map((s: any) => ({
         lat: s.lat || 0,
@@ -76,39 +73,45 @@ const GlobalGlobe: React.FC = () => {
     } catch {}
   }, []);
 
-  const fetchQuakes = useCallback(async () => {
-    try {
-      const r = await fetch(`${API_BASE}/api/intelligence/earthquakes`);
-      if (r.ok) setQuakes((await r.json()).earthquakes || []);
-    } catch {}
-  }, []);
-
   const fetchConflicts = useCallback(async () => {
     try {
-      const r = await fetch(`${API_BASE}/api/intelligence/conflicts`);
-      if (r.ok) setConflicts((await r.json()).conflicts || []);
+      const d = await api.conflicts();
+      setConflicts(d.events || []);
+    } catch {}
+  }, []);
+  
+  const fetchVesselsData = useCallback(async () => {
+    try {
+      const d = await api.vessels();
+      setVessels(d.vessels || []);
+    } catch {}
+  }, []);
+  
+  const fetchSatellitesData = useCallback(async () => {
+    try {
+      const d = await api.satellites();
+      setSatellites(d.satellites || []);
     } catch {}
   }, []);
 
   useEffect(() => {
-    fetchVessels();
-    fetchFlights();
-    fetchSatellites();
+    fetchVesselsData();
+    fetchSatellitesData();
     fetchThermal();
-    fetchQuakes();
     fetchConflicts();
     fetchStrategic();  // Load real OSINT intelligence layers
+    
+    api.aircraft().then(d => setFlights(d.features || []));
 
-    const id = setInterval(() => {
-      fetchVessels();
-      fetchFlights();
-      fetchThermal();
-      fetchQuakes();
-      fetchConflicts();
-    }, REFRESH_INTERVAL_MS);
+    const unsub = connectLive(data => {
+      if(data.type==="LIVE_UPDATE") {
+        setFlights(data.aircraft?.features || []);
+        // if(data.squawks.length > 0) showSquawkAlert(data.squawks[0])
+      }
+    });
 
-    return () => clearInterval(id);
-  }, [fetchVessels, fetchFlights, fetchSatellites, fetchThermal, fetchQuakes, fetchConflicts, fetchStrategic]);
+    return () => unsub();
+  }, [fetchVesselsData, fetchSatellitesData, fetchThermal, fetchConflicts, fetchStrategic]);
 
   useEffect(() => {
     if (!globeEl.current) return;
@@ -150,13 +153,7 @@ const GlobalGlobe: React.FC = () => {
         }))
       : [];
       
-    const eq = activeLayers.includes('QUAKES')
-      ? quakes.map(q => ({
-          name: q.place, lat: q.lat, lng: q.lon,
-          size: 0.03 + (q.mag * 0.015), color: q.impact > 5 ? COL.bear : COL.warn,
-          type: 'QUAKE', ticker: q.tickers?.[0], signal: `MAG ${q.mag}`
-      })) : [];
-
+    const eq: any[] = []; // No longer needed
     return [...thermal, ...sats, ...eq];
   }, [activeLayers, thermalBins, satellites, quakes]);
 
@@ -191,14 +188,12 @@ const GlobalGlobe: React.FC = () => {
 
   const ringsData = useMemo(() => {
     const darkVesselRings = filteredVessels
-      .filter((v: any) => v.dark_vessel_confidence > 0.6)
+      .filter((v: any) => v.dark)
       .map((v: any) => ({
-        lat: v.position?.lat ?? 0, lng: v.position?.lon ?? 0,
+        lat: v.lat ?? 0, lng: v.lon ?? 0,
         color: COL.bear, maxR: 3, propSpeed: 4, period: 1200,
       }));
-    const quakeRings = activeLayers.includes('QUAKES') ? quakes.filter(q => q.impact > 4).map(q => ({
-        lat: q.lat, lng: q.lon, color: COL.bear, maxR: q.mag, propSpeed: 2, period: 2000
-    })) : [];
+    const quakeRings: any[] = [];
     return [...darkVesselRings, ...quakeRings];
   }, [filteredVessels, quakes, activeLayers]);
 
@@ -207,71 +202,19 @@ const GlobalGlobe: React.FC = () => {
 
     // ── Active War Zones & Conflicts (OSINT, real GDELT) ──
     if (activeLayers.includes('CONFLICTS')) {
-      // Historical GDELT conflicts
       conflicts.forEach(c => data.push({
-        lat: c.lat, lng: c.lon, size: 24, color: COL.bear,
+        lat: c.lat, lng: c.lon, size: c.severity === 'CRITICAL' ? 32 : 24, color: COL.bear,
         label: `CONFLICT: ${c.type}`, shape: 'conflict',
-        risk: c.financial?.risk_type, ticker: c.financial?.tickers?.[0]
-      }));
-      // Real OSINT strategic conflict zones
-      (strategic.conflicts || []).forEach((c: any) => data.push({
-        lat: c.lat, lng: c.lon, size: c.intensity === 'EXTREME' ? 40 : c.intensity === 'SEVERE' ? 34 : 28,
-        color: c.intensity === 'EXTREME' ? '#ff0033' : c.intensity === 'SEVERE' ? '#ff4560' : COL.bear,
-        label: `⚔ ${c.name}\n${c.actors?.join(' vs ')}\n${c.fatalities_estimate?.toLocaleString()} casualties`,
-        name: c.name, type: c.type, shape: 'conflict',
-        ticker: c.ticker_impact?.[0], risk: c.intensity, summary: c.summary,
-        actors: c.actors, risk_score: c.risk_score,
+        risk: c.severity, ticker: c.tickers?.[0]
       }));
     }
 
-    // ── Military Bases (OSINT) ──
-    if (activeLayers.includes('BASES')) {
-      (strategic.military_bases || []).forEach((b: any) => data.push({
-        lat: b.lat, lng: b.lon, size: 22, color: '#38bdf8',
-        label: `🎯 ${b.name}\n${b.operator} | ${b.type}\n${b.significance}`,
-        name: b.name, type: b.type, shape: 'base',
-        operator: b.operator, significance: b.significance,
-      }));
-    }
-
-    // ── Nuclear Sites (IAEA/OSINT) ──
-    if (activeLayers.includes('NUCLEAR')) {
-      (strategic.nuclear_sites || []).forEach((n: any) => data.push({
-        lat: n.lat, lng: n.lon,
-        size: n.risk === 'CRITICAL' ? 40 : n.risk === 'HIGH' ? 32 : 24,
-        color: n.risk === 'CRITICAL' ? '#ffb800' : n.risk === 'HIGH' ? '#ff9a00' : '#e68a00',
-        label: `☢ ${n.name}\n${n.type} | ${n.status}\nRisk: ${n.risk}`,
-        name: n.name, type: n.type, shape: 'nuclear',
-        status: n.status, risk: n.risk, reactors: n.reactors,
-      }));
-    }
-
-    // ── Grid/Infrastructure Outages ──
-    if (activeLayers.includes('OUTAGES')) {
-      (strategic.infrastructure_events || []).forEach((e: any) => data.push({
-        lat: e.lat, lng: e.lon, size: 26, color: '#FF7A3D',
-        label: `⚡ ${e.name}\n${e.type} | ${e.status}`,
-        name: e.name, type: e.type, shape: 'outage',
-      }));
-    }
-
-    // ── Maritime Chokepoints ──
-    if (activeLayers.includes('HOTSPOTS') || activeLayers.includes('WATERWAYS')) {
+    if (activeLayers.includes('HOTSPOTS') || activeLayers.includes('WATERWAYS') || activeLayers.includes('CHOKEPOINTS')) {
       (strategic.chokepoints || []).forEach((c: any) => data.push({
         lat: c.lat, lng: c.lon, size: 30, color: '#00ccff',
-        label: `🚢 ${c.name}\nRisk: ${c.current_risk}\n${c.risk_note}`,
+        label: `🚢 ${c.name}\nRisk: ${c.threat_level}`,
         name: c.name, type: 'CHOKEPOINT', shape: 'hotspot',
-        risk: c.current_risk, alt_route: c.alt_route,
-      }));
-    }
-
-    // ── Sanctions Regimes ──
-    if (activeLayers.includes('SANCTIONS')) {
-      (strategic.sanctions || []).forEach((s: any) => data.push({
-        lat: s.lat, lng: s.lon, size: 20, color: '#f59e0b',
-        label: `🚫 ${s.name}\n${s.type}\nSectors: ${s.affected_sectors?.slice(0,3).join(', ')}`,
-        name: s.name, type: s.type, shape: 'hotspot',
-        ticker: s.ticker_impact?.[0],
+        risk: c.threat_level, alt_route: c.alt_route,
       }));
     }
 
@@ -375,7 +318,8 @@ const GlobalGlobe: React.FC = () => {
 
     filteredVessels.forEach((v: any, i: number) => {
       if (i >= 10000) return;
-      const { lat, lon } = v.position || { lat: 0, lon: 0 };
+      const lat = v.lat || 0;
+      const lon = v.lon || 0;
       const pos = globe.getCoords(lat, lon, 0.01);
       dummy.position.set(pos.x, pos.y, pos.z);
       dummy.lookAt(0, 0, 0); dummy.rotateY(Math.PI / 2); dummy.updateMatrix();
@@ -384,11 +328,12 @@ const GlobalGlobe: React.FC = () => {
     vMesh.count = Math.min(filteredVessels.length, 10000);
     vMesh.instanceMatrix.needsUpdate = true;
 
-    filteredFlights.forEach((f: any, i: number) => {
+    filteredFlights.forEach((feature: any, i: number) => {
       if (i >= 25000) return;
-      const lat = f.lat || f.position?.lat || 0;
-      const lon = f.lon || f.position?.lon || 0;
-      const heading = f.heading || f.position?.heading || 0;
+      const f = feature.properties || feature;
+      const lat = f.lat || feature.geometry?.coordinates[1] || 0;
+      const lon = f.lon || feature.geometry?.coordinates[0] || 0;
+      const heading = f.heading || 0;
       const pos = globe.getCoords(lat, lon, 0.08); 
       dummy.position.set(pos.x, pos.y, pos.z);
       dummy.lookAt(0, 0, 0);

@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import { useTerminalStore, useSignalStore } from '../store';
 import { useEquityStore } from '../store/equityStore';
+import { api } from '../api/client';
 
 const WatchlistRow = ({ ticker, price, change, signal, onRemove }: any) => {
   const isUp = change >= 0;
@@ -19,7 +20,7 @@ const WatchlistRow = ({ ticker, price, change, signal, onRemove }: any) => {
         <span className="text-[11px] font-bold text-[var(--neon-bull)] tracking-tight font-mono">{ticker}</span>
         <div className="flex items-center gap-3">
           <span className="text-[11px] text-[var(--text-primary)] font-mono tracking-tighter group-hover:text-[var(--neon-signal)] transition-colors">${(price || 0).toFixed(2)}</span>
-          <span className={`text-[10px] font-mono font-bold w-12 text-right ${isUp ? 'text-[var(--neon-bull)]' : 'text-[var(--neon-bear)]'}`}>
+          <span className={`text-[10px] font-mono font-bold w-12 text-right ${Math.abs(change) > 2 ? 'font-black' : ''} ${isUp ? 'text-[var(--neon-bull)]' : 'text-[var(--neon-bear)]'}`}>
             {isUp ? '+' : ''}{(change || 0).toFixed(2)}%
           </span>
         </div>
@@ -48,11 +49,22 @@ const WatchlistRow = ({ ticker, price, change, signal, onRemove }: any) => {
 const WatchlistPanel = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [newTicker, setNewTicker] = useState('');
+  const [livePrices, setLivePrices] = useState<any>({});
   const { signals } = useSignalStore();
-  const { equities, watchlist, addToWatchlist, removeFromWatchlist } = useEquityStore();
+  const { watchlist, addToWatchlist, removeFromWatchlist } = useEquityStore();
 
-  const watchlistEquities = equities.filter(e => watchlist.includes(e.ticker));
-  
+  useEffect(() => {
+    const refresh = async () => {
+      try {
+        const data = await api.prices(watchlist.join(','));
+        if(data.prices) setLivePrices(data.prices);
+      } catch(e) {}
+    }
+    if (watchlist.length > 0) refresh();
+    const interval = setInterval(refresh, 30000); // Every 30 seconds
+    return () => clearInterval(interval);
+  }, [watchlist]);
+
   return (
     <div className="flex flex-col h-full bg-[var(--bg-base)] overflow-hidden">
       
@@ -101,17 +113,20 @@ const WatchlistPanel = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto bg-[var(--bg-base)]">
-        {watchlistEquities.length > 0 ? (
-          watchlistEquities.map((e: any) => (
-            <WatchlistRow 
-              key={e.ticker}
-              ticker={e.ticker}
-              price={e.price}
-              change={e.change}
-              onRemove={removeFromWatchlist}
-              signal={signals.find(s => (s.tickers || []).includes(e.ticker))?.status.toUpperCase() || e.sat_signal} 
-            />
-          ))
+        {watchlist.length > 0 ? (
+          watchlist.map((ticker: any) => {
+            const p = livePrices[ticker] || { price: 0, change_pct: 0 };
+            return (
+              <WatchlistRow 
+                key={ticker}
+                ticker={ticker}
+                price={p.price}
+                change={p.change_pct}
+                onRemove={removeFromWatchlist}
+                signal={signals.find(s => (s.tickers || []).includes(ticker))?.status.toUpperCase() || 'FLAT'} 
+              />
+            )
+          })
         ) : (
           <div className="p-8 text-center text-[9px] text-[var(--text-tertiary)] font-mono uppercase tracking-widest">Awaiting Selections</div>
         )}

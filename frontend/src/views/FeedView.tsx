@@ -1,53 +1,71 @@
 import React, { useEffect, useState } from 'react';
-import { useSignalStore, useTerminalStore } from '../store';
+import { useTerminalStore } from '../store';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Activity, Globe, Zap, Shield, AlertTriangle } from 'lucide-react';
-
-const apiBase = import.meta.env.VITE_API_URL || '';
+import { Activity, Globe, Zap, Shield, AlertTriangle, Search } from 'lucide-react';
+import { api } from '../api/client';
 
 const FeedView = () => {
-  const { events } = useSignalStore();
-  const { currentTicker } = useTerminalStore();
-  const [news, setNews] = useState<any[]>([]);
+  const [finNews, setFinNews] = useState<any[]>([]);
+  const [shipNews, setShipNews] = useState<any[]>([]);
+  const [milNews, setMilNews] = useState<any[]>([]);
+  const [squawks, setSquawks] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
 
   useEffect(() => {
     let active = true;
-    const fetchNews = async () => {
+    const fetchAll = async () => {
       try {
-        const resp = await fetch(`${apiBase}/api/alpha/news?ticker=${currentTicker || ''}`);
-        if (!resp.ok) return;
-        const data = await resp.json();
-        if (active && data.news) {
-          setNews(data.news);
+        const [fn, sn, mn, sq] = await Promise.all([
+          api.news('financial'),
+          api.news('shipping'),
+          api.news('military'),
+          api.squawkAlerts()
+        ]);
+        if (active) {
+          if (fn.news) setFinNews(fn.news);
+          if (sn.news) setShipNews(sn.news);
+          if (mn.news) setMilNews(mn.news);
+          if (sq.alerts) setSquawks(sq.alerts);
         }
       } catch (err) {}
     };
-    fetchNews();
-    const interval = setInterval(fetchNews, 60000);
+    fetchAll();
+    const interval = setInterval(fetchAll, 60000);
     return () => {
       active = false;
       clearInterval(interval);
     };
-  }, [currentTicker]);
+  }, []);
 
-  // Merge events and news, sorting by string timestamp descending
-  const feedItems = [
-    ...events.map(e => ({ id: e.id, type: e.type, message: e.message, timestamp: e.timestamp, url: e.url })),
-    ...news.map((n, i) => {
-      let d = new Date(n.published_utc);
-      let tsTag = isNaN(d.getTime()) ? n.published_utc : d.toLocaleTimeString('en-US', { hour12: false, hour: 'numeric', minute: 'numeric' });
-      return {
-        id: `news-${i}`,
-        type: 'market',
-        message: n.title,
-        timestamp: tsTag,
-        url: n.link
-      };
-    })
-  ].sort((a, b) => {
-    // Rough string sort for timestamps
-    return b.timestamp.localeCompare(a.timestamp);
-  });
+  const handleSearch = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && searchQuery.trim()) {
+      try {
+        const res = await api.newsSearch(searchQuery);
+        setSearchResults(res.articles || []);
+      } catch (err) {}
+    }
+  };
+
+  const renderColumn = (title: string, items: any[], icon: any, colorClass: string) => (
+    <div className="flex-1 flex flex-col min-w-0 border-r border-white/5 last:border-0">
+      <div className={`h-8 flex items-center gap-2 px-4 border-b border-white/5 bg-surface-1/40 ${colorClass}`}>
+        {icon}
+        <span className="type-data-xs font-bold uppercase tracking-widest">{title}</span>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+        {items.map((n, i) => (
+          <div key={i} className="group relative p-3 bg-surface-1/30 border border-white/5 hover:bg-surface-2 transition-all cursor-alias" onClick={() => window.open(n.url, '_blank')}>
+             <div className="flex items-center justify-between mb-1.5">
+               <span className={`text-[9px] font-mono px-1.5 py-0.5 bg-white/5 ${colorClass}`}>{n.source.toUpperCase()}</span>
+               <span className="text-[9px] font-mono text-text-4">{new Date(n.published).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+             </div>
+             <p className="text-[11px] font-medium leading-snug text-text-1 group-hover:text-white line-clamp-3">{n.title}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex-1 flex flex-col bg-surface-0 overflow-hidden">
@@ -55,9 +73,20 @@ const FeedView = () => {
       <div className="h-11 border-b border-white/5 flex items-center justify-between px-4 shrink-0 bg-surface-1/40">
         <div className="flex items-center gap-2">
           <Activity size={16} className="text-accent-primary" />
-          <span className="type-h1 text-sm tracking-[0.2em] text-text-0 uppercase">TEMPORAL INTELLIGENCE FEED</span>
+          <span className="type-h1 text-sm tracking-[0.2em] text-text-0 uppercase">GLOBAL INTELLIGENCE FEED</span>
         </div>
         <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 bg-surface-2/60 px-2 border border-white/10 rounded-sm">
+             <Search size={12} className="text-text-4" />
+             <input 
+               type="text" 
+               placeholder="Search GDELT..." 
+               value={searchQuery}
+               onChange={e => setSearchQuery(e.target.value)}
+               onKeyDown={handleSearch}
+               className="bg-transparent text-[10px] font-mono w-48 py-1 outline-none text-text-1 placeholder-text-5"
+             />
+          </div>
           <span className="type-data-xs text-text-4 uppercase flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-bull animate-pulse"></span>
             Live Stream Active
@@ -66,69 +95,64 @@ const FeedView = () => {
       </div>
 
       {/* FEED CONTENT */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-void/20">
-        <div className="max-w-3xl mx-auto space-y-4">
-          <AnimatePresence initial={false}>
-            {feedItems.map((event, index) => (
-                <motion.div
-                  key={event.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.3, delay: index * 0.05 }}
-                  onClick={() => {
-                    const url = event.url || `https://www.google.com/search?q=${encodeURIComponent(event.message)}&tbm=nws`;
-                    window.open(url, '_blank');
-                  }}
-                  className="group relative flex gap-4 p-4 bg-surface-1/50 border border-white/5 hover:bg-surface-2 transition-all cursor-alias"
-                >
-                <div className="shrink-0 pt-1">
-                   <EventIcon type={event.type} />
+      {searchResults.length > 0 ? (
+        <div className="flex-1 overflow-y-auto p-6 bg-void/20">
+          <div className="flex items-center justify-between mb-4">
+             <span className="type-data-xs text-accent-primary font-bold uppercase tracking-widest">Search Results for "{searchQuery}"</span>
+             <button onClick={() => setSearchResults([])} className="text-[10px] font-mono text-text-4 hover:text-white">CLEAR</button>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+             {searchResults.map((n, i) => (
+                <div key={i} className="p-4 bg-surface-1/50 border border-white/5 hover:border-accent-primary/50 cursor-alias transition-all" onClick={() => window.open(n.url, '_blank')}>
+                   <div className="flex items-center justify-between mb-2">
+                     <span className="text-[10px] font-mono text-accent-primary">{n.source.toUpperCase()}</span>
+                     <span className="text-[10px] font-mono text-text-4">{new Date(n.published).toLocaleDateString()}</span>
+                   </div>
+                   <p className="text-sm font-medium text-text-1 leading-snug">{n.title}</p>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline justify-between mb-1">
-                    <span className="type-data-xs text-accent-primary font-bold uppercase tracking-widest">{event.type} update</span>
-                    <span className="type-data-xs text-text-5 font-mono">{event.timestamp}</span>
-                  </div>
-                  <p className="type-ui-sm text-text-1 font-medium leading-relaxed uppercase tracking-tight">
-                    {event.message}
-                  </p>
-                </div>
-                {/* DECORATIVE LINE */}
-                <div className="absolute left-[-1px] top-4 bottom-4 w-[2px] bg-accent-primary opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-
-          {/* SKELETON LOADERS FOR ATMOSPHERE */}
-          {feedItems.length === 0 && Array.from({ length: 3 }).map((_, i) => (
-            <div key={`skel-${i}`} className="opacity-20 flex gap-4 p-4 border border-white/5 grayscale">
-               <div className="w-10 h-10 bg-white/10 rounded-sm"></div>
-               <div className="flex-1 space-y-2">
-                  <div className="h-3 w-24 bg-white/10 rounded-sm"></div>
-                  <div className="h-4 w-full bg-white/10 rounded-sm"></div>
-               </div>
-            </div>
-          ))}
+             ))}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="flex-1 flex overflow-hidden">
+          {renderColumn('Financial', finNews, <Zap size={12}/>, 'text-accent-primary')}
+          {renderColumn('Shipping & Maritime', shipNews, <Globe size={12}/>, 'text-[#00ccff]')}
+          
+          <div className="flex-1 flex flex-col min-w-0 border-r border-white/5 last:border-0">
+            <div className="h-8 flex items-center gap-2 px-4 border-b border-white/5 bg-surface-1/40 text-bear">
+              <Shield size={12}/>
+              <span className="type-data-xs font-bold uppercase tracking-widest">Military & OSINT</span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+              {squawks.length > 0 && squawks.map((s, i) => (
+                <div key={`sq-${i}`} className="group relative p-3 bg-bear/10 border border-bear/30 hover:bg-bear/20 transition-all cursor-alias">
+                   <div className="flex items-center justify-between mb-1.5">
+                     <span className="text-[9px] font-bold font-mono px-1.5 py-0.5 bg-bear/20 text-bear flex items-center gap-1"><AlertTriangle size={8}/> SQUAWK {s.squawk}</span>
+                     <span className="text-[9px] font-mono text-text-4">{new Date(s.ts).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                   </div>
+                   <p className="text-[11px] font-medium leading-snug text-bear">Callsign {s.callsign}: {s.desc} reported at {s.lat.toFixed(2)}°, {s.lon.toFixed(2)}°</p>
+                </div>
+              ))}
+              {milNews.map((n, i) => (
+                <div key={i} className="group relative p-3 bg-surface-1/30 border border-white/5 hover:bg-surface-2 transition-all cursor-alias" onClick={() => window.open(n.url, '_blank')}>
+                   <div className="flex items-center justify-between mb-1.5">
+                     <span className="text-[9px] font-mono px-1.5 py-0.5 bg-white/5 text-bear">{n.source.toUpperCase()}</span>
+                     <span className="text-[9px] font-mono text-text-4">{new Date(n.published).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                   </div>
+                   <p className="text-[11px] font-medium leading-snug text-text-1 group-hover:text-white line-clamp-3">{n.title}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* FEED FOOTER */}
       <div className="h-8 border-t border-white/5 flex items-center px-4 bg-surface-1 shrink-0">
-        <span className="type-data-xs text-text-4 uppercase tracking-widest">Latency: <span className="text-bull">24ms</span></span>
-        <div className="mx-4 h-3 w-[1px] bg-white/10"></div>
-        <span className="type-data-xs text-text-4 uppercase tracking-widest">Source: <span className="text-text-2">Direct Orbital Downlink</span></span>
+        <span className="type-data-xs text-text-4 uppercase tracking-widest">Sources: <span className="text-text-2">Reuters | TradeWinds | GDELT | OpenSky</span></span>
       </div>
     </div>
   );
-};
-
-const EventIcon = ({ type }: { type: string }) => {
-  switch (type) {
-    case 'satellite': return <Globe size={20} className="text-bull" />;
-    case 'market': return <Zap size={20} className="text-accent-primary" />;
-    case 'system': return <Shield size={20} className="text-text-3" />;
-    default: return <Activity size={20} className="text-text-4" />;
-  }
 };
 
 export default FeedView;

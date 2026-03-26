@@ -67,13 +67,13 @@ const ChartView = () => {
     const fetchHistory = async () => {
       try {
         const period = periodMap[activeRange] || '3mo';
-        const resp = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/market/chart/${currentTicker}?period=${period}`);
+        const resp = await fetch(`http://localhost:8000/api/market/chart/${currentTicker}?period=${period}`);
         if (!resp.ok) throw new Error('Failed to fetch history');
         const data = await resp.json();
 
         if (candleSeriesRef.current && data.ohlcv) {
           const formatted = data.ohlcv.map((d: any) => ({
-            time: d.time,
+            time: d.date, // Use date directly as it returns YYYY-MM-DD
             open: d.open,
             high: d.high,
             low: d.low,
@@ -83,7 +83,7 @@ const ChartView = () => {
 
           if (volumeSeriesRef.current) {
             const volData = data.ohlcv.map((d: any) => ({
-              time: d.time,
+              time: d.date,
               value: d.volume,
               color: d.close >= d.open ? 'rgba(0, 255, 157, 0.5)' : 'rgba(255, 77, 77, 0.5)'
             }));
@@ -126,12 +126,12 @@ const ChartView = () => {
 
     const fetchOverlayHistory = async (ticker: string) => {
         try {
-            const resp = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/market/chart/${ticker}?period=${periodMap[activeRange] || '3mo'}`);
+            const resp = await fetch(`http://localhost:8000/api/market/chart/${ticker}?period=${periodMap[activeRange] || '3mo'}`);
             if (resp.ok) {
                 const data = await resp.json();
                 const series = overlaySeriesRefs.current.get(ticker);
                 if (series && data.ohlcv) {
-                    const formatted = data.ohlcv.map((d: any) => ({ time: d.time, value: d.close }));
+                    const formatted = data.ohlcv.map((d: any) => ({ time: d.date, value: d.close }));
                     series.setData(formatted);
                 }
             }
@@ -294,6 +294,17 @@ const ChartView = () => {
   };
 
   const overlayColors = ['#C084FC', '#F472B6', '#FB923C'];
+
+  // Local state for earnings to match the instructions
+  const [earningsData, setEarningsData] = useState<any[]>([]);
+  useEffect(() => {
+    const symbol = currentTicker.split(' ')[0];
+    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/market/chart/${symbol}?period=3mo`)
+      .then(res => res.json())
+      .then(d => {
+        if(d.earnings) setEarningsData(d.earnings);
+      }).catch(()=>{});
+  }, [currentTicker]);
 
   return (
     <div className="flex-1 flex flex-col bg-void overflow-hidden">

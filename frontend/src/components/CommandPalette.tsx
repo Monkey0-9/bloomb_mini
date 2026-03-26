@@ -113,6 +113,27 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose }) => {
 
   const submit = useCallback(async (q: string) => {
     if (!q.trim()) return;
+    const cmd = q.trim().toUpperCase();
+
+    // Direct command parsing
+    if (cmd === 'MACRO') {
+      setSelectedView('economics' as ViewType);
+      onClose();
+      return;
+    }
+    if (['THERMAL', 'CONFLICTS', 'WAR', 'VESSELS', 'SATELLITES', 'MILITARY', 'CARGO', 'DARK', 'SQUAWK', 'CHOKEPOINTS'].includes(cmd)) {
+      setSelectedView('world' as ViewType);
+      useTerminalStore.getState().toggleLayer(cmd === 'WAR' ? 'CONFLICTS' : cmd);
+      onClose();
+      return;
+    }
+    if (cmd.startsWith('CHART ') || (cmd.length <= 5 && !cmd.includes(' '))) {
+      const ticker = cmd.startsWith('CHART ') ? cmd.replace('CHART ', '') : cmd;
+      useTerminalStore.getState().setCurrentTicker(`${ticker} US Equity`);
+      setSelectedView('charts' as ViewType);
+      onClose();
+      return;
+    }
 
     // 1. Try Institutional Typed CLI first (Stricli pattern)
     const cliOutput = await terminalCli.execute(q);
