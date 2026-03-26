@@ -12,6 +12,7 @@ from src.live.orbits    import get_all_eo_satellites
 from src.live.market    import get_prices, get_ohlcv, get_options, get_earnings
 from src.live.macro     import get_macro_snapshot, get_series
 from src.live.news      import get_all_news, fetch_gdelt
+from src.intelligence.swarm import run_swarm_simulation
 
 _clients: list[WebSocket] = []
 
@@ -428,6 +429,11 @@ async def intelligence_summary():
         ],
         "ts": datetime.now(timezone.utc).isoformat(),
     }
+
+@app.get("/api/intelligence/swarm")
+async def swarm_intelligence():
+    """MiroFish-inspired global trade flow prediction swarm."""
+    return run_swarm_simulation()
 
 
 # ─── WEBSOCKET ────────────────────────────────────────────────────────────────

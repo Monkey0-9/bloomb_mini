@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { TrendingUp, TrendingDown, Minus, Satellite, Ship, Plane, RefreshCw } from 'lucide-react';
+import { api } from '../api/client';
 
 interface CompositeRow {
   ticker: string;
@@ -22,11 +23,10 @@ interface ContribSignal {
   headline: string;
 }
 
-const API_BASE = (import.meta.env.VITE_API_URL as string) || '';
 const REFRESH_MS = 30_000;
 
-const DIR_ICON = { BULLISH: TrendingUp, BEARISH: TrendingDown, NEUTRAL: Minus };
-const DIR_COLOR: Record<string, string> = { BULLISH: '#00FF9D', BEARISH: '#FF4560', NEUTRAL: '#6B7E99' };
+const DIR_ICON = { BULLISH: TrendingUp, BEARISH: TrendingDown, NEUTRAL: Minus, WATCH: Minus };
+const DIR_COLOR: Record<string, string> = { BULLISH: '#00FF9D', BEARISH: '#FF4560', NEUTRAL: '#6B7E99', WATCH: '#FFB800' };
 
 const SignalMatrix = () => {
   const [rows, setRows] = useState<CompositeRow[]>([]);
@@ -37,28 +37,50 @@ const SignalMatrix = () => {
   const fetchComposite = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. Get Alpha Leaders (Dynamic Discovery)
-      const lRes = await fetch(`${API_BASE}/api/alpha/leaders`);
-      const { tickers } = await lRes.json();
+      // 1. Get Swarm Predictions
+      const r = await fetch('http://localhost:8000/api/intelligence/swarm');
+      if (!r.ok) throw new Error();
+      const data = await r.json();
 
-      // 2. Fetch Deep Fusion for each leader
-      const results = await Promise.allSettled(
-        tickers.map((t: string) => fetch(`${API_BASE}/api/alpha/composite?ticker=${t}`).then(r => r.json()))
-      );
+      const newRows: CompositeRow[] = (data.predictions || []).map((p: any) => ({
+        ticker: p.ticker || p.region || 'N/A',
+        direction: p.action,
+        final_score: p.confidence / 100,
+        confidence: p.confidence / 100,
+        regime: 'ACTIVE',
+        as_of: new Date().toISOString(),
+        ic: 0.05 + Math.random() * 0.15,
+        icir: 0.6 + Math.random() * 1.2,
+        observations: p.impaired_agents,
+        headline: p.prediction,
+        contributing_signals: [
+          { type: 'SWARM_AGENTS', impact: `${p.impaired_agents} impaired`, effective_weight: 1.0, headline: 'Bottleneck metrics' }
+        ]
+      }));
 
-      const newRows: CompositeRow[] = results
-        .filter(r => r.status === 'fulfilled')
-        .map((r) => {
-          const d = (r as PromiseFulfilledResult<any>).value;
-          return {
-            ...d,
-            ic: 0.05 + Math.random() * 0.15,
-            icir: 0.6 + Math.random() * 1.2,
-            observations: 800 + Math.floor(Math.random() * 400)
-          };
-        });
-
-      setRows(newRows);
+      // Add thermal signals as well
+      try {
+        const t = await api.thermal(10);
+        const thermals: CompositeRow[] = t.clusters.map((c: any) => ({
+          ticker: c.tickers?.[0] || c.name,
+          direction: c.signal,
+          final_score: c.score / 100,
+          confidence: c.score / 100,
+          regime: 'THERMAL',
+          as_of: new Date().toISOString(),
+          ic: Math.abs(c.sigma) * 0.018,
+          icir: Math.abs(c.sigma) * 0.4,
+          observations: c.hotspots,
+          headline: c.reason,
+          contributing_signals: [
+            { type: 'FIRMS', impact: `Sigma ${c.sigma}`, effective_weight: 1.0, headline: 'Anomaly magnitude' }
+          ]
+        }));
+        setRows([...newRows, ...thermals].sort((a,b) => b.final_score - a.final_score));
+      } catch (err) {
+        setRows(newRows);
+      }
+      
       setLastSync(new Date().toLocaleTimeString('en-GB') + ' Z');
     } catch (e) {
       console.error("Signal fetch failed", e);
