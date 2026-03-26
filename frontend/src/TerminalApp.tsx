@@ -39,6 +39,7 @@ import IntelligenceFeed from './components/IntelligenceFeed';
 import WatchlistPanel from './components/WatchlistPanel';
 import GlobalGlobe from './components/GlobalGlobe';
 import TerminalOutput from './components/TerminalOutput';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const UI_LAYOUT = {
   activeView: 'satellite_feed' as ViewType,
@@ -156,7 +157,9 @@ export default function TerminalApp() {
         <div className="flex-1 flex min-h-0">
           <div className="flex-1 flex flex-col min-w-0 border-r border-border-1 bg-void/40 backdrop-blur-sm">
             <div className="flex-1 min-h-0 overflow-hidden relative">
-              {renderView()}
+              <ErrorBoundary widgetName="Main View">
+                {renderView()}
+              </ErrorBoundary>
             </div>
 
             {/* COMMAND BAR — Bloomberg Command Line Interface */}
@@ -182,10 +185,14 @@ export default function TerminalApp() {
 
           <aside className="w-96 flex flex-col shrink-0 bg-surface-base/80 backdrop-blur-md hidden xl:flex">
              <div className="flex-1 min-h-0 flex flex-col border-b border-border-1">
-                <WatchlistPanel />
+                <ErrorBoundary widgetName="Watchlist">
+                  <WatchlistPanel />
+                </ErrorBoundary>
              </div>
              <div className="flex-1 flex flex-col min-h-0 border-t border-border-1">
-                <IntelligenceFeed />
+                <ErrorBoundary widgetName="Intelligence Feed">
+                  <IntelligenceFeed />
+                </ErrorBoundary>
              </div>
           </aside>
         </div>

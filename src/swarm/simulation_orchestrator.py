@@ -486,7 +486,7 @@ if __name__ == "__main__":
         result = await quick_simulate("MT", 2.3, "ArcelorMittal Dunkirk")
         
         print("\n" + "=" * 70)
-        print("Simulation Complete!
+        print("Simulation Complete!")
         print("=" * 70)
         
         print(f"\nSimulation ID: {result.simulation_id}")
