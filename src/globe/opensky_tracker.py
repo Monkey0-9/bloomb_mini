@@ -10,9 +10,8 @@ from __future__ import annotations
 
 import logging
 import requests
-import json
 from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional, Set
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
 
 logger = logging.getLogger(__name__)
@@ -321,6 +320,9 @@ if __name__ == "__main__":
             
         print(f"  {ac.callsign or ac.icao24} ({ac.origin_country})")
         print(f"    Position: {ac.latitude:.3f}, {ac.longitude:.3f}")
-        print(f"    Altitude: {ac.altitude:.0f}m | Speed: {ac.velocity:.0f}m/s | Heading: {ac.heading:.0f}°")
+        alt_str = f"{ac.altitude:.0f}m" if ac.altitude is not None else "N/A"
+        vel_str = f"{ac.velocity:.0f}m/s" if ac.velocity is not None else "N/A"
+        head_str = f"{ac.heading:.0f}°" if ac.heading is not None else "N/A"
+        print(f"    Altitude: {alt_str} | Speed: {vel_str} | Heading: {head_str}")
         print(f"    Status: {', '.join(status) if status else 'Normal'}")
         print()

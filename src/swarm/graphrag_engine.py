@@ -11,10 +11,9 @@ Inspired by MiroFish GraphRAG architecture:
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Any, Optional, Set, Tuple
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from collections import defaultdict
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -517,9 +516,13 @@ class GraphRAGEngine:
         # Sort by absolute impact
         adjusted_tickers.sort(key=lambda x: abs(x['impact_score']), reverse=True)
         
+        # Get primary ticker safely
+        direct_tickers = base_impact.get('direct_tickers', [])
+        primary_ticker = direct_tickers[0] if direct_tickers else None
+        
         return {
             'event': {'facility': facility_id, 'type': event_type, 'severity': severity},
-            'primary_ticker': base_impact.get('direct_tickers', [None])[0],
+            'primary_ticker': primary_ticker,
             'affected_tickers': adjusted_tickers[:10],
             'sectors': base_impact.get('sectors', {}),
             'total_impact_score': sum(abs(t['impact_score']) for t in adjusted_tickers),
