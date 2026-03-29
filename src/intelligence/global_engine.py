@@ -4,6 +4,11 @@ GlobalIntelligenceEngine - Dynamic satellite intelligence discovery.
 Downloads NASA FIRMS global thermal anomalies → clusters into cells → 
 finds tickers via reverse geocoding → computes anomaly scores.
 No hardcoded facility list. Real-time discovery from live satellite data.
+
+Updated with scraper integration:
+- NASA FIRMS web scraper (enhanced thermal data)
+- GDELT geopolitical news
+- RSS financial news aggregator
 """
 
 from __future__ import annotations
@@ -12,9 +17,9 @@ import logging
 import requests
 import pandas as pd
 import numpy as np
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Any, Optional, Tuple
-from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Dict, List, Optional, Tuple, Any
+from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
@@ -380,6 +385,241 @@ class GlobalIntelligenceEngine:
         return nearby
 
 
+    def fetch_firms_enhanced(self) -> pd.DataFrame:
+        """
+        Fetch thermal data using the enhanced FIRMS web scraper.
+        
+        Falls back to CSV API if scraper fails.
+        """
+        try:
+            from src.scrapers.firms_scraper import get_firms_scraper
+            
+            scraper = get_firms_scraper()
+            hotspots = scraper.fetch_thermal_data(region='world', days=1, min_confidence='n')
+            
+            if hotspots:
+                # Convert hotspots to DataFrame
+                data = []
+                for h in hotspots:
+                    data.append({
+                        'latitude': h.latitude,
+                        'longitude': h.longitude,
+                        'frp': h.frp,
+                        'brightness': h.brightness,
+                        'confidence': h.confidence,
+                        'acq_date': h.acquisition_date.strftime('%Y-%m-%d'),
+                        'acq_time': h.acquisition_date.strftime('%H%M'),
+                        'satellite': h.satellite,
+                        'daynight': h.daynight
+                    })
+                
+                df = pd.DataFrame(data)
+                logger.info(f"Enhanced FIRMS scraper: {len(df)} hotspots")
+                return df
+            
+        except Exception as e:
+            logger.warning(f"Enhanced FIRMS scraper failed: {e}, falling back to CSV API")
+        
+        return self.fetch_firms_global(hours=24)
+    
+    def get_news_intelligence(self, ticker: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get news intelligence from RSS and GDELT scrapers.
+        
+        Args:
+            ticker: Optional ticker to focus search
+            
+        Returns:
+            Combined news intelligence
+        """
+        intelligence = {
+            'articles': [],
+            'sentiment': 'neutral',
+            'urgency': 'low',
+            'sources': []
+        }
+        
+        # 1. Try RSS feeds
+        try:
+            from src.scrapers.rss_aggregator import get_rss_aggregator
+            
+            aggregator = get_rss_aggregator()
+            
+            if ticker:
+                articles = aggregator.fetch_ticker_news(ticker, max_articles=20)
+            else:
+                sources = ['seeking_alpha_market', 'marketwatch_top']
+                multi = aggregator.fetch_multi_source_news(sources, max_per_source=10)
+                articles = []
+                for src_articles in multi.values():
+                    articles.extend(src_articles)
+            
+            sentiment = aggregator.get_market_sentiment(articles)
+            
+            intelligence['articles'].extend([a.to_dict() for a in articles])
+            intelligence['sentiment'] = sentiment.get('sentiment', 'neutral')
+            intelligence['sources'].append('rss')
+            
+            logger.info(f"RSS intelligence: {len(articles)} articles, {sentiment['sentiment']} sentiment")
+            
+        except Exception as e:
+            logger.warning(f"RSS intelligence failed: {e}")
+        
+        # 2. Try GDELT for geopolitical context
+        try:
+            from src.scrapers.gdelt_scraper import get_gdelt_scraper
+            
+            scraper = get_gdelt_scraper()
+            
+            if ticker:
+                articles = scraper.search_ticker_news(ticker, ticker, timespan="24h")
+            else:
+                articles = scraper.search_maritime_intelligence(timespan="24h")
+            
+            impact = scraper.analyze_news_impact(articles)
+            
+            # Merge GDELT articles
+            gdelt_dicts = [a.to_dict() for a in articles[:10]]
+            intelligence['articles'].extend(gdelt_dicts)
+            intelligence['sources'].append('gdelt')
+            
+            # Update urgency if GDELT finds high-impact events
+            if impact.get('urgency') == 'high':
+                intelligence['urgency'] = 'high'
+            elif impact.get('urgency') == 'medium' and intelligence['urgency'] == 'low':
+                intelligence['urgency'] = 'medium'
+            
+            logger.info(f"GDELT intelligence: {len(articles)} articles, urgency={impact.get('urgency')}")
+            
+        except Exception as e:
+            logger.warning(f"GDELT intelligence failed: {e}")
+        
+        return intelligence
+    
+    def generate_enhanced_signals(self) -> List[ThermalSignal]:
+        """
+        Generate signals using all available data sources.
+        
+        Combines:
+        - FIRMS thermal data (enhanced scraper)
+        - News intelligence (RSS + GDELT)
+        - Multi-source fusion for better accuracy
+        
+        Returns:
+            Enhanced thermal signals with news context
+        """
+        signals = []
+        
+        # 1. Fetch thermal data using enhanced scraper
+        firms_df = self.fetch_firms_enhanced()
+        if firms_df.empty:
+            logger.warning("No FIRMS data available from any source")
+            return signals
+        
+        # 2. Cluster anomalies
+        clusters = self.cluster_anomalies(firms_df, cell_size_km=1.0)
+        
+        # 3. Get global news context
+        news_intel = self.get_news_intelligence()
+        
+        # 4. Process each cluster
+        for _, row in clusters.iterrows():
+            lat = row['center_lat']
+            lon = row['center_lon']
+            frp = row['total_frp']
+            
+            # 4a. Reverse geocode
+            geo = self.reverse_geocode(lat, lon)
+            
+            # 4b. Find tickers
+            primary, affected = self.find_tickers_for_location(
+                geo['facility_name'], 
+                geo['country'],
+                lat, 
+                lon
+            )
+            
+            # 4c. Get ticker-specific news if we have a primary ticker
+            ticker_news = {}
+            if primary:
+                ticker_news = self.get_news_intelligence(primary)
+            
+            # 4d. Compute anomaly score
+            sigma = self.compute_anomaly_baseline(lat, lon, frp)
+            
+            # 4e. Adjust signal based on news sentiment
+            news_sentiment = ticker_news.get('sentiment', news_intel.get('sentiment', 'neutral'))
+            news_urgency = ticker_news.get('urgency', news_intel.get('urgency', 'low'))
+            
+            # Boost signal confidence if thermal + news agree
+            confidence_boost = 0
+            if sigma > 2 and news_sentiment == 'positive':
+                confidence_boost = 0.1  # 10% boost
+            elif sigma < -1 and news_sentiment == 'negative':
+                confidence_boost = 0.1
+            
+            # 4f. Build enhanced signal
+            sources = ['NASA FIRMS VIIRS']
+            if ticker_news.get('sources'):
+                sources.extend(ticker_news['sources'])
+            elif news_intel.get('sources'):
+                sources.extend(news_intel['sources'])
+            
+            signal = ThermalSignal(
+                signal_id=f"thermal_{lat:.3f}_{lon:.3f}_{int(datetime.now().timestamp())}",
+                lat=lat,
+                lon=lon,
+                frp_mw=frp,
+                brightness_k=row['max_brightness'],
+                anomaly_sigma=sigma + confidence_boost,
+                cluster_size=int(row['count']),
+                facility_name=geo['facility_name'],
+                country=geo['country'],
+                primary_ticker=primary,
+                affected_tickers=affected,
+                signal_reason=self._build_enhanced_reason(
+                    geo['facility_name'], sigma, frp, geo['type'],
+                    news_sentiment, news_urgency, ticker_news.get('articles', [])
+                ),
+                data_sources=list(set(sources)),  # Deduplicate
+                detected_at=datetime.now(timezone.utc)
+            )
+            
+            signals.append(signal)
+        
+        logger.info(f"Generated {len(signals)} enhanced signals with news context")
+        return signals
+    
+    def _build_enhanced_reason(self, facility: str, sigma: float, frp: float, 
+                               ftype: str, news_sentiment: str, urgency: str,
+                               news_articles: List[Dict]) -> str:
+        """Build enhanced signal reason with news context."""
+        intensity = "CRITICAL" if sigma > 3 else "HIGH" if sigma > 1.5 else "ELEVATED"
+        
+        # Base thermal reason
+        reason = (
+            f"{facility}: {intensity} thermal activity {sigma:+.1f}σ above baseline. "
+            f"FRP: {frp:.0f}MW. "
+        )
+        
+        # Add news context if available
+        if news_articles:
+            recent_news = [n for n in news_articles if n.get('title')]
+            if recent_news:
+                reason += f"Recent news: {recent_news[0].get('title', 'N/A')[:60]}... "
+        
+        # Add sentiment context
+        if news_sentiment != 'neutral':
+            reason += f"News sentiment: {news_sentiment}. "
+        
+        if urgency == 'high':
+            reason += "URGENT: High-priority events detected. "
+        
+        reason += f"Likely earnings impact within 41 days."
+        
+        return reason
+
+
 # Singleton instance
 _engine: Optional[GlobalIntelligenceEngine] = None
 
@@ -395,13 +635,41 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     
     engine = GlobalIntelligenceEngine()
-    signals = engine.generate_signals()
     
-    print(f"\nGenerated {len(signals)} signals:\n")
-    for s in signals[:10]:
-        print(f"  {s.facility_name} ({s.country})")
+    print("="*70)
+    print("GlobalIntelligenceEngine - Enhanced with Scrapers")
+    print("="*70)
+    
+    # Test enhanced signal generation
+    print("\n1. Enhanced Signal Generation (FIRMS + News)")
+    print("-"*70)
+    signals = engine.generate_enhanced_signals()
+    
+    print(f"\nGenerated {len(signals)} enhanced signals:")
+    for s in signals[:5]:
+        print(f"\n  {s.facility_name} ({s.country})")
         print(f"    Lat/Lon: {s.lat:.3f}, {s.lon:.3f}")
         print(f"    FRP: {s.frp_mw:.0f}MW | Sigma: {s.anomaly_sigma:+.1f}σ")
         print(f"    Ticker: {s.primary_ticker}")
-        print(f"    {s.signal_reason[:100]}...")
-        print()
+        print(f"    Sources: {', '.join(s.data_sources)}")
+        print(f"    {s.signal_reason[:80]}...")
+    
+    # Test news intelligence
+    print("\n2. News Intelligence (MT - ArcelorMittal)")
+    print("-"*70)
+    news = engine.get_news_intelligence("MT")
+    print(f"Found {len(news['articles'])} articles")
+    print(f"Sentiment: {news['sentiment']}")
+    print(f"Urgency: {news['urgency']}")
+    print(f"Sources: {', '.join(news['sources'])}")
+    
+    if news['articles']:
+        print("\n  Sample articles:")
+        for article in news['articles'][:3]:
+            title = article.get('title', 'N/A')
+            source = article.get('source', 'unknown')
+            print(f"    - {title[:60]}... [{source}]")
+    
+    print("\n" + "="*70)
+    print("Test Complete")
+    print("="*70)
