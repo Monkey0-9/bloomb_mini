@@ -1,9 +1,9 @@
-import httpx
 import csv
 import io
-import structlog
 from dataclasses import dataclass
-from datetime import datetime, timezone
+
+import httpx
+import structlog
 
 log = structlog.get_logger()
 
@@ -35,13 +35,13 @@ def fetch_thermal_data() -> list[ThermalAnomaly]:
         resp = httpx.get(FIRMS_CSV_URL, timeout=30)
         if resp.status_code != 200:
             return []
-        
+
         reader = csv.DictReader(io.StringIO(resp.text))
         anomalies = []
         for row in reader:
             lat = float(row["latitude"])
             lon = float(row["longitude"])
-            
+
             # Basic geographic filter for demo facilities
             facility_match = None
             for f in FACILITIES:
@@ -49,7 +49,7 @@ def fetch_thermal_data() -> list[ThermalAnomaly]:
                 if b[0] <= lon <= b[2] and b[1] <= lat <= b[3]:
                     facility_match = f["name"]
                     break
-            
+
             anomalies.append(ThermalAnomaly(
                 lat=lat,
                 lon=lon,

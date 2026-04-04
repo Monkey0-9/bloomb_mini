@@ -1,9 +1,9 @@
+import io
+from typing import Any
+
 import httpx
 import pandas as pd
-import io
 import structlog  # type: ignore[import-untyped]
-from typing import Any
-from datetime import datetime, timezone
 
 log = structlog.get_logger()
 

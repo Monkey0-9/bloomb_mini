@@ -23,8 +23,9 @@ def test_firms_global_csv():
 def test_celestrak_eo_group():
     """Celestrak must return EO satellite TLEs."""
     r = httpx.get(
-        "https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle",
-        timeout=20
+        "https://celestrak.org/NORAD/elements/gp.php?GROUP=resource&FORMAT=tle",
+        timeout=20,
+        headers={"User-Agent": "SatTrade/2.0 research@sattrade.io"}
     )
     assert r.status_code == 200
     tle1_count = sum(1 for l in r.text.split("\n") if l.strip().startswith("1 "))
@@ -79,10 +80,11 @@ def test_aircraft_module():
     assert isinstance(aircraft, list)
 
 @pytest.mark.skip(reason="NASA FIRMS is slow to download, skip for quick test")
-def test_thermal_module():
+@pytest.mark.asyncio
+async def test_thermal_module():
     """Thermal module must discover clusters from real FIRMS data."""
     from src.live.thermal import get_global_thermal
-    clusters = get_global_thermal(top_n=5)
+    clusters = await get_global_thermal(top_n=5)
     assert isinstance(clusters, list)
     if clusters:
         c = clusters[0]
@@ -93,25 +95,27 @@ def test_thermal_module():
         assert c.facility_name  # Must have a name from geocoding
 
 @pytest.mark.skip(reason="NASA FIRMS is slow to download, skip for quick test")
-def test_signals_are_not_identical():
+@pytest.mark.asyncio
+async def test_signals_are_not_identical():
     """CRITICAL: Signal scores must not all be 0.047 (hardcoded)."""
     from src.live.thermal import get_global_thermal
-    clusters = get_global_thermal(top_n=10)
+    clusters = await get_global_thermal(top_n=10)
     if len(clusters) >= 3:
         sigmas = [c.anomaly_sigma for c in clusters[:10]]
         assert len(set(round(s, 1) for s in sigmas)) > 2, \
             f"All thermal sigmas identical: {sigmas} — data is fake"
 
-def test_conflicts_module():
+@pytest.mark.asyncio
+async def test_conflicts_module():
     """Conflict module must return real events."""
     from src.live.conflicts import get_all_conflicts
-    events = get_all_conflicts()
+    events = await get_all_conflicts()
     assert isinstance(events, list)
 
 def test_api_health():
     """API server must be running and healthy."""
     try:
-        r = httpx.get("http://localhost:8000/health", timeout=3)
+        r = httpx.get("http://localhost:9009/health", timeout=3)
         assert r.status_code == 200
         data = r.json()
         assert data["cost"] == "$0.00/month"

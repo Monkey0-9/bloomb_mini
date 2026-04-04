@@ -8,7 +8,7 @@ Use cases:
 - Cloud-free fallback imagery
 - Long historical archive (1972-present) for baseline comparison
 """
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 
@@ -62,7 +62,7 @@ def search_landsat_scenes(
         return {"error": f"Unknown target: {target_key}"}
 
     lat, lon = target["lat"], target["lon"]
-    date_end = datetime.now(timezone.utc)
+    date_end = datetime.now(UTC)
     date_start = date_end - timedelta(days=days_back)
 
     # Use USGS EarthExplorer public scene search (no auth needed for search)
@@ -108,7 +108,7 @@ def search_landsat_scenes(
                 }
                 for s in scenes
             ],
-            "as_of": datetime.now(timezone.utc).isoformat(),
+            "as_of": datetime.now(UTC).isoformat(),
         }
     except Exception as e:
         # Fallback: Return target metadata without live scene results
@@ -121,7 +121,7 @@ def search_landsat_scenes(
             "scenes_found": 0,
             "scenes": [],
             "note": f"Live scene search requires USGS EarthExplorer auth — register free at ers.cr.usgs.gov. Error: {e}",
-            "as_of": datetime.now(timezone.utc).isoformat(),
+            "as_of": datetime.now(UTC).isoformat(),
         }
 
 

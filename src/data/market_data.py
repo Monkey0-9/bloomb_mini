@@ -1,18 +1,33 @@
-import yfinance as yf
-import pandas as pd
-import structlog
-from datetime import datetime, timezone
-from functools import lru_cache
-from typing import Literal, Any, Dict, List
+import os
 import time
+from datetime import UTC, datetime
+from typing import Any
+
+import alpaca_trade_api as alpaca
+import structlog
+import yfinance as yf
+from dotenv import load_dotenv
+
+load_dotenv()
 
 log = structlog.get_logger()
 
-# Global equity universe — 200 tickers covering all major exchanges
-# Bloomberg covers 50,000+. yfinance covers all of them.
-# Start with 200 key tickers. Users can search any ticker in the command line.
+# Alpaca Client Initialization
+ALPACA_KEY = os.getenv("ALPACA_API_KEY")
+ALPACA_SECRET = os.getenv("ALPACA_SECRET_KEY")
+ALPACA_URL = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+
+def get_alpaca_client():
+    if not ALPACA_KEY or not ALPACA_SECRET:
+        return None
+    try:
+        return alpaca.REST(ALPACA_KEY, ALPACA_SECRET, ALPACA_URL, api_version='v2')
+    except Exception as e:
+        log.error("alpaca_init_error", error=str(e))
+        return None
+
+# Global equity universe
 GLOBAL_UNIVERSE = {
-    # US Mega Cap
     "AAPL": ("Apple Inc", "NASDAQ", "Technology"),
     "MSFT": ("Microsoft", "NASDAQ", "Technology"),
     "NVDA": ("NVIDIA", "NASDAQ", "Technology"),
@@ -20,115 +35,75 @@ GLOBAL_UNIVERSE = {
     "GOOGL": ("Alphabet", "NASDAQ", "Technology"),
     "META": ("Meta Platforms", "NASDAQ", "Technology"),
     "TSLA": ("Tesla", "NASDAQ", "Consumer Discretionary"),
-    "BRK-B": ("Berkshire Hathaway", "NYSE", "Financials"),
     "JPM": ("JPMorgan Chase", "NYSE", "Financials"),
     "V": ("Visa", "NYSE", "Financials"),
-    "MA": ("Mastercard", "NYSE", "Financials"),
-    "UNH": ("UnitedHealth", "NYSE", "Healthcare"),
     "XOM": ("Exxon Mobil", "NYSE", "Energy"),
-    "CVX": ("Chevron", "NYSE", "Energy"),
-    "JNJ": ("Johnson & Johnson", "NYSE", "Healthcare"),
-    "PG": ("Procter & Gamble", "NYSE", "Consumer Staples"),
-    "HD": ("Home Depot", "NYSE", "Consumer Discretionary"),
-    "WMT": ("Walmart", "NYSE", "Consumer Staples"),
-    "COST": ("Costco", "NASDAQ", "Consumer Staples"),
-    "MCD": ("McDonald's", "NYSE", "Consumer Discretionary"),
-    # SatTrade core universe
     "AMKBY": ("AP Moller-Maersk ADR", "OTC", "Industrials"),
     "ZIM": ("ZIM Integrated", "NYSE", "Industrials"),
     "MT": ("ArcelorMittal", "NYSE", "Materials"),
     "LNG": ("Cheniere Energy", "NYSE", "Energy"),
-    "X": ("US Steel", "NYSE", "Materials"),
-    "NUE": ("Nucor", "NYSE", "Materials"),
-    "MATX": ("Matson", "NYSE", "Industrials"),
-    "TGT": ("Target", "NYSE", "Consumer Staples"),
-    "FDX": ("FedEx", "NYSE", "Industrials"),
-    "UPS": ("United Parcel Service", "NYSE", "Industrials"),
-    "DAL": ("Delta Air Lines", "NYSE", "Industrials"),
-    "CCL": ("Carnival", "NYSE", "Consumer Discretionary"),
-    "CAT": ("Caterpillar", "NYSE", "Industrials"),
-    "BHP": ("BHP Group", "NYSE", "Materials"),
-    "VALE": ("Vale SA", "NYSE", "Materials"),
-    "RIO": ("Rio Tinto", "NYSE", "Materials"),
-    # UK / LSE
-    "SHEL.L": ("Shell PLC", "LSE", "Energy"),
-    "BP.L": ("BP PLC", "LSE", "Energy"),
-    "AZN.L": ("AstraZeneca", "LSE", "Healthcare"),
-    "HSBA.L": ("HSBC Holdings", "LSE", "Financials"),
-    "ULVR.L": ("Unilever", "LSE", "Consumer Staples"),
-    "LSEG.L": ("London Stock Exchange Group", "LSE", "Financials"),
-    "RR.L": ("Rolls-Royce", "LSE", "Industrials"),
-    "VOD.L": ("Vodafone", "LSE", "Communication"),
-    # Europe
-    "SAP.DE": ("SAP SE", "XETRA", "Technology"),
-    "SIE.DE": ("Siemens AG", "XETRA", "Industrials"),
-    "ASML.AS": ("ASML Holding", "AMS", "Technology"),
-    "LVMH.PA": ("LVMH", "EPA", "Consumer Discretionary"),
-    "OR.PA": ("L'Oreal", "EPA", "Consumer Staples"),
-    "TTE.PA": ("TotalEnergies", "EPA", "Energy"),
-    "NESN.SW": ("Nestle SA", "SWX", "Consumer Staples"),
-    "NOVN.SW": ("Novartis", "SWX", "Healthcare"),
-    "HLAG.DE": ("Hapag-Lloyd", "XETRA", "Industrials"),
-    # Asia
-    "7203.T": ("Toyota Motor", "TSE", "Consumer Discretionary"),
-    "6758.T": ("Sony Group", "TSE", "Technology"),
-    "9984.T": ("SoftBank Group", "TSE", "Technology"),
-    "005930.KS": ("Samsung Electronics", "KRX", "Technology"),
-    "000660.KS": ("SK Hynix", "KRX", "Technology"),
-    "005490.KS": ("POSCO Holdings", "KRX", "Materials"),
-    "1919.HK": ("COSCO Shipping", "HKEX", "Industrials"),
-    "700.HK": ("Tencent Holdings", "HKEX", "Technology"),
-    "9988.HK": ("Alibaba Group", "HKEX", "Technology"),
-    "2318.HK": ("Ping An Insurance", "HKEX", "Financials"),
-    "RELIANCE.NS": ("Reliance Industries", "NSE", "Energy"),
-    "TCS.NS": ("Tata Consultancy", "NSE", "Technology"),
-    "INFY.NS": ("Infosys", "NSE", "Technology"),
-    "HDFCBANK.NS": ("HDFC Bank", "NSE", "Financials"),
-    "WIPRO.NS": ("Wipro", "NSE", "Technology"),
-    # Commodities ETFs (proxy)
-    "GLD": ("SPDR Gold ETF", "NYSE", "Commodities"),
-    "SLV": ("iShares Silver ETF", "NYSE", "Commodities"),
-    "USO": ("United States Oil Fund", "NYSE", "Commodities"),
-    "DBA": ("Invesco DB Agriculture", "NYSE", "Commodities"),
-    "PDBC": ("Invesco Optimum Yield", "NYSE", "Commodities"),
 }
 
-_price_cache: Dict[str, Dict[str, Any]] = {}
+_price_cache: dict[str, dict[str, Any]] = {}
 _cache_timestamp: float = 0
-CACHE_TTL_SECONDS = 30  # refresh prices every 30 seconds
-
+CACHE_TTL_SECONDS = 30
 
 def get_stock_price(ticker: str) -> dict[str, Any]:
-    """Get real-time price for a single ticker."""
     prices = get_bulk_prices([ticker])
     return prices.get(ticker, {"ticker": ticker, "error": "Price not found"})
 
-def get_bulk_prices(tickers: List[str] | None = None) -> Dict[str, Dict[str, Any]]:
-    """
-    Fetch real prices for all tickers via yfinance.
-    Cached for 30 seconds to avoid rate limiting.
-    """
+def get_bulk_prices(tickers: list[str] | None = None) -> dict[str, dict[str, Any]]:
+    """Fetch real prices via Alpaca (primary) or yfinance (fallback)."""
     global _price_cache, _cache_timestamp
 
     now = time.time()
-    if _price_cache and (now - _cache_timestamp) < CACHE_TTL_SECONDS:
+    if _price_cache and (now - _cache_timestamp) < CACHE_TTL_SECONDS and not tickers:
         return _price_cache
 
     tickers = tickers or list(GLOBAL_UNIVERSE.keys())
+    client = get_alpaca_client()
+    result = {}
 
+    if client:
+        try:
+            log.info("fetching_alpaca_bulk", count=len(tickers))
+            snapshots = client.get_snapshots(tickers[:100])
+            for ticker, snap in snapshots.items():
+                meta = GLOBAL_UNIVERSE.get(ticker, (ticker, "US", "Equity"))
+                result[ticker] = {
+                    "ticker": ticker,
+                    "name": meta[0],
+                    "exchange": meta[1],
+                    "sector": meta[2],
+                    "price": round(snap.latest_trade.p, 2),
+                    "prev_close": round(snap.prev_daily_bar.c, 2),
+                    "change_pct": round((snap.latest_trade.p - snap.prev_daily_bar.c) / snap.prev_daily_bar.c * 100, 2) if snap.prev_daily_bar.c else 0,
+                    "volume": int(snap.daily_bar.v),
+                    "high": round(snap.daily_bar.h, 2),
+                    "low": round(snap.daily_bar.l, 2),
+                    "source": "alpaca_bulk",
+                    "updated_at": datetime.now(UTC).isoformat(),
+                }
+
+            remaining = [t for t in tickers if t not in result]
+            if remaining:
+                result.update(_fetch_yfinance_bulk(remaining))
+
+            _price_cache = result
+            _cache_timestamp = now
+            return result
+        except Exception as e:
+            log.error("alpaca_bulk_error", error=str(e))
+
+    result = _fetch_yfinance_bulk(tickers)
+    _price_cache = result
+    _cache_timestamp = now
+    return result
+
+def _fetch_yfinance_bulk(tickers: list[str]) -> dict[str, dict[str, Any]]:
     try:
-        # Batch download — much faster than individual requests
-        raw = yf.download(
-            tickers[:100],  # yfinance handles up to 100 at once well
-            period="2d",
-            interval="1d",
-            group_by="ticker",
-            auto_adjust=True,
-            progress=False,
-            threads=True,
-        )
-
-        result = {}
+        raw = yf.download(tickers[:100], period="2d", interval="1d", group_by="ticker", auto_adjust=True, progress=False, threads=True)
+        res = {}
         for ticker in tickers[:100]:
             try:
                 if ticker in raw.columns.get_level_values(0):
@@ -137,33 +112,19 @@ def get_bulk_prices(tickers: List[str] | None = None) -> Dict[str, Dict[str, Any
                     price = float(row["Close"])
                     prev_close = float(prev_row["Close"])
                     change_pct = ((price - prev_close) / prev_close) * 100
-
-                    meta = GLOBAL_UNIVERSE.get(ticker, ("", "", ""))
-                    result[ticker] = {
-                        "ticker": ticker,
-                        "name": meta[0],
-                        "exchange": meta[1],
-                        "sector": meta[2],
-                        "price": round(price, 2),
-                        "prev_close": round(prev_close, 2),
-                        "change_pct": round(change_pct, 2),
-                        "volume": int(row.get("Volume", 0)),
-                        "high": round(float(row.get("High", price)), 2),
-                        "low": round(float(row.get("Low", price)), 2),
-                        "source": "yfinance_live",
-                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    meta = GLOBAL_UNIVERSE.get(ticker, (ticker, "", ""))
+                    res[ticker] = {
+                        "ticker": ticker, "name": meta[0], "exchange": meta[1], "sector": meta[2],
+                        "price": round(price, 2), "prev_close": round(prev_close, 2),
+                        "change_pct": round(change_pct, 2), "volume": int(row.get("Volume", 0)),
+                        "high": round(float(row.get("High", price)), 2), "low": round(float(row.get("Low", price)), 2),
+                        "source": "yfinance_bulk", "updated_at": datetime.now(UTC).isoformat(),
                     }
-            except Exception:
-                pass
-
-        _price_cache = result
-        _cache_timestamp = now
-        log.info("prices_fetched", count=len(result))
-        return result
-
+            except Exception: pass
+        return res
     except Exception as e:
-        log.error("yfinance_bulk_error", error=str(e))
-        return _price_cache  # return stale cache on error
+        log.error("yf_bulk_fallback_error", error=str(e))
+        return {}
 
 
 def get_ohlcv_history(ticker: str,
@@ -193,7 +154,7 @@ def get_ohlcv_history(ticker: str,
         return []
 
 
-def get_company_info(ticker: str) -> Dict[str, Any]:
+def get_company_info(ticker: str) -> dict[str, Any]:
     """Get company fundamentals — sector, PE, market cap, description."""
     try:
         t = yf.Ticker(ticker)
@@ -221,7 +182,7 @@ def get_company_info(ticker: str) -> Dict[str, Any]:
         return {}
 
 
-def get_options_chain(ticker: str) -> Dict[str, Any]:
+def get_options_chain(ticker: str) -> dict[str, Any]:
     """Get full options chain with PCR and max pain calculation."""
     try:
         t = yf.Ticker(ticker)
@@ -262,7 +223,7 @@ def get_options_chain(ticker: str) -> Dict[str, Any]:
         return {"ticker": ticker, "error": str(e)}
 
 
-def get_earnings_calendar(tickers: List[str]) -> List[Dict[str, Any]]:
+def get_earnings_calendar(tickers: list[str]) -> list[dict[str, Any]]:
     """Get upcoming earnings dates for a list of tickers."""
     calendar = []
     for ticker in tickers:

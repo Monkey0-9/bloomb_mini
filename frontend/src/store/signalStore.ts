@@ -36,95 +36,116 @@ interface SignalState {
   signals: Signal[];
   indices: MarketIndex[];
   events: TerminalEvent[];
+  satFeed: any[];
+  workflows: any;
   setSignals: (signals: Signal[]) => void;
   setIndices: (indices: MarketIndex[]) => void;
   setEvents: (events: TerminalEvent[]) => void;
   addEvent: (event: TerminalEvent) => void;
   fetchSignals: () => Promise<void>;
+  fetchSatFeed: () => Promise<void>;
+  fetchWorkflows: () => Promise<void>;
   handleWSUpdate: (msg: any) => void;
 }
 
 export const useSignalStore = create<SignalState>((set) => ({
   signals: [],
-  indices: [
-    { id: 'SPX', name: 'S&P 500', value: '5,123.42', change: '+1.22%', status: 'bullish' },
-    { id: 'NDX', name: 'NASDAQ', value: '18,124.55', change: '+1.54%', status: 'bullish' },
-    { id: 'DOW', name: 'DOW JONES', value: '38,984.12', change: '+0.88%', status: 'bullish' },
-    { id: 'BTC', name: 'BITCOIN', value: '64,124.00', change: '+3.44%', status: 'bullish' },
-    { id: 'CL', name: 'OIL (WTI)', value: '78.42', change: '-0.33%', status: 'bearish' },
-  ],
-  events: [
-    { id: 'e1', timestamp: '14:31', message: 'Rotterdam port throughput +34%', type: 'satellite' }
-  ],
+  satFeed: [],
+  workflows: { active: [], completed: [], system: { ingest_rate: '0 GB/s', compute: '0%', status: 'LOADING' } },
+  indices: [],
+  events: [],
   setSignals: (signals) => set({ signals }),
   setIndices: (indices) => set({ indices }),
   setEvents: (events) => set({ events }),
   addEvent: (event) => set((state) => ({ events: [event, ...state.events].slice(0, 100) })),
   fetchSignals: async () => {
     try {
-      // Fetch Thermal Signals
-      const sigResponse = await fetch('/api/intelligence/thermal');
-      if (!sigResponse.ok) throw new Error(`Thermal API failed: ${sigResponse.status}`);
-      const sigData = await sigResponse.json();
-      
-      const signals = (Array.isArray(sigData) ? sigData : []).map((s: any) => ({
-        id: `${s.lat}-${s.lon}`,
-        name: s.facility_name,
-        location: `${s.lat.toFixed(2)}, ${s.lon.toFixed(2)}`,
-        score: s.anomaly_sigma,
-        status: (s.signal ? s.signal.toLowerCase() : 'neutral') as 'bullish' | 'bearish' | 'neutral',
-        delta: s.frp_mw || 0,
-        ic: 0.12, // Placeholder for dynamically computed IC
-        icir: 1.4,
-        description: `Thermal FRP: ${s.frp_mw}MW (Confidence: ${s.confidence})`,
-        tickers: s.tickers || [],
-        lastUpdate: 'LIVE',
-        observations: 24,
-        as_of: s.timestamp || new Date().toISOString()
-      }));
-      set({ signals });
+      // Parallel fetch for optimal terminal performance
+      const [sigRes, newsRes, swarmRes] = await Promise.all([
+        fetch('/api/thermal'),
+        fetch('/api/news/live'),
+        fetch('/api/intelligence/swarm')
+      ]);
 
-      // Fetch Global News
-      const response = await fetch(`/api/news/GLOBAL`);
-      if (!response.ok) throw new Error('Failed to fetch news');
-      const data = await response.json();
-      const newsEvents = (data.news || data || []).map((n: any, idx: number) => ({
-        id: `news-${idx}`,
-        timestamp: n.pub_date,
-        message: `${n.source}: ${n.title}`,
-        url: n.link,
-        type: 'market'
-      }));
-      set({ events: newsEvents });
-      // Fetch Maritime Swarm Intelligence
-      const vesselResponse = await fetch('/api/intelligence/vessels/swarm');
-      if (vesselResponse.ok) {
-        const vesselData = await vesselResponse.json();
-        // Add Swarm Index to indices
+      if (sigRes.ok) {
+        const sigData = await sigRes.json();
+        const signals = (sigData.clusters || sigData || []).map((s: any) => ({
+          id: s.id || `${s.lat}-${s.lon}`,
+          name: s.name || s.facility_name,
+          location: `${s.lat.toFixed(2)}, ${s.lon.toFixed(2)}`,
+          score: s.sigma || s.anomaly_sigma,
+          status: (s.signal ? s.signal.toLowerCase() : 'neutral') as 'bullish' | 'bearish' | 'neutral',
+          delta: s.frp_avg || 0,
+          ic: 0.12,
+          icir: 1.4,
+          description: s.reason || `Thermal Anomaly (Sigma: ${s.sigma})`,
+          tickers: s.tickers || [],
+          lastUpdate: 'LIVE',
+          observations: s.hotspots || 24,
+          as_of: s.ts || new Date().toISOString()
+        }));
+        set({ signals });
+      }
+
+      if (newsRes.ok) {
+        const nData = await newsRes.json();
+        const newsEvents = (nData.articles || []).map((n: any, idx: number) => ({
+          id: `news-${idx}`,
+          timestamp: n.time,
+          message: `${n.source}: ${n.text}`,
+          url: n.url,
+          type: 'market' as const
+        }));
+        set((state) => ({ events: [...newsEvents, ...state.events].slice(0, 100) }));
+      }
+
+      if (swarmRes.ok) {
+        const swarmData = await swarmRes.json();
         set((state) => ({
           indices: [
             ...state.indices.filter(i => i.id !== 'GTFI'),
             { 
               id: 'GTFI', 
               name: 'GLOBAL TRADE FLOW', 
-              value: (vesselData.global_index * 100).toFixed(1), 
-              change: vesselData.global_index > 0.8 ? 'Optimal' : 'Disrupted',
-              status: vesselData.global_index > 0.8 ? 'bullish' : 'bearish' 
+              value: (swarmData.gtfi_score * 100).toFixed(1), 
+              change: swarmData.gtfi_score > 0.8 ? 'Optimal' : 'Disrupted',
+              status: swarmData.gtfi_score > 0.8 ? 'bullish' : 'bearish' 
             }
           ]
         }));
         
-        // Add Swarm Alerts to events
-        const swarmEvents = (vesselData.alerts || []).map((a: any) => ({
-          id: a.id,
-          timestamp: new Date(a.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          message: `[MARITIME SWARM] ${a.reason} (${a.location})`,
-          type: 'system'
+        const swarmEvents = (swarmData.predictions || []).map((p: any, idx: number) => ({
+          id: `swarm-${idx}`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          message: `[SWARM] ${p.prediction} (Conf: ${p.confidence}%)`,
+          type: 'system' as const
         }));
         set((state) => ({ events: [...swarmEvents, ...state.events].slice(0, 100) }));
       }
     } catch (err) {
       console.error('Failed to fetch intelligence data:', err);
+    }
+  },
+  fetchSatFeed: async () => {
+    try {
+      const resp = await fetch('/api/satfeed');
+      if (resp.ok) {
+        const data = await resp.json();
+        set({ satFeed: data.feed || [] });
+      }
+    } catch (err) {
+      console.error('Failed to fetch sat feed:', err);
+    }
+  },
+  fetchWorkflows: async () => {
+    try {
+      const resp = await fetch('/api/workflows');
+      if (resp.ok) {
+        const data = await resp.json();
+        set({ workflows: data });
+      }
+    } catch (err) {
+      console.error('Failed to fetch workflows:', err);
     }
   },
   handleWSUpdate: (msg) => {

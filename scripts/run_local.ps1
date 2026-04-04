@@ -12,7 +12,7 @@ if (-not (Test-Path .env)) {
 
 # 2. Start Backend (in new terminal)
 Write-Host "[*] Launching Backend API server..." -ForegroundColor Green
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd C:\satellite_trade; uvicorn src.api.server:app --reload --port 8000"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd C:\satellite_trade; uvicorn src.api.server:app --reload --port 9009"
 
 # 3. Start Frontend (in new terminal)
 Write-Host "[*] Launching Frontend Development server..." -ForegroundColor Green
@@ -20,6 +20,6 @@ Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd C:\satellite_t
 
 Write-Host "════════════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host "  LOCAL INSTANCE INITIALIZING" -ForegroundColor Green
-Write-Host "  API: http://localhost:8000"
+Write-Host "  API: http://localhost:9009"
 Write-Host "  Vite: http://localhost:3000 (check Vite output for port)"
 Write-Host "════════════════════════════════════════════════════════" -ForegroundColor Cyan

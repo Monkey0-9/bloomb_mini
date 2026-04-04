@@ -8,7 +8,7 @@ from typing import List, Dict, Optional, Union, Any
 class Terminal:
     """The SatTrade Terminal SDK for Quantitative Analysts."""
     
-    def __init__(self, api_base: str = "http://localhost:8000", token: Optional[str] = None):
+    def __init__(self, api_base: str = "http://localhost:9009", token: Optional[str] = None):
         self.api_base = api_base.rstrip('/')
         self.token = token
         self.session = requests.Session()
@@ -42,7 +42,7 @@ class Terminal:
     
     def get_forecast(self, ticker: str) -> pd.DataFrame:
         """Fetch Temporal Fusion Transformer (TFT) quantile forecasts."""
-        url = f"{self.api_base}/api/signals/forecast/{ticker}"
+        url = f"{self.api_base}/api/alpha/forecast/{ticker}"
         resp = self.session.get(url)
         resp.raise_for_status()
         data = resp.json()

@@ -25,7 +25,7 @@ async def get_market_snapshot(tickers: list[str]) -> list[MarketSnapshot]:
     try:
         if not tickers: return []
         data = yf.download(tickers, period="2d", group_by="ticker", progress=False)
-        
+
         snapshots = []
         for t in tickers:
             try:
@@ -55,7 +55,7 @@ async def get_ticker_details(ticker: str) -> dict[str, Any]:
             "options": t.options
         }
     except Exception as e:
-        logger.error(f"Ticker details error for %s: %s", ticker, e)
+        logger.error("Ticker details error for %s: %s", ticker, e)
         return {}
 
 def get_ohlcv_history(ticker: str, period: str = "3mo") -> Any:

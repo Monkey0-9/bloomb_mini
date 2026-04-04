@@ -1,4 +1,5 @@
-from typing import Any, Dict, List
+from typing import Any
+
 import pandas as pd
 import structlog
 
@@ -11,7 +12,7 @@ class BacktestEngine:
     def __init__(self) -> None:
         self.log = log.bind(component="backtest_engine")
 
-    def run_simulation(self, ticker: str, signals: List[Dict[str, Any]], prices: pd.DataFrame) -> Dict[str, Any]:
+    def run_simulation(self, ticker: str, signals: list[dict[str, Any]], prices: pd.DataFrame) -> dict[str, Any]:
         """
         Runs a simulation of a strategy based on provided signals.
         """
@@ -19,7 +20,7 @@ class BacktestEngine:
         capital = initial_capital
         position = 0
         trades = []
-        
+
         for i, row in prices.iterrows():
             # Match signal to date if possible, here simplified
             day_signal = [s for s in signals if s["date"] == i.strftime("%Y-%m-%d")]
@@ -35,7 +36,7 @@ class BacktestEngine:
                     capital = position * row["Close"]
                     position = 0
                     trades.append({"date": i, "side": "SELL", "price": row["Close"]})
-                    
+
         final_value = capital + (position * prices.iloc[-1]["Close"] if position > 0 else 0)
         return {
             "pnl": final_value - initial_capital,

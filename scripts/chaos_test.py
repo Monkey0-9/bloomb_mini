@@ -30,4 +30,4 @@ def run_chaos_test(target_url: str):
         time.sleep(random.uniform(0.1, 0.5))
 
 if __name__ == "__main__":
-    run_chaos_test("http://localhost:8000")
+    run_chaos_test("http://localhost:9009")

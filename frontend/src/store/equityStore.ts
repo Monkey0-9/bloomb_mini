@@ -36,13 +36,12 @@ export const useEquityStore = create<EquityState>()(
       fetchEquities: async () => {
         try {
           const wl = get().watchlist;
-          const tickers = wl.length > 0 ? wl.join(',') : 'AAPL,TSLA,MSFT,MT,ZIM';
-          const API_BASE = import.meta.env.VITE_API_URL || '';
-          const response = await fetch(`${API_BASE}/api/market/snapshot?tickers=${tickers}`);
+          const tickers = wl.length > 0 ? wl.join(',') : 'AAPL,TSLA,MSFT,MT,ZIM,LNG,FDX,UPS';
+          const response = await fetch(`/api/market/prices?tickers=${tickers}`);
           if (!response.ok) throw new Error('Network response was not ok');
           const data = await response.json();
           
-          const newEquities = (Array.isArray(data) ? data : []).map((p: any) => ({
+          const newEquities = Object.values(data.prices || {}).map((p: any) => ({
              ticker: p.ticker,
              name: p.ticker,
              exchange: 'GLOBAL',
@@ -50,7 +49,7 @@ export const useEquityStore = create<EquityState>()(
              change: p.change_pct,
              bid: p.price,
              ask: p.price,
-             sat_signal: 'NEUTRAL'
+             sat_signal: (p.price > 0 && p.change_pct > 0.5) ? 'BULLISH' : (p.change_pct < -0.5) ? 'BEARISH' : 'NEUTRAL'
           }));
           set({ equities: newEquities });
         } catch (err) {

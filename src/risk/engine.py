@@ -13,8 +13,7 @@ import json
 import os
 import time
 import uuid
-from dataclasses import dataclass, field, asdict
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import asdict, dataclass, field
 
 import numpy as np
 import structlog
@@ -55,8 +54,8 @@ class PortfolioState:
     equity: float
     gross_exposure: float
     net_exposure: float
-    positions: Dict[str, float]
-    sector_exposure: Dict[str, float]
+    positions: dict[str, float]
+    sector_exposure: dict[str, float]
 
 
 @dataclass
@@ -64,8 +63,8 @@ class GateResult:
     gate_name: str
     result: str        # PASS | FAIL
     reason: str
-    computed_value: Optional[float] = None
-    threshold: Optional[float] = None
+    computed_value: float | None = None
+    threshold: float | None = None
 
 
 @dataclass
@@ -73,11 +72,11 @@ class RiskAuditRecord:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     user_id: str = ""
     ticker: str = ""
-    gate_results: List[GateResult] = field(default_factory=list)
+    gate_results: list[GateResult] = field(default_factory=list)
     overall: str = "PASS"
     computed_var: float = 0.0
     computed_cvar: float = 0.0
-    signal_freshness_map: Dict[str, float] = field(default_factory=dict)
+    signal_freshness_map: dict[str, float] = field(default_factory=dict)
     timestamp_utc: float = field(default_factory=time.time)
     latency_ms: float = 0.0
 
@@ -94,7 +93,7 @@ class MonteCarloVaR:
 
     def _skewed_normal_params(
         self, p10: float, p50: float, p90: float, last_price: float
-    ) -> Tuple[float, float, float]:
+    ) -> tuple[float, float, float]:
         """Fit mean, std, skew from P10/P50/P90 return space."""
         r10 = np.log(p10 / last_price) if last_price and p10 > 0 else -0.02
         r50 = np.log(p50 / last_price) if last_price and p50 > 0 else 0.0
@@ -116,10 +115,10 @@ class MonteCarloVaR:
 
     async def compute(
         self,
-        positions: List[Position],
+        positions: list[Position],
         equity: float,
-        tft_forecasts: Optional[Dict[str, dict]] = None,
-    ) -> Tuple[float, float]:
+        tft_forecasts: dict[str, dict] | None = None,
+    ) -> tuple[float, float]:
         """
         Returns (VaR_99, CVaR_99) as fraction of equity.
         Uses Cholesky decomposition for joint distribution.
@@ -149,7 +148,8 @@ class MonteCarloVaR:
 
         # VaR_99 and CVaR_99
         var_99 = float(-np.percentile(portfolio_pnl, 1))
-        cvar_99 = float(-np.mean(portfolio_pnl[portfolio_pnl <= -var_99]))
+        with np.errstate(invalid='ignore', divide='ignore'):
+            cvar_99 = float(-np.mean(portfolio_pnl[portfolio_pnl <= -var_99]))
         if np.isnan(cvar_99):
             cvar_99 = var_99 * 1.2
 
@@ -163,7 +163,7 @@ class KillSwitch:
 
     def __init__(self) -> None:
         self._redis = None
-        self._secret_hash: Optional[str] = None
+        self._secret_hash: str | None = None
 
     async def _get_redis(self):
         if self._redis is None:
@@ -236,7 +236,7 @@ class RiskEngine:
                 pass
         return self._redis
 
-    async def _get_mid_market(self, ticker: str) -> Optional[float]:
+    async def _get_mid_market(self, ticker: str) -> float | None:
         r = await self._get_redis()
         if r:
             try:
@@ -252,11 +252,11 @@ class RiskEngine:
                 pass
         return None
 
-    async def _get_portfolio(self, user_id: str) -> Tuple[List[Position], float]:
+    async def _get_portfolio(self, user_id: str) -> tuple[list[Position], float]:
         """Fetch current positions and equity from Redis."""
         r = await self._get_redis()
         equity = 100_000.0  # default
-        positions: List[Position] = []
+        positions: list[Position] = []
         if r:
             try:
                 raw = await r.get(f"portfolio:{user_id}")
@@ -268,10 +268,10 @@ class RiskEngine:
                 pass
         return positions, equity
 
-    async def _get_signal_freshness(self, ticker: str) -> Dict[str, float]:
+    async def _get_signal_freshness(self, ticker: str) -> dict[str, float]:
         """Return age_s for each signal source for satellite staleness gate."""
         r = await self._get_redis()
-        freshness: Dict[str, float] = {}
+        freshness: dict[str, float] = {}
         if r:
             for key in ["thermal_frp", "vessel_density", "dark_vessel"]:
                 try:
@@ -306,7 +306,7 @@ class RiskEngine:
         side = trade.get("side", "LONG")
         user_id = trade.get("user_id", "anonymous")
 
-        gates: List[GateResult] = []
+        gates: list[GateResult] = []
         overall = "PASS"
 
         # Parallelise independent data fetches

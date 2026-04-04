@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import AsyncGenerator
-
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import DeclarativeBase
 import os
+from collections.abc import AsyncGenerator
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
 
 # Default to SQLite for zero-config local development
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./sattrade.db")

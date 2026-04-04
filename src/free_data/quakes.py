@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
@@ -48,13 +48,13 @@ async def get_latest_quakes() -> list[SeismicEvent]:
             resp = await client.get(USGS_URL)
             data = resp.json()
             features = data.get("features", [])
-            
+
             events = []
             for f in features:
                 props = f["properties"]
                 geom = f["geometry"]
                 lon, lat, depth = geom["coordinates"]
-                
+
                 impact_tickers = []
                 is_choke = False
                 for cp in CHOKEPOINTS:
@@ -62,16 +62,16 @@ async def get_latest_quakes() -> list[SeismicEvent]:
                     if dist < cp["radius_km"]:
                         impact_tickers.extend(cp["tickers"])
                         is_choke = True
-                
+
                 events.append(SeismicEvent(
                     id=f["id"], mag=float(props["mag"]),
                     place=props["place"],
-                    time=datetime.fromtimestamp(props["time"]/1000, tz=timezone.utc),
+                    time=datetime.fromtimestamp(props["time"]/1000, tz=UTC),
                     lat=float(lat), lon=float(lon), depth_km=float(depth),
                     impact_tickers=list(set(impact_tickers)),
                     is_near_chokepoint=is_choke
                 ))
-            
+
             return events
     except Exception as e:
         logger.error(f"Seismic tracking error: {e}")

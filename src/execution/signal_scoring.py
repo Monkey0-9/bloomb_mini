@@ -16,7 +16,8 @@ import logging
 import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import cast
+
 import numpy as np
 
 logger = logging.getLogger(__name__)

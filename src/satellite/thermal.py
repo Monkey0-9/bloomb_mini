@@ -7,7 +7,7 @@ Registration: https://firms.modaps.eosdis.nasa.gov/api/area/
 """
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
@@ -94,7 +94,7 @@ def _get_global_firms_data() -> list[dict]:
     """Fetch and cache the global 24h FIRMS CSV (No API Key needed)."""
     global _cached_global_csv, _cache_time
     import time
-    
+
     # Cache for 10 minutes
     if _cached_global_csv is not None and (time.time() - _cache_time) < 600:
         return _cached_global_csv
@@ -105,7 +105,7 @@ def _get_global_firms_data() -> list[dict]:
         lines = resp.text.strip().split("\n")
         if len(lines) < 2:
             return []
-            
+
         headers = lines[0].strip().split(",")
         records = []
         for line in lines[1:]:
@@ -113,7 +113,7 @@ def _get_global_firms_data() -> list[dict]:
                 vals = line.strip().split(",")
                 if len(vals) >= len(headers):
                     records.append(dict(zip(headers, vals)))
-                    
+
         _cached_global_csv = records
         _cache_time = time.time()
         return records
@@ -179,7 +179,7 @@ def scan_industrial_facilities(day_range: int = 1) -> list[dict]:
                 "signal": "NEUTRAL",
                 "signal_reason": "No thermal anomalies detected in the last 24h",
                 "detections": [],
-                "as_of": datetime.now(timezone.utc).isoformat(),
+                "as_of": datetime.now(UTC).isoformat(),
             })
             continue
 
@@ -221,7 +221,7 @@ def scan_industrial_facilities(day_range: int = 1) -> list[dict]:
             "signal": signal,
             "signal_reason": reason,
             "detections": detections,
-            "as_of": datetime.now(timezone.utc).isoformat(),
+            "as_of": datetime.now(UTC).isoformat(),
         })
 
     return results

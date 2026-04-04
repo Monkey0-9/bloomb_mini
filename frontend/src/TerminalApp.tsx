@@ -30,6 +30,9 @@ import AlertsView from './views/AlertsView';
 import WorkflowView from './views/WorkflowView';
 import DarkPoolView from './views/DarkPoolView';
 import InsiderView from './views/InsiderView';
+import WarRoomView from './views/WarRoomView';
+import SandboxView from './views/SandboxView';
+import GodModeView from './views/GodModeView';
 import { useEquityStore } from './store/equityStore';
 
 // Components
@@ -39,6 +42,7 @@ import IntelligenceFeed from './components/IntelligenceFeed';
 import WatchlistPanel from './components/WatchlistPanel';
 import GlobalGlobe from './components/GlobalGlobe';
 import TerminalOutput from './components/TerminalOutput';
+import IntelligenceDetails from './components/IntelligenceDetails';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 const UI_LAYOUT = {
@@ -51,27 +55,36 @@ export default function TerminalApp() {
   const [command, setCommand] = useState('');
   const terminalRef = useRef<HTMLDivElement>(null);
 
-  const { fetchSignals } = useSignalStore();
+  const { fetchSignals, fetchSatFeed, fetchWorkflows } = useSignalStore();
+  const { fetchEquities } = useEquityStore();
   const { fetchFlights } = useFlightStore();
   const { fetchVessels } = useVesselStore();
   const { fetchSatellites } = useSatelliteStore();
 
   // Global Data Induction for Terminal Parity
   useEffect(() => {
+    // Initial data fetch
     fetchSignals();
+    fetchSatFeed();
+    fetchWorkflows();
+    fetchEquities();
     fetchFlights();
     fetchVessels();
     fetchSatellites();
     
+    // Set up polling intervals
     const interval = setInterval(() => {
       fetchSignals();
+      fetchSatFeed();
+      fetchWorkflows();
+      fetchEquities();
       fetchFlights();
       fetchVessels();
       fetchSatellites();
     }, 30000); // 30s refresh cycle
     
     return () => clearInterval(interval);
-  }, [fetchSignals, fetchFlights, fetchVessels, fetchSatellites]);
+  }, [fetchSignals, fetchFlights, fetchVessels, fetchSatellites, fetchEquities]);
 
   // Keyboard layout for Terminal Parity
   useEffect(() => {
@@ -80,10 +93,15 @@ export default function TerminalApp() {
         e.preventDefault();
         // Focus search/command bar
       }
+      // GodMode Shortcut (Inspired by smol-ai/GodMode)
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'g') {
+        e.preventDefault();
+        setView('godmode');
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [setView]);
 
   const handleCommand = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,50 +113,62 @@ export default function TerminalApp() {
     setCommand('');
   };
 
+  console.log("TerminalApp Rendering", { selectedView });
+
   const renderView = () => {
-    switch (selectedView) {
-      case 'world':
-        return <WorldView />;
-      case 'charts':
-        return <ChartView />;
-      case 'matrix':
-        return <SignalMatrix />;
-      case 'satellite_feed':
-        return <SatelliteFeed />;
-      case 'global_equities':
-        return <GlobalEquitiesView />;
-      case 'terminal':
-        return <RawTerminalMode />;
-      case 'research':
-        return <ResearchView />;
-      case 'education':
-        return <EducationView />;
-      case 'news':
-        return <NewsHubView />;
-      case 'feed':
-        return <FeedView />;
-      case 'economics':
-        return <EconomicsView />;
-      case 'earnings':
-        return <EarningsView />;
-      case 'portfolio':
-        return <PortfolioView />;
-      case 'launchpad':
-        return <LaunchpadView />;
-      case 'alerts':
-        return <AlertsView />;
-      case 'workflow':
-        return <WorkflowView />;
-      case 'settings':
-        return <SettingsView />;
-      case 'dark_pools':
-        return <DarkPoolView />;
-      case 'insider':
-        return <InsiderView />;
-      case 'help':
-        return <HelpView />;
-      default:
-        return <SatelliteFeed />;
+    try {
+      switch (selectedView) {
+        case 'world':
+          return <WorldView />;
+        case 'charts':
+          return <ChartView />;
+        case 'matrix':
+          return <SignalMatrix />;
+        case 'satellite_feed':
+          return <SatelliteFeed />;
+        case 'global_equities':
+          return <GlobalEquitiesView />;
+        case 'terminal':
+          return <RawTerminalMode />;
+        case 'research':
+          return <ResearchView />;
+        case 'education':
+          return <EducationView />;
+        case 'news':
+          return <NewsHubView />;
+        case 'feed':
+          return <FeedView />;
+        case 'economics':
+          return <EconomicsView />;
+        case 'earnings':
+          return <EarningsView />;
+        case 'portfolio':
+          return <PortfolioView />;
+        case 'launchpad':
+          return <LaunchpadView />;
+        case 'alerts':
+          return <AlertsView />;
+        case 'workflow':
+          return <WorkflowView />;
+        case 'settings':
+          return <SettingsView />;
+        case 'dark_pools':
+          return <DarkPoolView />;
+        case 'insider':
+          return <InsiderView />;
+        case 'war_room':
+          return <WarRoomView />;
+        case 'sandbox':
+          return <SandboxView />;
+        case 'godmode':
+          return <GodModeView />;
+        case 'help':
+          return <HelpView />;
+        default:
+          return <SatelliteFeed />;
+      }
+    } catch (err) {
+      return <div className="p-8 text-bear">Render Error: {String(err)}</div>;
     }
   };
 
@@ -200,6 +230,7 @@ export default function TerminalApp() {
 
       {/* GLOBAL OVERLAYS */}
       <TerminalOutput />
+      <IntelligenceDetails />
     </div>
   );
 }

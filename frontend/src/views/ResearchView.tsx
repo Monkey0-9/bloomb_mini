@@ -115,7 +115,7 @@ const ResearchView = () => {
     scrollToBottom();
   }, [messages]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!input.trim()) return;
 
     const userMessage: Message = {
@@ -146,37 +146,53 @@ const ResearchView = () => {
     }
 
     // Institutional Perplexity Simulation
-    setTimeout(() => {
+    try {
+      const resp = await fetch('/api/command/route', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: input })
+      });
+      
       setIsTyping(false);
-      let responseContent = '';
-      let citations: Citation[] = [];
-      let widget: any = undefined;
+      
+      if (resp.ok) {
+          const data = await resp.json();
+          let responseContent = data.synthesis || "Institutional analysis complete. No significant anomalies found.";
+          let citations: Citation[] = [];
+          
+          if (data.data?.research?.signals) {
+              citations = data.data.research.signals.map((sig: any, idx: number) => ({
+                  id: idx + 1,
+                  source: sig.headline,
+                  type: sig.type?.includes('vessel') ? 'ais' : sig.type?.includes('thermal') ? 'stac' : 'quant',
+                  confidence: Math.round((sig.effective_weight || 0.5) * 100)
+              }));
+          }
 
-      if (input.toLowerCase().includes('fertilizer') || input.toLowerCase().includes('maersk') || input.toLowerCase().includes('port')) {
-        responseContent = `Spatial anomaly detected at Port of Rotterdam (NLRTM) [1]. Dense dark-vessel clustering converging near major fertilizer terminals. SAR backscatter indicates deep draft (laden vessels). Conversely, Landsat TIRS [2] shows nominal industrial heat output at destination facilities.\n\n**Alpha Signal:** Lead-time discrepancy between vessel density and refining output suggests an upcoming supply bottleneck. ICIR Score +0.82 (High Conviction) [3].`;
-        citations = [
-            { id: 1, source: 'Copernicus Sentinel-1 SAR Backscatter (VV/VH)', type: 'stac', confidence: 94 },
-            { id: 2, source: 'USGS Landsat-8 TIRS LST Retrieval', type: 'stac', confidence: 88 },
-            { id: 3, source: 'SatTrade Alpha Risk Engine (TFT Model)', type: 'quant', confidence: 96 }
-        ];
-        widget = 'vessel_density';
+          setMessages(prev => [...prev, {
+            id: Date.now().toString(),
+            role: 'ai',
+            content: responseContent,
+            citations,
+            timestamp: new Date()
+          }]);
       } else {
-        responseContent = `I have parsed the global macro feed and orbital ingest cache. No statistically significant anomalies ($\sigma > 2$) found for this specific heuristic in the last 24H [1]. However, regional indices show elevated VIX [2]. I recommend constraining your query to specific logistical choke points (e.g., Hormuz, Panama) or industrial sectors (e.g., European Steel, LatAm Agri).`;
-        citations = [
-            { id: 1, source: 'Global Event Registry & GDELT', type: 'macro', confidence: 91 },
-            { id: 2, source: 'CBOE VIX Spot Options', type: 'quant', confidence: 99 }
-        ];
+          setMessages(prev => [...prev, {
+            id: Date.now().toString(),
+            role: 'ai',
+            content: "ERROR: Signal disruption in the LLM core. Please retry or contact SatTrade support.",
+            timestamp: new Date()
+          }]);
       }
-
+    } catch (err) {
+      setIsTyping(false);
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         role: 'ai',
-        content: responseContent,
-        citations,
-        dataWidget: widget,
+        content: `COMMUNICATION FAILURE: ${String(err)}`,
         timestamp: new Date()
       }]);
-    }, 1800 + Math.random() * 1000);
+    }
   };
 
   const formatContent = (content: string, citations?: Citation[]) => {

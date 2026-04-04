@@ -3,7 +3,6 @@ Earnings Calendar — yfinance-powered upcoming earnings tracker.
 Correlates satellite signal strength with upcoming earnings events
 to produce the satellite-vs-earnings alpha overlay.
 """
-from datetime import datetime, timezone
 
 import pandas as pd
 import yfinance as yf
@@ -77,12 +76,12 @@ def get_earnings_with_satellite_signal(satellite_signals: dict | None = None) ->
     to produce the full alpha overlay.
     """
     upcoming = get_upcoming_earnings()
-    
+
     # If no signals provided, try to fetch live ones (demo fallback)
     if satellite_signals is None:
         try:
-            from src.maritime.vessel_tracker import VesselTracker
             from src.maritime.flight_tracker import FlightTracker
+            from src.maritime.vessel_tracker import VesselTracker
             from src.signals.engine import SignalEngine
             se = SignalEngine(VesselTracker(), FlightTracker())
             live_signals = se.get_live_signals()
@@ -106,7 +105,7 @@ def get_earnings_with_satellite_signal(satellite_signals: dict | None = None) ->
         item["satellite_reason"] = sat.get("reason", "Scanning baseline...")
         item["satellite_score"] = sat.get("score", 50)
         item["alpha_opportunity"] = sat.get("signal") in ("BULLISH", "BEARISH")
-        
+
         # Priority 2 Gap: Earnings Surprise Probability
         # If signal is BULLISH and score > 70, high probability of upside surprise
         score = item["satellite_score"]
@@ -116,7 +115,7 @@ def get_earnings_with_satellite_signal(satellite_signals: dict | None = None) ->
             item["surprise_probability"] = -(0.5 + (score / 200)) # -0.5 to -1.0
         else:
             item["surprise_probability"] = 0.0
-            
+
         enriched.append(item)
 
     return enriched

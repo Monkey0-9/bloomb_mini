@@ -8,11 +8,12 @@ showing anomaly_sigma as secondary Y-axis overlay with earnings date markers.
 from __future__ import annotations
 
 import logging
-import yfinance as yf
-import pandas as pd
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+import pandas as pd
+import yfinance as yf
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ class ChartSignalPoint:
     facility_name: str
     direction: str
     is_earnings_date: bool = False
-    earnings_eps_estimate: Optional[float] = None
+    earnings_eps_estimate: float | None = None
 
 
 @dataclass
@@ -36,10 +37,10 @@ class SignalOverlayChart:
     ticker: str
     company_name: str
     price_data: pd.DataFrame  # OHLCV
-    signal_points: List[ChartSignalPoint]
-    anomaly_axis_range: Tuple[float, float]  # Min/max for secondary axis
-    earnings_dates: List[Dict[str, Any]]
-    correlation_summary: Dict[str, float]  # Signal-price correlation stats
+    signal_points: list[ChartSignalPoint]
+    anomaly_axis_range: tuple[float, float]  # Min/max for secondary axis
+    earnings_dates: list[dict[str, Any]]
+    correlation_summary: dict[str, float]  # Signal-price correlation stats
 
 
 class PriceSignalOverlay:
@@ -53,12 +54,12 @@ class PriceSignalOverlay:
     - Shows signal-to-price correlation
     - Returns data for Plotly/D3.js frontend rendering
     """
-    
+
     def __init__(self):
-        self._price_cache: Dict[str, Tuple[pd.DataFrame, datetime]] = {}
+        self._price_cache: dict[str, tuple[pd.DataFrame, datetime]] = {}
         self.cache_ttl = 300  # 5 minutes
-    
-    def fetch_price_history(self, 
+
+    def fetch_price_history(self,
                            ticker: str,
                            days: int = 90) -> pd.DataFrame:
         """
@@ -72,19 +73,19 @@ class PriceSignalOverlay:
             DataFrame with OHLCV columns
         """
         cache_key = f"{ticker}_{days}d"
-        now = datetime.now(timezone.utc)
-        
+        now = datetime.now(UTC)
+
         # Check cache
         if cache_key in self._price_cache:
             df, ts = self._price_cache[cache_key]
             if (now - ts).total_seconds() < self.cache_ttl:
                 return df
-        
+
         try:
             # Download from yfinance
             end = now
             start = end - timedelta(days=days)
-            
+
             df = yf.download(
                 ticker,
                 start=start.strftime('%Y-%m-%d'),
@@ -92,38 +93,38 @@ class PriceSignalOverlay:
                 auto_adjust=True,
                 progress=False
             )
-            
+
             if df.empty:
                 logger.warning(f"No price data for {ticker}")
                 return pd.DataFrame()
-            
+
             # Standardize columns
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
-            
+
             # Ensure standard column names
             df = df.rename(columns={
                 'Open': 'open',
-                'High': 'high', 
+                'High': 'high',
                 'Low': 'low',
                 'Close': 'close',
                 'Volume': 'volume'
             })
-            
+
             # Cache
             self._price_cache[cache_key] = (df, now)
-            
+
             logger.info(f"Fetched {len(df)} days of price data for {ticker}")
             return df
-            
+
         except Exception as e:
             logger.error(f"Price fetch failed for {ticker}: {e}")
             # Return cached if available
             if cache_key in self._price_cache:
                 return self._price_cache[cache_key][0]
             return pd.DataFrame()
-    
-    def fetch_earnings_calendar(self, ticker: str) -> List[Dict[str, Any]]:
+
+    def fetch_earnings_calendar(self, ticker: str) -> list[dict[str, Any]]:
         """
         Fetch upcoming earnings date for a ticker.
         
@@ -136,10 +137,10 @@ class PriceSignalOverlay:
         try:
             stock = yf.Ticker(ticker)
             calendar = stock.calendar
-            
+
             if calendar is None or calendar.empty:
                 return []
-            
+
             earnings = []
             # Handle both DataFrame and dict formats
             if isinstance(calendar, pd.DataFrame):
@@ -154,14 +155,14 @@ class PriceSignalOverlay:
                     'date': calendar.get('Earnings Date'),
                     'eps_estimate': calendar.get('EPS Estimate'),
                 })
-            
+
             return earnings
-            
+
         except Exception as e:
             logger.warning(f"Earnings calendar fetch failed for {ticker}: {e}")
             return []
-    
-    def get_company_info(self, ticker: str) -> Dict[str, str]:
+
+    def get_company_info(self, ticker: str) -> dict[str, str]:
         """Get company name and info from yfinance."""
         try:
             stock = yf.Ticker(ticker)
@@ -173,10 +174,10 @@ class PriceSignalOverlay:
             }
         except Exception:
             return {'name': ticker, 'sector': 'Unknown', 'industry': 'Unknown'}
-    
+
     def create_signal_overlay(self,
                              ticker: str,
-                             thermal_signals: List[Any],
+                             thermal_signals: list[Any],
                              days: int = 90) -> SignalOverlayChart:
         """
         Create price chart with satellite signal overlay.
@@ -191,24 +192,24 @@ class PriceSignalOverlay:
         """
         # Fetch price data
         price_df = self.fetch_price_history(ticker, days)
-        
+
         # Get company info
         company_info = self.get_company_info(ticker)
-        
+
         # Fetch earnings dates
         earnings = self.fetch_earnings_calendar(ticker)
-        
+
         # Filter signals for this ticker
         ticker_signals = [
             s for s in thermal_signals
             if hasattr(s, 'primary_ticker') and s.primary_ticker == ticker
         ]
-        
+
         # Convert signals to chart points
         signal_points = []
         for sig in ticker_signals:
             point = ChartSignalPoint(
-                date=sig.detected_at if hasattr(sig, 'detected_at') else datetime.now(timezone.utc),
+                date=sig.detected_at if hasattr(sig, 'detected_at') else datetime.now(UTC),
                 anomaly_sigma=sig.anomaly_sigma if hasattr(sig, 'anomaly_sigma') else 0,
                 signal_score=50 + (sig.anomaly_sigma * 20) if hasattr(sig, 'anomaly_sigma') else 50,
                 frp_mw=sig.frp_mw if hasattr(sig, 'frp_mw') else 0,
@@ -216,7 +217,7 @@ class PriceSignalOverlay:
                 direction='BULLISH' if sig.anomaly_sigma > 0 else 'BEARISH'
             )
             signal_points.append(point)
-        
+
         # Mark earnings dates on signal points
         for point in signal_points:
             for earn in earnings:
@@ -225,17 +226,17 @@ class PriceSignalOverlay:
                     if abs((point.date - earn_date).days) < 1:
                         point.is_earnings_date = True
                         point.earnings_eps_estimate = earn.get('eps_estimate')
-        
+
         # Calculate anomaly axis range
         if signal_points:
             sigmas = [p.anomaly_sigma for p in signal_points]
             anomaly_range = (min(sigmas) - 0.5, max(sigmas) + 0.5)
         else:
             anomaly_range = (-3, 3)
-        
+
         # Calculate signal-price correlation
         correlation = self._calculate_correlation(price_df, signal_points)
-        
+
         return SignalOverlayChart(
             ticker=ticker,
             company_name=company_info['name'],
@@ -245,10 +246,10 @@ class PriceSignalOverlay:
             earnings_dates=earnings,
             correlation_summary=correlation
         )
-    
-    def _calculate_correlation(self, 
+
+    def _calculate_correlation(self,
                               price_df: pd.DataFrame,
-                              signal_points: List[ChartSignalPoint]) -> Dict[str, float]:
+                              signal_points: list[ChartSignalPoint]) -> dict[str, float]:
         """
         Calculate correlation between signals and price movements.
         
@@ -257,16 +258,16 @@ class PriceSignalOverlay:
         """
         if price_df.empty or len(signal_points) < 2:
             return {'price_signal_corr': 0, 'anomaly_return_corr': 0, 'confidence': 0}
-        
+
         try:
             # Match signal dates to price dates
             signal_dates = [p.date for p in signal_points]
             sigmas = [p.anomaly_sigma for p in signal_points]
-            
+
             # Get returns for dates where we have signals
             returns = []
             aligned_sigmas = []
-            
+
             for i, date in enumerate(signal_dates):
                 # Find price on or after signal date
                 future_prices = price_df[price_df.index >= date.strftime('%Y-%m-%d')]
@@ -277,31 +278,31 @@ class PriceSignalOverlay:
                         exit_price = future_prices['close'].iloc[5]
                     else:
                         exit_price = future_prices['close'].iloc[-1]
-                    
+
                     ret = (exit_price / entry) - 1
                     returns.append(ret)
                     aligned_sigmas.append(sigmas[i])
-            
+
             if len(returns) < 2:
                 return {'price_signal_corr': 0, 'anomaly_return_corr': 0, 'confidence': 0}
-            
+
             # Calculate correlation
             from scipy.stats import spearmanr
-            
+
             corr, p_value = spearmanr(aligned_sigmas, returns)
-            
+
             return {
                 'price_signal_corr': round(corr, 3),
                 'anomaly_return_corr': round(corr, 3),
                 'confidence': round(1 - p_value, 3) if p_value else 0,
                 'n_observations': len(returns)
             }
-            
+
         except Exception as e:
             logger.warning(f"Correlation calculation failed: {e}")
             return {'price_signal_corr': 0, 'anomaly_return_corr': 0, 'confidence': 0}
-    
-    def to_plotly_data(self, chart: SignalOverlayChart) -> Dict[str, Any]:
+
+    def to_plotly_data(self, chart: SignalOverlayChart) -> dict[str, Any]:
         """
         Convert SignalOverlayChart to Plotly-compatible JSON.
         
@@ -310,9 +311,9 @@ class PriceSignalOverlay:
         """
         if chart.price_data.empty:
             return {'error': 'No price data available'}
-        
+
         df = chart.price_data
-        
+
         # Price candlestick trace
         price_trace = {
             'x': df.index.strftime('%Y-%m-%d').tolist(),
@@ -324,7 +325,7 @@ class PriceSignalOverlay:
             'name': f"{chart.ticker} Price",
             'yaxis': 'y1'
         }
-        
+
         # Volume bar trace
         volume_trace = {
             'x': df.index.strftime('%Y-%m-%d').tolist(),
@@ -334,13 +335,13 @@ class PriceSignalOverlay:
             'yaxis': 'y3',
             'marker': {'color': 'rgba(100, 100, 100, 0.3)'}
         }
-        
+
         # Anomaly signal trace (secondary y-axis)
         if chart.signal_points:
             signal_dates = [p.date.strftime('%Y-%m-%d') for p in chart.signal_points]
             signal_values = [p.anomaly_sigma for p in chart.signal_points]
             signal_colors = ['red' if p.direction == 'BEARISH' else 'green' for p in chart.signal_points]
-            
+
             signal_trace = {
                 'x': signal_dates,
                 'y': signal_values,
@@ -357,7 +358,7 @@ class PriceSignalOverlay:
             }
         else:
             signal_trace = None
-        
+
         # Earnings date markers
         shapes = []
         annotations = []
@@ -381,7 +382,7 @@ class PriceSignalOverlay:
                     'showarrow': False,
                     'font': {'color': 'purple'}
                 })
-        
+
         # Layout
         layout = {
             'title': f"{chart.company_name} ({chart.ticker}) - Satellite Signal Overlay",
@@ -409,12 +410,12 @@ class PriceSignalOverlay:
             'height': 600,
             'hovermode': 'x unified'
         }
-        
+
         # Build traces list
         traces = [price_trace, volume_trace]
         if signal_trace:
             traces.append(signal_trace)
-        
+
         return {
             'data': traces,
             'layout': layout,
@@ -425,7 +426,7 @@ class PriceSignalOverlay:
 
 
 # Singleton instance
-_overlay: Optional[PriceSignalOverlay] = None
+_overlay: PriceSignalOverlay | None = None
 
 def get_price_signal_overlay() -> PriceSignalOverlay:
     """Get or create the price signal overlay singleton."""
@@ -437,40 +438,21 @@ def get_price_signal_overlay() -> PriceSignalOverlay:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    
+
     overlay = PriceSignalOverlay()
-    
-    # Example: ArcelorMittal
-    from src.intelligence.global_engine import ThermalSignal, GlobalIntelligenceEngine
-    
-    # Create mock signals for demonstration
-    mock_signals = [
-        ThermalSignal(
-            signal_id="test_1",
-            lat=51.04,
-            lon=2.38,
-            frp_mw=85.0,
-            brightness_k=350.0,
-            anomaly_sigma=2.1,
-            cluster_size=3,
-            facility_name="ArcelorMittal Dunkirk",
-            country="France",
-            primary_ticker="MT",
-            affected_tickers=["MT", "X", "NUE"],
-            signal_reason="High thermal activity",
-            data_sources=["NASA FIRMS"],
-            detected_at=datetime.now(timezone.utc) - timedelta(days=5)
-        )
-    ]
-    
-    chart = overlay.create_signal_overlay("MT", mock_signals, days=90)
-    
+
+    # ArcelorMittal
+
+    # In production, we fetch real signals from the Intelligence Engine
+    # For testing, we can provide an empty list or fetch from DB
+    chart = overlay.create_signal_overlay("MT", [], days=90)
+
     print(f"\nPrice Chart Overlay for {chart.company_name}:")
     print(f"  Price data points: {len(chart.price_data)}")
     print(f"  Signal points: {len(chart.signal_points)}")
     print(f"  Anomaly range: {chart.anomaly_axis_range}")
     print(f"  Correlation: {chart.correlation_summary}")
-    
+
     # Generate Plotly data
     plotly_data = overlay.to_plotly_data(chart)
     print(f"\nPlotly traces: {len(plotly_data['data'])}")

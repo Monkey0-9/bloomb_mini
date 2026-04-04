@@ -6,14 +6,15 @@ Completely async via aiohttp. No blocking requests.get().
 Priority queue for ticker-specific regions.
 """
 from __future__ import annotations
+
+import asyncio
 import json
 import math
 import os
 import time
 from datetime import datetime
-from typing import Any, cast, Optional
+from typing import Any, cast
 
-import asyncio
 import aiohttp
 import structlog
 
@@ -31,7 +32,7 @@ class SentinelIngester:
     _sem = asyncio.Semaphore(15)
 
     def __init__(self) -> None:
-        self._auth_token: Optional[str] = None
+        self._auth_token: str | None = None
         self._token_expires: float = 0.0
         self._redis = None
 
@@ -47,7 +48,7 @@ class SentinelIngester:
     async def _authenticate(self) -> bool:
         """Fetch Sentinel Hub OAuth token asynchronously."""
         if not SENTINEL_HUB_CLIENT_ID or not SENTINEL_HUB_CLIENT_SECRET:
-            log.warning("sentinel_credentials_missing", detail="Using mock data mode")
+            log.warning("sentinel_credentials_missing", detail="Sentinel Hub integration DISABLED")
             return False
 
         if self._auth_token and time.time() < self._token_expires:
@@ -102,14 +103,7 @@ class SentinelIngester:
 
         has_auth = await self._authenticate()
         if not has_auth:
-            # Mock return for dev environment without keys
-            res = self._mock_thermal_response(lat, lon)
-            if r:
-                try:
-                    await r.setex(cache_key, 3600, json.dumps(res))
-                except Exception:
-                    pass
-            return res
+            return {"lat": lat, "lon": lon, "frp_mw": 0.0, "anomalies_count": 0, "age_s": 9999, "source": "none"}
 
         start_dt = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - days_back * 86400))
         end_dt = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -132,7 +126,7 @@ class SentinelIngester:
                             data = await resp.json()
                             features = data.get("features", [])
                             frp_mw = sum(f.get("properties", {}).get("FRP", 0.0) for f in features)
-                            
+
                             res = {
                                 "lat": lat, "lon": lon,
                                 "anomalies_count": len(features),
@@ -152,18 +146,7 @@ class SentinelIngester:
 
         return {"lat": lat, "lon": lon, "frp_mw": 0.0, "anomalies_count": 0, "age_s": 9999}
 
-    def _mock_thermal_response(self, lat: float, lon: float) -> dict[str, Any]:
-        """Dev mode mock data."""
-        import random
-        frp = random.uniform(0, 1500) if random.random() > 0.4 else 0.0
-        return {
-            "lat": lat, "lon": lon,
-            "anomalies_count": int(frp / 50),
-            "frp_mw": round(frp, 1),
-            "latest_acquisition": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - random.randint(3600, 86400))),
-            "age_s": random.randint(3600, 86400),
-            "source": "mock_thermal"
-        }
+    # Mock thermal response removed for production fidelity.
 
     async def fetch_optical_imagery(
         self,
@@ -200,7 +183,7 @@ class SentinelIngester:
             return [sample.B02, sample.B03, sample.B04, sample.B08, sample.B11, sample.B12];
         }
         '''
-        
+
         headers = {
             "Authorization": f"Bearer {self._auth_token}",
             "Content-Type": "application/json",
@@ -216,11 +199,11 @@ class SentinelIngester:
             "limit": 1,
             "distinct": "date"
         }
-        
+
         solar_z, solar_a = 40.0, 160.0  # Defaults
         view_z, view_a = 0.0, 0.0
         acq_month, acq_day = 6, 15
-        
+
         async with aiohttp.ClientSession(headers=headers) as session:
             async with session.post(catalog_url, json=cat_payload) as cat_resp:
                 if cat_resp.status == 200:
@@ -231,7 +214,7 @@ class SentinelIngester:
                         solar_z = 90.0 - props.get("view:sun_elevation", 50.0)
                         view_z = props.get("view:incidence_angle", 0.0)
                         view_a = props.get("view:azimuth", 0.0)
-                        
+
                         dt_str = props.get("datetime", end_dt)
                         try:
                             dt_obj = datetime.strptime(dt_str[:10], "%Y-%m-%d")
@@ -301,7 +284,7 @@ class SentinelIngester:
                             with open(filename, "wb") as f:
                                 f.write(await resp.read())
                             log.info("sentinel2_optical_downloaded", file=filename)
-                            
+
                             # Trigger Atmospheric Correction (6S)
                             try:
                                 from src.preprocess.optical import correct_atmospheric_6s

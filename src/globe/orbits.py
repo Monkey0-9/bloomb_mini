@@ -1,6 +1,7 @@
+from datetime import UTC, datetime, timedelta
+
 import httpx
 import structlog
-from datetime import datetime, timezone, timedelta
 from sgp4.api import Satrec, jday
 
 log = structlog.get_logger()
@@ -44,7 +45,7 @@ def propagate_satellite(tle1: str, tle2: str, minutes_ahead: int = 120,
     """
     satellite = Satrec.twoline2rv(tle1, tle2)
     positions = []
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     for i in range(0, minutes_ahead, step_minutes):
         t = now + timedelta(minutes=i)

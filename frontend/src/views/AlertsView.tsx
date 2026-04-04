@@ -1,4 +1,5 @@
 import React from 'react';
+import { useSignalStore } from '../store/signalStore';
 import { Bell, AlertTriangle, Info, ShieldAlert, Zap, Filter, Search, MoreHorizontal } from 'lucide-react';
 
 const AlertRow = ({ type, ticker, message, timestamp, severity }: any) => {
@@ -38,14 +39,15 @@ const AlertRow = ({ type, ticker, message, timestamp, severity }: any) => {
 };
 
 const AlertsView = () => {
-  const alerts = [
-    { type: 'SIGNAL', ticker: 'ZIM US Equity', message: 'Dark vessel density at Port of Rotterdam exceeded 3σ. Alpha Signal updated to STRONG BULLISH.', timestamp: '14:22:11 UTC', severity: 'SIGNAL' },
-    { type: 'CRITICAL', ticker: 'PORTFOLIO_NAV', message: 'Parametric VaR 99% breach (2.12% > 2.0% Limit). Automated position reduction initiated.', timestamp: '14:15:05 UTC', severity: 'CRITICAL' },
-    { type: 'WARNING', ticker: 'VALE US Equity', message: 'Landsat TIRS anomaly detected at Carajás processing plant. Capacity reduction suspected.', timestamp: '13:58:34 UTC', severity: 'WARNING' },
-    { type: 'INFO', ticker: 'SYSTEM_KERNEL', message: 'Async Landsat Ingestor refactored to Aiohttp. Latency reduced by 440ms.', timestamp: '13:45:00 UTC', severity: 'INFO' },
-    { type: 'SIGNAL', ticker: 'AMKBY US Equity', message: 'AIS/Fleet gap analysis shows 12 unidentified vessels in South China Sea. Monitoring.', timestamp: '13:12:11 UTC', severity: 'SIGNAL' },
-    { type: 'WARNING', ticker: 'MAERSK-B DC', message: 'Satellite signal confluence (Maritime + Econ) dropped below +0.40 conviction threshold.', timestamp: '12:45:22 UTC', severity: 'WARNING' },
-  ];
+  const { events } = useSignalStore();
+
+  const alerts = events.map((e: any) => ({
+    type: e.type?.toUpperCase() || 'INFO',
+    ticker: e.ticker || 'SYSTEM',
+    message: e.message,
+    timestamp: new Date(e.timestamp).toLocaleTimeString() + ' UTC',
+    severity: e.type === 'satellite' ? 'SIGNAL' : (e.type === 'military' ? 'CRITICAL' : (e.type === 'market' ? 'WARNING' : 'INFO'))
+  }));
 
   return (
     <div className="flex-1 h-full bg-void overflow-y-auto custom-scrollbar flex flex-col">

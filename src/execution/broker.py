@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass
-from typing import Literal, Any
+from typing import Any, Literal
 
 import httpx
 

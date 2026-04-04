@@ -1,43 +1,39 @@
-import logging
 import asyncio
-from typing import Dict, Any, List
-from datetime import datetime, timezone
-from src.api.agents.base import BaseAgent
-from src.maritime.flight_tracker import FlightTracker
+from datetime import UTC, datetime
+from typing import Any
 
-log = logging.getLogger(__name__)
+from src.api.agents.base import BaseAgent
+from src.live.aircraft import fetch_aircraft, to_geojson
+
 
 class FlightAgent(BaseAgent):
     """
     Agent specialized in aviation intelligence, cargo flight tracking, and logistics correlation.
     """
-    
-    def __init__(self, flight_tracker: FlightTracker = None):
+
+    def __init__(self, flight_tracker=None):
         super().__init__("FlightIntelligence")
-        self.flight_tracker = flight_tracker or FlightTracker()
         self.status = "LIVE"
 
-    async def get_state(self) -> Dict[str, Any]:
+    async def get_state(self) -> dict[str, Any]:
         """Provides high-fidelity aviation telemetry state."""
-        self.last_sync = datetime.now(timezone.utc)
-        # In a real system, the scheduler triggers the global populate/update
+        self.last_sync = datetime.now(UTC)
+        aircraft = await asyncio.to_thread(fetch_aircraft)
+        geojson = to_geojson(aircraft)
+
         return {
-            "flights": self.flight_tracker.to_geojson_feature_collection(),
-            "intelligence": self.flight_tracker.get_market_intelligence(),
-            "status": self.status
+            "flights": geojson,
+            "status": self.status,
+            "count": len(aircraft)
         }
 
-    async def process_task(self, task_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def process_task(self, task_type: str, params: dict[str, Any]) -> dict[str, Any]:
         if task_type == "GET_FLIGHT":
-            callsign = params.get("callsign")
-            flight = self.flight_tracker.get_flight(callsign)
-            return {"flight": flight}
-        elif task_type == "LIST_OPERATOR_FLIGHTS":
-            operator = params.get("operator", "")
-            flights = [f for f in self.flight_tracker.get_all_flights() if operator.lower() in f.aircraft.operator.lower()]
-            return {"flights": flights, "count": len(flights)}
-        elif task_type == "POPULATE":
-            count = params.get("count", 100)
-            await self.flight_tracker.populate_global_fleet(count)
-            return {"success": True, "count": count}
+            icao24 = params.get("icao24")
+            aircraft = await asyncio.to_thread(fetch_aircraft)
+            flight = next((a for a in aircraft if a.icao24 == icao24), None)
+            return {"flight": flight.__dict__ if flight else None}
+        elif task_type == "LIST_CARGO":
+            aircraft = await asyncio.to_thread(fetch_aircraft, ["CARGO"])
+            return {"flights": [a.__dict__ for a in aircraft], "count": len(aircraft)}
         return {"error": "Unknown task type"}

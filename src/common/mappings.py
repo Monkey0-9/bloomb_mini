@@ -7,11 +7,17 @@ to tradeable equity tickers or sector ETFs.
 
 # Facility to Company Database (Bloomberg/FactSet Revere Proxy Tier)
 FACILITY_TICKER_MAP = {
-    "port_of_long_beach": ["MATX", "DSX", "BDRY"],  # Shipping/Dry Bulk proxies
-    "port_of_singapore": ["ZIM", "GLNG"],
+    "port_of_long_beach": ["MATX", "DSX", "BDRY"],
+    "port_of_singapore": ["ZIM", "GLNG", "AMKBY"],
+    "port_of_rotterdam": ["AMKBY", "ZIM", "1919.HK"],
+    "port_of_shanghai": ["1919.HK", "AMKBY", "ZIM"],
+    "port_of_los_angeles": ["ZIM", "MATX"],
     "tesla_shanghai_gigafactory": ["TSLA"],
+    "tesla_berlin_gigafactory": ["TSLA"],
     "retail_parking_lots_global": ["WMT", "TGT", "COST"],
     "industrial_thermal_cluster_ruhr": ["BAS.DE", "SIE.DE"],
+    "arcelormittal_dunkirk": ["MT"],
+    "sabine_pass_lng": ["LNG"],
 }
 
 

@@ -29,14 +29,31 @@ const WorkflowCard = ({ title, description, status, steps, author }: any) => (
 );
 
 const WorkflowView = () => {
-  const workflows = [
-    { title: 'Dark Fleet Sanctions Scan', description: 'Monthly audit cross-referencing Sentinel-1 SAR detections with OFAC SDN list for tanker MMSI matches.', status: 'ACTIVE', steps: 8, author: 'AlphaTeam' },
-    { title: 'Port Congestion vs Retail', description: 'Correlation bridge between US West Coast dwell times and XRT Retail ETF price action.', status: 'ACTIVE', steps: 12, author: 'MacroDesk' },
-    { title: 'Thermal Industrial Signal', description: 'Real-time alerting for NASA FIRMS hotspots at top 100 global manufacturing facilities.', status: 'INACTIVE', steps: 6, author: 'EnergyQuant' },
-    { title: 'TFT Forecast Drift Monitor', description: 'Watchdog service comparing P50 forecasts with real-market realization over 5D horizons.', status: 'ACTIVE', steps: 15, author: 'System' },
-    { title: 'Cargo Flight Volume Hub', description: 'Aggregating ADS-B cargo density into Memphis (FDX) and Louisville (UPS) for logistics alpha.', status: 'ACTIVE', steps: 11, author: 'Logistics' },
-    { title: 'Spearman Macro Lead/Lag', description: 'Dynamic analysis of industrial production FRED data vs leading satellite optical signals.', status: 'ACTIVE', steps: 22, author: 'MacroDesk' },
-  ];
+  const [data, setData] = React.useState<any>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  const fetchWorkflows = async () => {
+    try {
+      const resp = await fetch('/api/workflows');
+      if (!resp.ok) throw new Error();
+      const json = await resp.json();
+      setData(json);
+    } catch (err) {
+      console.error("Failed to fetch workflows", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchWorkflows();
+    const interval = setInterval(fetchWorkflows, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const activeWorkflows = data?.active || [];
+  const completedWorkflows = data?.completed || [];
+  const system = data?.system || { ingest_rate: '0 GB/s', compute: '0%', status: 'CONNECTING' };
 
   return (
     <div className="flex-1 h-full bg-void overflow-y-auto custom-scrollbar flex flex-col">
@@ -58,10 +75,10 @@ const WorkflowView = () => {
           {/* STATS BAR */}
           <div className="grid grid-cols-4 gap-6 mb-10">
             {[
-              { label: 'Active Automations', value: '42', icon: Play, color: 'text-bull' },
-              { label: 'Cloud Ingest Rate', value: '1.2 GB/s', icon: Database, color: 'text-accent-blue' },
-              { label: 'Compute Utilization', value: '68%', icon: Cpu, color: 'text-[#C084FC]' },
-              { label: 'System Health', value: 'NOMINAL', icon: Shield, color: 'text-bull' },
+              { label: 'Active Automations', value: (activeWorkflows.length + completedWorkflows.length).toString(), icon: Play, color: 'text-bull' },
+              { label: 'Cloud Ingest Rate', value: system.ingest_rate, icon: Database, color: 'text-accent-blue' },
+              { label: 'Compute Utilization', value: system.compute, icon: Cpu, color: 'text-[#C084FC]' },
+              { label: 'System Health', value: system.status, icon: Shield, color: 'text-bull' },
             ].map((stat, i) => (
               <div key={i} className="bg-surface-1 border border-border-2 p-4 flex flex-col gap-1">
                 <div className="flex justify-between items-center">
@@ -79,7 +96,24 @@ const WorkflowView = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-             {workflows.map((w, i) => <WorkflowCard key={i} {...w} />)}
+             {activeWorkflows.map((w: any) => (
+               <WorkflowCard 
+                 key={w.simulation_id} 
+                 title={`${w.ticker} Simulation`} 
+                 description={`Real-time analysis of ${w.ticker} at stage: ${w.stage}. Progress: ${(w.progress * 100).toFixed(0)}%`}
+                 status="RUNNING"
+                 steps={8}
+               />
+             ))}
+             {completedWorkflows.map((w: any) => (
+               <WorkflowCard 
+                 key={w.simulation_id} 
+                 title={`${w.ticker} Insight: ${w.facility}`} 
+                 description={`Completed high-fidelity analysis. Consensus: ${w.consensus}. Confidence: ${(w.confidence * 100).toFixed(0)}%.`}
+                 status="ACTIVE"
+                 steps={8}
+               />
+             ))}
           </div>
         </div>
       </div>

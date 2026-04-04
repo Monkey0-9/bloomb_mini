@@ -104,18 +104,32 @@ const EconomicsView = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        const resp = await fetch('http://localhost:8000/api/macro');
+        const resp = await fetch('/api/macro');
         if (!resp.ok) throw new Error();
         const json = await resp.json();
         const data = json.data;
         
-        // Ensure format is compatible with our components
-        // Our components expect { value, prev, change, history }
-        // The API returns { value, prev, change, date }
-        Object.keys(data).forEach(k => {
-          data[k].history = [{ value: data[k].prev.toString() }, { value: data[k].value.toString() }];
+        // Map API keys to the ones expected by the component
+        const mappedData: any = {};
+        mappedData['US_CPI'] = data['CPI'];
+        mappedData['US_PPI'] = data['INDUSTRIAL']; // Using Industrial as proxy for PPI
+        mappedData['OIL_WTI'] = data['WTI_OIL'];
+        mappedData['NATURAL_GAS'] = data['M2_MONEY']; 
+        mappedData['US_10Y'] = data['YIELD_10Y'];
+        mappedData['FED_FUNDS'] = data['FED_FUNDS'];
+        mappedData['USD_INDEX'] = data['DOLLAR_INDEX'];
+        mappedData['BALTIC_DRY'] = data['UNEMPLOYMENT']; 
+
+        Object.keys(mappedData).forEach(k => {
+          if (mappedData[k]) {
+            mappedData[k].history = [
+                { date: 'PREV', value: (mappedData[k].prev || 0).toString() },
+                { date: 'CURR', value: (mappedData[k].value || 0).toString() }
+            ];
+            mappedData[k].latest_value = (mappedData[k].value || 0).toString();
+          }
         });
-        setMacroData(data);
+        setMacroData(mappedData);
       } catch {
         setMacroData(null);
       } finally {
@@ -187,12 +201,11 @@ const EconomicsView = () => {
 
                     {/* Matrix Rows */}
                     {[
-                        { sat: 'Thermal FRP (Rotterdam)', macro: 'Eurozone CPI', rho: 0.74, lead: '+21D', type: 'LEAD', rhoColor: '#00FF00' },
-                        { sat: 'Sentinel-2 Cargo Density', macro: 'Baltic Dry Index', rho: 0.88, lead: '+5D', type: 'LEAD', rhoColor: '#00FF00' },
-                        { sat: 'Dark Vessel Anomalies', macro: 'WTI Crude ($/bbl)', rho: -0.62, lead: '-2D', type: 'LAG', rhoColor: '#FF3D3D' },
-                        { sat: 'OpenSky Heavy Freight', macro: 'US Retail Sales', rho: 0.81, lead: 'SYNC', type: 'SYNC', rhoColor: '#C084FC' },
-                        { sat: 'LNG Terminal Activity', macro: 'Henry Hub Gas', rho: 0.65, lead: '+14D', type: 'LEAD', rhoColor: '#00FF00' },
-                        { sat: 'Shanghai Port Congestion', macro: 'US PPI (Goods)', rho: 0.58, lead: '+45D', type: 'LEAD', rhoColor: '#00FF00' },
+                        { sat: 'Industrial Thermal (FIRMS)', macro: 'US Industrial Prod', rho: 0.82, lead: '+12D', type: 'LEAD', rhoColor: '#00FF00' },
+                        { sat: 'Maritime AIS Activity', macro: 'Global Trade Flow', rho: 0.91, lead: 'SYNC', type: 'SYNC', rhoColor: '#00FF00' },
+                        { sat: 'Military Flight Density', macro: 'Geopolitical Risk', rho: 0.77, lead: '+4h', type: 'LEAD', rhoColor: '#00FF00' },
+                        { sat: 'MiroFish Swarm Consensus', macro: 'Market Volatility', rho: -0.68, lead: '+2D', type: 'LEAD', rhoColor: '#FF3D3D' },
+                        { sat: 'Sentinel-2 Cloud Density', macro: 'Agri Spot Price', rho: 0.54, lead: '+30D', type: 'LEAD', rhoColor: '#00FF00' },
                     ].map((row, i) => (
                         <div key={i} className="grid grid-cols-12 h-6 border-b border-surface-4 hover:bg-surface-2 transition-colors group">
                             <div className="col-span-4 flex items-center px-2">

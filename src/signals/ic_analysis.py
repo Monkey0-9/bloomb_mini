@@ -1,7 +1,5 @@
 import logging
-import time
 from datetime import UTC, datetime
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -47,10 +45,10 @@ class ICAnalysisPipeline:
         stage1_results = self._stage1_univariate(signal_df, returns_df)
         result.mean_ic_by_horizon = stage1_results["mean_ic"]
         result.icir_by_horizon = stage1_results["icir"]
-        
+
         mean_ic_values = list(stage1_results["mean_ic"].values())
         result.peak_ic = max(mean_ic_values) if mean_ic_values else 0.0
-        
+
         mean_ic_keys = list(stage1_results["mean_ic"].keys())
         result.peak_ic_horizon_days = (
             max(mean_ic_keys, key=lambda k: stage1_results["mean_ic"][k])
@@ -75,16 +73,16 @@ class ICAnalysisPipeline:
                     # Compute daily cross-sectional vol as a proxy for market regime
                     daily_vols = merged.groupby("date")["return_1d"].std().fillna(0)
                     median_vol = daily_vols.median()
-                    
+
                     high_vix_dates = daily_vols[daily_vols > median_vol].index
                     low_vix_dates = daily_vols[daily_vols <= median_vol].index
-                    
+
                     high_merged = merged[merged["date"].isin(high_vix_dates)]
                     low_merged = merged[merged["date"].isin(low_vix_dates)]
-                    
+
                     ic_high = high_merged.groupby("date").apply(lambda g: stats.spearmanr(g.signal_score, g["return_1d"])[0]).mean() if len(high_merged) > 5 else result.peak_ic * 0.7
                     ic_low = low_merged.groupby("date").apply(lambda g: stats.spearmanr(g.signal_score, g["return_1d"])[0]).mean() if len(low_merged) > 5 else result.peak_ic * 1.1
-                    
+
                     result.ic_by_regime = {"LOW_VIX": float(ic_low), "HIGH_VIX": float(ic_high)}
                 else:
                     result.ic_by_regime = {"LOW_VIX": 0.0, "HIGH_VIX": 0.0}
@@ -133,10 +131,10 @@ class ICAnalysisPipeline:
                     signal_port = merged.groupby("date").apply(lambda g: g.nlargest(max(1, len(g)//5), "signal_score")["return_1d"].mean())
                     # Benchmark: Equal weight all
                     bench_port = merged.groupby("date")["return_1d"].mean()
-                    
+
                     def sharpe(rets):
                         return (rets.mean() / rets.std() * np.sqrt(252)) if len(rets) > 1 and rets.std() > 0 else 0
-                    
+
                     s_sharpe = sharpe(signal_port)
                     b_sharpe = sharpe(bench_port)
                     result.incremental_sharpe_vs_momentum = float(s_sharpe - b_sharpe)

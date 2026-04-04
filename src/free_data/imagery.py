@@ -6,6 +6,7 @@ Sources:
 - ESA CopHub (Open Access Hub)
 """
 from datetime import datetime, timedelta
+
 import httpx
 import structlog
 

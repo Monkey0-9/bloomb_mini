@@ -2,9 +2,7 @@
 Port Statistics — Free official statistics from Rotterdam, Singapore, Hamburg.
 Provides authoritative throughput data for port congestion signals.
 """
-import httpx
-from datetime import datetime, timezone
-
+from datetime import UTC, datetime
 
 # Official port statistics endpoints (all free, no key required)
 PORT_SOURCES = {
@@ -56,7 +54,7 @@ def get_port_statistics(port_key: str | None = None) -> list[dict]:
             "data_status": "BASELINE_ONLY",
             "signal": "NEUTRAL",
             "note": "Live port stats require parsing individual port authority PDFs/HTML — integrate using beautiful-soup for daily updates",
-            "as_of": datetime.now(timezone.utc).isoformat(),
+            "as_of": datetime.now(UTC).isoformat(),
         })
 
     return result
@@ -86,5 +84,5 @@ def compute_congestion_signal(port_key: str, current_vessel_count: int, baseline
         "congestion_ratio": round(ratio, 3),
         "signal": signal,
         "signal_reason": reason,
-        "as_of": datetime.now(timezone.utc).isoformat(),
+        "as_of": datetime.now(UTC).isoformat(),
     }

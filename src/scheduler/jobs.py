@@ -1,5 +1,5 @@
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import structlog
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 log = structlog.get_logger()
 scheduler = AsyncIOScheduler()
@@ -48,6 +48,7 @@ async def refresh_vessels():
 
 async def refresh_thermal():
     import asyncio
+
     from src.globe.thermal import fetch_firms_thermal
     anomalies = await asyncio.to_thread(fetch_firms_thermal)
     log.info("thermal_refreshed", count=len(anomalies))
@@ -55,6 +56,7 @@ async def refresh_thermal():
 
 async def refresh_prices():
     import asyncio
+
     from src.data.market_data import get_bulk_prices
     prices = await asyncio.to_thread(get_bulk_prices)
     log.info("prices_refreshed", count=len(prices))
@@ -62,6 +64,7 @@ async def refresh_prices():
 
 async def refresh_news():
     import asyncio
+
     from src.data.news import fetch_all_news
     news = await asyncio.to_thread(fetch_all_news)
     log.info("news_refreshed", count=len(news))
@@ -69,6 +72,7 @@ async def refresh_news():
 
 async def refresh_orbits():
     import asyncio
+
     from src.globe.orbits import get_ground_track
     for sat in ["Sentinel-2A", "Sentinel-2B", "Landsat-9"]:
         await asyncio.to_thread(get_ground_track, sat)
@@ -77,6 +81,7 @@ async def refresh_orbits():
 
 async def refresh_macro():
     import asyncio
+
     from src.data.macro import get_macro_dashboard
     await asyncio.to_thread(get_macro_dashboard)
     log.info("macro_refreshed")

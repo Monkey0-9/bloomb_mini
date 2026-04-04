@@ -1,13 +1,13 @@
 from __future__ import annotations
-import csv
-import httpx
-import logging
-import math
-from pathlib import Path
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional, Any
 
+import csv
+import math
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+import httpx
 import structlog
 
 log = structlog.get_logger()
@@ -26,7 +26,7 @@ FACILITY_REGISTRY = {
     "Reliance Jamnagar": (22.358, 69.868, "Refinery", "RELIANCE.NS", 600.0)
 }
 
-FIRMS_CSV_VIIRS_SNPP = "https://firms.modaps.eosdis.nasa.gov/data/active_fire/suomi-npp-viirs-c2/csv/SUOMI_NPP_VIIRS_C2_Global_24h.csv"
+FIRMS_CSV_VIIRS_SNPP = "https://firms.modaps.eosdis.nasa.gov/data/active_fire/suomi-npp-viirs-c2/Global/SUOMI_VIIRS_C2_Global_24h.csv"
 
 # --- DATA CLASSES ---
 
@@ -37,9 +37,9 @@ class ThermalSignal:
     lon: float
     frp: float
     confidence: str
-    facility_match: Optional[str] = None
-    ticker: Optional[str] = None
-    industry: Optional[str] = None
+    facility_match: str | None = None
+    ticker: str | None = None
+    industry: str | None = None
     impact: str = "NEUTRAL"
     reason: str = ""
 
@@ -53,7 +53,7 @@ class ThermalPipeline:
     def __init__(self, output_dir: Path = Path("data/processed/thermal")):
         self.output_dir = output_dir
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self._history: Dict[str, List[float]] = {} # Track FRP history for baseline detection
+        self._history: dict[str, list[float]] = {} # Track FRP history for baseline detection
 
     @staticmethod
     def _haversine(lat1, lon1, lat2, lon2) -> float:
@@ -65,30 +65,30 @@ class ThermalPipeline:
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
         return R * c
 
-    async def run_scan(self) -> List[ThermalSignal]:
+    async def run_scan(self) -> list[ThermalSignal]:
         """
         Fetches and processes active industrial heat anomalies.
         """
         log.info("THERMAL_SCAN_INITIATED", source="FIRMS_VIIRS")
         signals = []
-        
+
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.get(FIRMS_CSV_VIIRS_SNPP, timeout=30.0)
                 resp.raise_for_status()
-            
+
             lines = resp.text.splitlines()
             reader = csv.DictReader(lines)
-            
+
             for row in reader:
                 lat = float(row['latitude'])
                 lon = float(row['longitude'])
                 frp = float(row['frp'])
                 conf = row['confidence']
-                
+
                 # Filter for industrial heat profile (FRP > 5 for small, > 100 for large)
                 if frp < 5.0: continue
-                
+
                 signal = self._evaluate_anomaly(lat, lon, frp, conf)
                 if signal:
                     signals.append(signal)
@@ -100,23 +100,23 @@ class ThermalPipeline:
             log.error("THERMAL_SCAN_FAILED", error=str(e))
             return []
 
-    def _evaluate_anomaly(self, lat: float, lon: float, frp: float, conf: str) -> Optional[ThermalSignal]:
+    def _evaluate_anomaly(self, lat: float, lon: float, frp: float, conf: str) -> ThermalSignal | None:
         """
         Cross-references anomaly against facility registry.
         """
-        now = datetime.now(timezone.utc)
-        
+        now = datetime.now(UTC)
+
         # 1. Geo-fence Match
         matched_facility = None
         match_data = None
-        
+
         for name, data in FACILITY_REGISTRY.items():
             dist = self._haversine(lat, lon, data[0], data[1])
             if dist < 2.5: # 2.5km radius for large industrial complexes
                 matched_facility = name
                 match_data = data
                 break
-                
+
         if not matched_facility:
             return None # Ignore natural/unmapped fires
 
@@ -125,7 +125,7 @@ class ThermalPipeline:
         threshold = match_data[4]
         impact = "NEUTRAL"
         reason = "Standard operational heat signature."
-        
+
         if frp > threshold * 1.5:
             impact = "BULLISH"
             reason = f"Significant heat spike at {matched_facility} (+50% vs baseline). Potential rampup."
@@ -146,7 +146,7 @@ class ThermalPipeline:
             reason=reason
         )
 
-    def get_market_signals(self, signals: List[ThermalSignal]) -> List[Dict[str, Any]]:
+    def get_market_signals(self, signals: list[ThermalSignal]) -> list[dict[str, Any]]:
         """Distills thermal data into signal engine format."""
         market_signals = []
         for s in signals:
@@ -169,10 +169,10 @@ class ThermalPipeline:
 if __name__ == "__main__":
     import asyncio
     pipeline = ThermalPipeline()
-    
+
     async def test():
         signals = await pipeline.run_scan()
         m_sigs = pipeline.get_market_signals(signals)
         print(f"Generated {len(m_sigs)} actionable industrial signals.")
-        
+
     asyncio.run(test())

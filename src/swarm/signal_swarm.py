@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import logging
 import random
-from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import Enum
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +38,9 @@ class AgentPersona:
     risk_tolerance: str  # 'high', 'medium', 'low'
     time_horizon: str  # 'short', 'medium', 'long'
     bias: float  # -1.0 (bearish) to 1.0 (bullish) baseline bias
-    specialties: List[str]  # What signals this agent is good at
-    
-    def interpret_signal(self, signal_data: Dict[str, Any]) -> AgentStance:
+    specialties: list[str]  # What signals this agent is good at
+
+    def interpret_signal(self, signal_data: dict[str, Any]) -> AgentStance:
         """
         Interpret satellite signal based on persona.
         
@@ -52,13 +52,13 @@ class AgentPersona:
         raw_score = signal_data.get('score', 50)
         sigma = signal_data.get('anomaly_sigma', 0)
         signal_type = signal_data.get('type', 'unknown')
-        
+
         # Check if agent specializes in this signal type
         specialty_bonus = 1.2 if signal_type in self.specialties else 1.0
-        
+
         # Apply bias
         adjusted_score = raw_score + (self.bias * 10) * specialty_bonus
-        
+
         # Check threshold
         if adjusted_score < 50 - (self.confidence_threshold * 10):
             return AgentStance.STRONG_BEAR if adjusted_score < 30 else AgentStance.BEAR
@@ -75,7 +75,7 @@ class AgentVote:
     stance: AgentStance
     conviction: float  # 0.0 to 1.0
     reasoning: str
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass
@@ -83,7 +83,7 @@ class SwarmConsensus:
     """Consensus result from multi-agent debate."""
     signal_id: str
     ticker: str
-    votes: List[AgentVote]
+    votes: list[AgentVote]
     consensus_stance: AgentStance
     consensus_score: float  # 0-100
     bull_votes: int
@@ -91,7 +91,7 @@ class SwarmConsensus:
     neutral_votes: int
     confidence: float  # Based on vote agreement
     reasoning_summary: str
-    dissenting_opinion: Optional[str]  # What bears said if bullish consensus
+    dissenting_opinion: str | None  # What bears said if bullish consensus
 
 
 class SignalAgentSwarm:
@@ -106,12 +106,12 @@ class SignalAgentSwarm:
     - Macro Strategist: Sector rotation, global flows
     - Quant Analyst: Statistical arbitrage, correlations
     """
-    
+
     def __init__(self):
-        self.agents: List[AgentPersona] = self._initialize_agents()
-        self._consensus_history: Dict[str, List[SwarmConsensus]] = {}
-        
-    def _initialize_agents(self) -> List[AgentPersona]:
+        self.agents: list[AgentPersona] = self._initialize_agents()
+        self._consensus_history: dict[str, list[SwarmConsensus]] = {}
+
+    def _initialize_agents(self) -> list[AgentPersona]:
         """Create the agent swarm with diverse personas."""
         return [
             AgentPersona(
@@ -169,8 +169,8 @@ class SignalAgentSwarm:
                 specialties=["INDUSTRIAL_THERMAL", "PORT_THROUGHPUT", "RETAIL_FOOTFALL"]
             ),
         ]
-    
-    def debate_signal(self, signal_data: Dict[str, Any]) -> SwarmConsensus:
+
+    def debate_signal(self, signal_data: dict[str, Any]) -> SwarmConsensus:
         """
         Run multi-agent debate on a satellite signal.
         
@@ -179,21 +179,21 @@ class SignalAgentSwarm:
         """
         signal_id = signal_data.get('signal_id', 'unknown')
         ticker = signal_data.get('ticker', 'unknown')
-        
+
         votes = []
         for agent in self.agents:
             stance = agent.interpret_signal(signal_data)
-            
+
             # Calculate conviction based on alignment with specialty and signal clarity
             base_conviction = random.uniform(0.6, 0.9)
             if signal_data.get('type') in agent.specialties:
                 conviction = min(0.95, base_conviction + 0.15)
             else:
                 conviction = base_conviction * 0.8
-            
+
             # Generate reasoning based on stance and agent type
             reasoning = self._generate_reasoning(agent, stance, signal_data)
-            
+
             vote = AgentVote(
                 agent=agent,
                 stance=stance,
@@ -201,23 +201,23 @@ class SignalAgentSwarm:
                 reasoning=reasoning
             )
             votes.append(vote)
-        
+
         # Calculate consensus
         bull_votes = sum(1 for v in votes if v.stance in (AgentStance.BULL, AgentStance.STRONG_BULL))
         bear_votes = sum(1 for v in votes if v.stance in (AgentStance.BEAR, AgentStance.STRONG_BEAR))
         neutral_votes = sum(1 for v in votes if v.stance == AgentStance.NEUTRAL)
-        
+
         # Weighted scoring
         total_weight = sum(v.conviction for v in votes)
         bull_weight = sum(v.conviction for v in votes if v.stance in (AgentStance.BULL, AgentStance.STRONG_BULL))
         bear_weight = sum(v.conviction for v in votes if v.stance in (AgentStance.BEAR, AgentStance.STRONG_BEAR))
-        
+
         # Consensus score (0-100, 50=neutral)
         if total_weight > 0:
             consensus_score = 50 + ((bull_weight - bear_weight) / total_weight) * 50
         else:
             consensus_score = 50
-        
+
         # Determine consensus stance
         if consensus_score >= 70:
             consensus_stance = AgentStance.STRONG_BULL if consensus_score >= 85 else AgentStance.BULL
@@ -225,21 +225,21 @@ class SignalAgentSwarm:
             consensus_stance = AgentStance.STRONG_BEAR if consensus_score <= 15 else AgentStance.BEAR
         else:
             consensus_stance = AgentStance.NEUTRAL
-        
+
         # Calculate confidence based on vote agreement
         max_votes = max(bull_votes, bear_votes, neutral_votes)
         confidence = max_votes / len(votes)
-        
+
         # Summary reasoning
         reasoning_summary = self._summarize_consensus(votes, consensus_stance)
-        
+
         # Collect dissenting opinion if strong consensus
         dissenting = None
         if consensus_stance in (AgentStance.STRONG_BULL, AgentStance.BULL) and bear_votes > 0:
             dissenting = " | ".join([v.reasoning for v in votes if v.stance in (AgentStance.BEAR, AgentStance.STRONG_BEAR)])
         elif consensus_stance in (AgentStance.STRONG_BEAR, AgentStance.BEAR) and bull_votes > 0:
             dissenting = " | ".join([v.reasoning for v in votes if v.stance in (AgentStance.BULL, AgentStance.STRONG_BULL)])
-        
+
         consensus = SwarmConsensus(
             signal_id=signal_id,
             ticker=ticker,
@@ -253,85 +253,85 @@ class SignalAgentSwarm:
             reasoning_summary=reasoning_summary,
             dissenting_opinion=dissenting
         )
-        
+
         # Cache for learning
         if ticker not in self._consensus_history:
             self._consensus_history[ticker] = []
         self._consensus_history[ticker].append(consensus)
-        
+
         logger.info(
             f"Swarm consensus for {signal_id}: {consensus_stance.name} "
             f"(score: {consensus_score:.1f}, confidence: {confidence:.2f})"
         )
-        
+
         return consensus
-    
-    def _generate_reasoning(self, agent: AgentPersona, stance: AgentStance, signal: Dict[str, Any]) -> str:
+
+    def _generate_reasoning(self, agent: AgentPersona, stance: AgentStance, signal: dict[str, Any]) -> str:
         """Generate agent-specific reasoning for their stance."""
         sigma = signal.get('anomaly_sigma', 0)
         frp = signal.get('frp_mw', 0)
         facility = signal.get('facility_name', 'Unknown')
-        
+
         templates = {
             'technical': {
                 AgentStance.STRONG_BULL: f"Breakout pattern: {sigma:+.1f}σ anomaly exceeds 3σ threshold. Momentum building.",
                 AgentStance.BULL: f"Uptrend confirmed: {sigma:+.1f}σ indicates elevated production activity.",
                 AgentStance.NEUTRAL: f"Consolidation: {sigma:+.1f}σ within normal range. Awaiting breakout.",
                 AgentStance.BEAR: f"Weak momentum: {sigma:+.1f}σ below conviction threshold.",
-                AgentStance.STRONG_BEAR: f"Breakdown risk: Anomaly suggests production slowdown."
+                AgentStance.STRONG_BEAR: "Breakdown risk: Anomaly suggests production slowdown."
             },
             'fundamental': {
                 AgentStance.STRONG_BULL: f"{facility} operating at peak: {frp:.0f}MW FRP implies record quarterly output.",
-                AgentStance.BULL: f"Production beat likely: Thermal data supports EPS upside.",
-                AgentStance.NEUTRAL: f"In-line expectations: Activity normal for seasonal patterns.",
-                AgentStance.BEAR: f"Margin pressure: High output may indicate forced production.",
-                AgentStance.STRONG_BEAR: f"Demand destruction: Unsustainable activity levels."
+                AgentStance.BULL: "Production beat likely: Thermal data supports EPS upside.",
+                AgentStance.NEUTRAL: "In-line expectations: Activity normal for seasonal patterns.",
+                AgentStance.BEAR: "Margin pressure: High output may indicate forced production.",
+                AgentStance.STRONG_BEAR: "Demand destruction: Unsustainable activity levels."
             },
             'sentiment': {
-                AgentStance.STRONG_BULL: f"FOMO building: Satellite alpha will drive institutional inflows.",
-                AgentStance.BULL: f"Positive narrative: Production data supports bullish thesis.",
-                AgentStance.NEUTRAL: f"Wait-and-see: Market needs confirmation from management.",
-                AgentStance.BEAR: f"Skepticism warranted: Sell-side not buying the story yet.",
-                AgentStance.STRONG_BEAR: f"Negative sentiment: Smart money fading the move."
+                AgentStance.STRONG_BULL: "FOMO building: Satellite alpha will drive institutional inflows.",
+                AgentStance.BULL: "Positive narrative: Production data supports bullish thesis.",
+                AgentStance.NEUTRAL: "Wait-and-see: Market needs confirmation from management.",
+                AgentStance.BEAR: "Skepticism warranted: Sell-side not buying the story yet.",
+                AgentStance.STRONG_BEAR: "Negative sentiment: Smart money fading the move."
             },
             'contrarian': {
-                AgentStance.STRONG_BULL: f"Everyone's bearish while thermal data screams oversold. Buying.",
-                AgentStance.BULL: f"Market ignoring satellite data. Opportunity before recognition.",
-                AgentStance.NEUTRAL: f"Both sides have merit. No edge in taking a position.",
-                AgentStance.BEAR: f"Crowd too bullish on thermal. Positioning for disappointment.",
-                AgentStance.STRONG_BEAR: f"Euphoric readings + anomaly fade = perfect short setup."
+                AgentStance.STRONG_BULL: "Everyone's bearish while thermal data screams oversold. Buying.",
+                AgentStance.BULL: "Market ignoring satellite data. Opportunity before recognition.",
+                AgentStance.NEUTRAL: "Both sides have merit. No edge in taking a position.",
+                AgentStance.BEAR: "Crowd too bullish on thermal. Positioning for disappointment.",
+                AgentStance.STRONG_BEAR: "Euphoric readings + anomaly fade = perfect short setup."
             },
             'macro': {
-                AgentStance.STRONG_BULL: f"Sector rotation + production surge = multi-bagger setup.",
-                AgentStance.BULL: f"Commodity cycle favors this name. Thermal confirms reflation.",
-                AgentStance.NEUTRAL: f"Macro headwinds offset micro tailwinds. Balanced view.",
-                AgentStance.BEAR: f"Strong dollar will pressure exports despite production beat.",
-                AgentStance.STRONG_BEAR: f"Recession coming: Inventory builds while demand collapses."
+                AgentStance.STRONG_BULL: "Sector rotation + production surge = multi-bagger setup.",
+                AgentStance.BULL: "Commodity cycle favors this name. Thermal confirms reflation.",
+                AgentStance.NEUTRAL: "Macro headwinds offset micro tailwinds. Balanced view.",
+                AgentStance.BEAR: "Strong dollar will pressure exports despite production beat.",
+                AgentStance.STRONG_BEAR: "Recession coming: Inventory builds while demand collapses."
             },
             'quant': {
                 AgentStance.STRONG_BULL: f"{sigma:.1f}σ event has 85% historical win rate. Kelly criterion says max position.",
-                AgentStance.BULL: f"Signal IC 0.042, Sharpe 1.2. Positive expected value.",
-                AgentStance.NEUTRAL: f"Expected return within noise threshold. No statistical edge.",
+                AgentStance.BULL: "Signal IC 0.042, Sharpe 1.2. Positive expected value.",
+                AgentStance.NEUTRAL: "Expected return within noise threshold. No statistical edge.",
                 AgentStance.BEAR: f"Mean reversion model: {sigma:.1f}σ likely to normalize within 5 days.",
-                AgentStance.STRONG_BEAR: f"Vol expansion + negative momentum = downside convexity."
+                AgentStance.STRONG_BEAR: "Vol expansion + negative momentum = downside convexity."
             }
         }
-        
+
         return templates.get(agent.type, {}).get(stance, "No clear view.")
-    
-    def _summarize_consensus(self, votes: List[AgentVote], consensus: AgentStance) -> str:
+
+    def _summarize_consensus(self, votes: list[AgentVote], consensus: AgentStance) -> str:
         """Generate consensus summary from votes."""
         # Count by specialty
         tech_votes = [v for v in votes if v.agent.type == 'technical']
         fund_votes = [v for v in votes if v.agent.type == 'fundamental']
-        
+
         if consensus in (AgentStance.STRONG_BULL, AgentStance.BULL):
-            return f"Bullish consensus: Technical and fundamental analysts agree on production momentum."
+            return "Bullish consensus: Technical and fundamental analysts agree on production momentum."
         elif consensus in (AgentStance.STRONG_BEAR, AgentStance.BEAR):
-            return f"Bearish consensus: Multiple concerns on sustainability and demand."
+            return "Bearish consensus: Multiple concerns on sustainability and demand."
         else:
-            return f"Mixed views: Technical and fundamental camps divided. Await clarification."
-    
+            return "Mixed views: Technical and fundamental camps divided. Await clarification."
+
     def get_historical_accuracy(self, ticker: str, lookback: int = 20) -> float:
         """
         Calculate swarm's historical prediction accuracy for a ticker.
@@ -342,19 +342,19 @@ class SignalAgentSwarm:
         history = self._consensus_history.get(ticker, [])
         if len(history) < 5:
             return 0.5  # Insufficient data
-        
+
  # Would compare to actual returns - simplified for now
         # In production: fetch forward returns, mark consensus as correct/incorrect
         recent = history[-lookback:]
-        
+
         # Simplified: assume high-confidence bullish consensus was correct
         correct = sum(1 for h in recent if h.confidence > 0.7 and h.consensus_stance in (AgentStance.BULL, AgentStance.STRONG_BULL))
-        
+
         return correct / len(recent) if recent else 0.5
 
 
 # Singleton
-_swarm: Optional[SignalAgentSwarm] = None
+_swarm: SignalAgentSwarm | None = None
 
 def get_signal_swarm() -> SignalAgentSwarm:
     """Get or create the signal agent swarm."""
@@ -366,9 +366,9 @@ def get_signal_swarm() -> SignalAgentSwarm:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    
+
     swarm = SignalAgentSwarm()
-    
+
     # Example signal
     test_signal = {
         'signal_id': 'thermal_dunkirk_001',
@@ -379,16 +379,16 @@ if __name__ == "__main__":
         'frp_mw': 120,
         'facility_name': 'ArcelorMittal Dunkirk',
     }
-    
+
     consensus = swarm.debate_signal(test_signal)
-    
+
     print(f"\nSwarm Consensus for {consensus.signal_id}:")
     print(f"  Stance: {consensus.consensus_stance.name}")
     print(f"  Score: {consensus.consensus_score}")
     print(f"  Confidence: {consensus.confidence}")
     print(f"  Votes: {consensus.bull_votes} bull, {consensus.bear_votes} bear, {consensus.neutral_votes} neutral")
     print(f"  Reasoning: {consensus.reasoning_summary}")
-    print(f"\nIndividual Votes:")
+    print("\nIndividual Votes:")
     for vote in consensus.votes:
         print(f"  {vote.agent.name} ({vote.agent.type}): {vote.stance.name} (conviction: {vote.conviction:.2f})")
         print(f"    → {vote.reasoning[:80]}...")

@@ -1,10 +1,31 @@
+import React from 'react';
 import { useTerminalStore } from '../store';
+import { useSignalStore } from '../store/signalStore';
 import GlobalGlobe from '../components/GlobalGlobe';
 import GlobalMap2D from '../components/GlobalMap2D';
-import { Crosshair, Target, Zap, Layers, ZoomIn, ZoomOut, Map as MapIcon, Globe as GlobeIcon } from 'lucide-react';
+import { Crosshair, Target, Zap, Layers, ZoomIn, ZoomOut, Map as MapIcon, Globe as GlobeIcon, Search } from 'lucide-react';
 
 const WorldView = () => {
   const { activeLayers, toggleLayer, updateZoom, mapMode, toggleMapMode } = useTerminalStore();
+  const { signals, satFeed } = useSignalStore();
+  const [temporalIndex, setTemporalIndex] = React.useState(100);
+
+  const targets = [
+    ...(signals || []).map((s: any) => ({
+      name: s.name,
+      lat: s.lat || 0,
+      lng: s.lng || 0,
+      type: 'SIGNAL',
+      metric: s.status === 'bullish' ? 'HIGH ALPHA' : 'ALPHA DECAY'
+    })),
+    ...(satFeed || []).slice(0, 5).map((sf: any) => ({
+      name: sf.location,
+      lat: 0,
+      lng: 0,
+      type: 'THERMAL',
+      metric: sf.signal === 'bullish' ? 'ANOMALY+' : 'NEUTRAL'
+    }))
+  ];
 
   return (
     <div className="w-full h-full relative bg-[var(--bg-base)] overflow-hidden select-none">
@@ -43,24 +64,41 @@ const WorldView = () => {
                <Layers size={11} className="text-[#38bdf8]" />
                <span className="text-[9px] text-slate-300 uppercase tracking-[0.2em] font-bold">Data Planes</span>
            </div>
-           <div className="flex gap-1.5 flex-wrap justify-end max-w-[400px]">
-             {['AIRCRAFT', 'THERMAL', 'SATELLITES', 'QUAKES', 'CONFLICTS', 'PORTS', 'VESSELS'].map((l) => {
-                 const isActive = activeLayers.includes(l);
-                 return (
-                 <button 
-                    key={l}
-                    onClick={() => toggleLayer(l)}
-                    className={`text-[9px] px-3.5 py-1.5 border transition-all uppercase tracking-[0.15em] font-bold ${
-                      isActive 
-                      ? 'bg-[#040B16] text-[#38bdf8] border-[#38bdf8] shadow-[0_0_15px_rgba(56,189,248,0.3)]' 
-                      : 'bg-black/60 backdrop-blur-md border-[#38bdf8]/20 text-slate-500 hover:border-[#38bdf8]/50 hover:text-[#38bdf8]/80'
-                    }`}
-                 >
-                   {l}
-                 </button>
-             )})}
-           </div>
-           <div className="flex flex-col items-end gap-1.5 pointer-events-auto mt-2">
+            <div className="flex gap-1.5 flex-wrap justify-end max-w-[400px]">
+              {['AIRCRAFT', 'THERMAL', 'SATELLITES', 'QUAKES', 'CONFLICTS', 'PORTS', 'VESSELS'].map((l) => {
+                  const isActive = activeLayers.includes(l);
+                  return (
+                  <button 
+                     key={l}
+                     onClick={() => toggleLayer(l)}
+                     className={`text-[9px] px-3.5 py-1.5 border transition-all uppercase tracking-[0.15em] font-bold ${
+                       isActive 
+                       ? 'bg-[#040B16] text-[#38bdf8] border-[#38bdf8] shadow-[0_0_15px_rgba(56,189,248,0.3)]' 
+                       : 'bg-black/60 backdrop-blur-md border-[#38bdf8]/20 text-slate-500 hover:border-[#38bdf8]/50 hover:text-[#38bdf8]/80'
+                     }`}
+                  >
+                    {l}
+                  </button>
+              )})}
+            </div>
+            
+            <div className="flex gap-2 mt-2">
+                <button className="px-3 py-1.5 bg-accent-primary/10 border border-accent-primary/30 text-accent-primary text-[9px] font-bold uppercase tracking-widest hover:bg-accent-primary/20 transition-all flex items-center gap-2">
+                    <Search size={12} /> Search Intel
+                </button>
+                <select className="bg-black/60 backdrop-blur-md border border-slate-800 text-slate-400 text-[9px] px-2 py-1 outline-none font-bold uppercase tracking-widest focus:border-accent-primary transition-colors cursor-pointer">
+                    <option>Severity: All</option>
+                    <option>Severity: Critical</option>
+                    <option>Severity: Elevated</option>
+                    <option>Severity: Info</option>
+                </select>
+                <button className="px-3 py-1.5 bg-white/5 border border-white/10 text-white/60 text-[9px] font-bold uppercase tracking-widest hover:text-white transition-all flex items-center gap-2">
+                    <Layers size={12} /> Overlay Filter
+                </button>
+            </div>
+
+            <div className="flex flex-col items-end gap-1.5 pointer-events-auto mt-2">
+
             <button
                onClick={toggleMapMode}
                className="flex items-center gap-2 px-3 py-1 border transition-all uppercase tracking-[0.1em] font-bold bg-[var(--bg-surface)] border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:border-[var(--neon-bull)] hover:text-[var(--neon-bull)]"
@@ -79,17 +117,11 @@ const WorldView = () => {
                  <span className="text-[10px] text-[#38bdf8] uppercase  tracking-[0.2em] font-bold flex items-center gap-2 drop-shadow-[0_0_8px_rgba(56,189,248,0.6)]">
                      <Target size={12} className="animate-pulse" /> Priority Targets
                  </span>
-                 <span className="text-[9px] font-mono text-[#00FF9D] bg-[#00FF9D]/10 px-1.5 py-0.5 border border-[#00FF9D]/30 shadow-[0_0_8px_rgba(0,255,157,0.2)]">TRACKING 5</span>
+                 <span className="text-[9px] font-mono text-[#00FF9D] bg-[#00FF9D]/10 px-1.5 py-0.5 border border-[#00FF9D]/30 shadow-[0_0_8px_rgba(0,255,157,0.2)]">TRACKING {targets.length}</span>
              </div>
              
              <div className="flex-1 overflow-y-auto p-0.5">
-                {[
-                  { name: 'NLRTM (Rotterdam)', lat: 51.9, lng: 4.5, type: 'PORT', metric: '94% Cap' },
-                  { name: 'SGSIN (Singapore)', lat: 1.3, lng: 103.8, type: 'PORT', metric: '88% Cap' },
-                  { name: 'CNSHG (Shanghai)', lat: 31.2, lng: 121.5, type: 'PORT', metric: '102% Cap' },
-                  { name: 'Freeport LNG', lat: 28.9, lng: -95.3, type: 'FACILITY', metric: 'Offline' },
-                  { name: 'Gatun Locks (Panama)', lat: 9.2, lng: -79.9, type: 'CHOKE', metric: '-40% T' }
-                ].map(p => (
+                {targets.map(p => (
                   <button 
                     key={p.name}
                     onClick={() => updateZoom(3)} 
@@ -98,12 +130,12 @@ const WorldView = () => {
                     <div className="flex justify-between items-center">
                         <span className="text-[10px] text-[var(--text-primary)] font-bold tracking-tight group-hover:text-[var(--neon-bull)] transition-colors">{p.name}</span>
                         <span className={`text-[8px] font-bold tracking-widest px-1 border ${
-                            p.type === 'PORT' ? 'text-[var(--neon-signal)] bg-[var(--neon-dim-signal)] border-[var(--neon-signal)]/20' :
-                            p.type === 'CHOKE' ? 'text-[var(--neon-bear)] bg-[var(--neon-dim-bear)] border-[var(--neon-bear)]/20' : 'text-[var(--neon-bull)] bg-[var(--neon-dim-bull)] border-[var(--neon-bull)]/20'
+                            p.type === 'SIGNAL' ? 'text-[var(--neon-signal)] bg-[var(--neon-dim-signal)] border-[var(--neon-signal)]/20' :
+                            p.type === 'THERMAL' ? 'text-[var(--neon-bear)] bg-[var(--neon-dim-bear)] border-[var(--neon-bear)]/20' : 'text-[var(--neon-bull)] bg-[var(--neon-dim-bull)] border-[var(--neon-bull)]/20'
                         }`}>{p.type}</span>
                     </div>
                     <div className="flex justify-between items-center text-[8px] font-mono text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]">
-                        <span>{p.lat.toFixed(2)}°N {Math.abs(p.lng).toFixed(2)}°{p.lng < 0 ? 'W':'E'}</span>
+                        <span>{p.lat.toFixed(2)}°N {Math.abs(p.lng).toFixed(2)}°W</span>
                         <span className="font-bold text-[var(--text-secondary)]">{p.metric}</span>
                     </div>
                   </button>
@@ -138,7 +170,31 @@ const WorldView = () => {
       </div>
 
       {/* FOOTER LEGEND */}
-      <div className="absolute bottom-6 left-6 z-20 pointer-events-none w-[calc(100%-100px)]">
+      <div className="absolute bottom-6 left-6 z-20 pointer-events-none w-[calc(100%-200px)] flex flex-col gap-4">
+         {/* TEMPORAL SCRUBBER */}
+         <div className="bg-[#040B16]/80 backdrop-blur-md px-4 py-2 border border-slate-800/80 rounded-sm shadow-2xl pointer-events-auto max-w-[400px]">
+            <div className="flex justify-between items-center mb-1.5">
+               <span className="text-[9px] font-bold text-[#38bdf8] uppercase tracking-[0.2em]">Temporal Index (T-{100 - temporalIndex}m)</span>
+               <div className="flex gap-2">
+                  <button className="text-[8px] text-slate-400 hover:text-white uppercase font-mono">LIVE</button>
+                  <button className="text-[8px] text-slate-400 hover:text-white uppercase font-mono">REPLAY</button>
+               </div>
+            </div>
+            <input 
+               type="range" 
+               min="0" 
+               max="100" 
+               value={temporalIndex} 
+               onChange={(e) => setTemporalIndex(parseInt(e.target.value))}
+               className="w-full h-1 bg-slate-800 appearance-none cursor-pointer accent-[#38bdf8]"
+            />
+            <div className="flex justify-between text-[7px] font-mono text-slate-500 mt-1 uppercase">
+               <span>T-100M</span>
+               <span>T-50M</span>
+               <span>REAL-TIME</span>
+            </div>
+         </div>
+
          <div className="flex gap-4 items-center bg-[#040B16]/80 backdrop-blur-md px-5 py-2.5 border border-slate-800/80 max-w-fit shadow-[0_0_20px_rgba(0,0,0,0.5)] rounded-full">
             <span className="text-[10px] font-bold text-slate-300 uppercase tracking-[0.25em] border-r border-slate-700 pr-4 mr-2">Telemetry Legend</span>
             {[

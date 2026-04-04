@@ -25,5 +25,5 @@ docker-compose up -d
 Write-Host "════════════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host "  SERVICES DEPLOYED" -ForegroundColor Green
 Write-Host "  Frontend: http://localhost:3000"
-Write-Host "  API Hub:  http://localhost:8000"
+Write-Host "  API Hub:  http://localhost:9009"
 Write-Host "════════════════════════════════════════════════════════" -ForegroundColor Cyan

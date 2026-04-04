@@ -180,6 +180,57 @@ class SourceRegistry:
             )
         )
 
+        self.register(
+            DataSource(
+                source_id="open-meteo-marine",
+                name="Open-Meteo Marine Weather",
+                provider="Open-Meteo",
+                tier=SourceTier.FREE,
+                api_endpoint="https://marine-api.open-meteo.com/v1/marine",
+                sensor_type="weather",
+                resolution_m=5000.0,
+                revisit_days=0.04,  # Hourly
+                license_id="open_meteo_commercial_free",
+                commercial_use_permitted=True,
+                cost_per_month_usd=0.0,
+                credentials_secret_name="",
+            )
+        )
+
+        self.register(
+            DataSource(
+                source_id="open-meteo-aq",
+                name="Open-Meteo Air Quality",
+                provider="Open-Meteo",
+                tier=SourceTier.FREE,
+                api_endpoint="https://air-quality-api.open-meteo.com/v1/air-quality",
+                sensor_type="environmental",
+                resolution_m=10000.0,
+                revisit_days=0.04,  # Hourly
+                license_id="open_meteo_commercial_free",
+                commercial_use_permitted=True,
+                cost_per_month_usd=0.0,
+                credentials_secret_name="",
+            )
+        )
+
+        self.register(
+            DataSource(
+                source_id="fred-macro",
+                name="St. Louis Fed Economic Data",
+                provider="FRED",
+                tier=SourceTier.FREE,
+                api_endpoint="https://fred.stlouisfed.org/graph/fredgraph.csv",
+                sensor_type="macroeconomic",
+                resolution_m=0.0,
+                revisit_days=1.0,  # Daily
+                license_id="fred_public_domain",
+                commercial_use_permitted=True,
+                cost_per_month_usd=0.0,
+                credentials_secret_name="",
+            )
+        )
+
         # ── Phase 2: Commercial ─────────────────────────────
         self.register(
             DataSource(
@@ -283,11 +334,11 @@ class SourceRegistry:
 
     def get_monthly_cost(self) -> dict[str, float]:
         """Get monthly cost breakdown for all active sources."""
-        costs = {}
+        costs: dict[str, float] = {}
         for s in self._sources.values():
             if s.status == SourceStatus.ACTIVE:
                 costs[s.source_id] = s.cost_per_month_usd
-        costs["total"] = sum(costs.values())
+        costs["total"] = float(sum(costs.values()))
         return costs
 
     def health_check(self) -> dict[str, dict[str, Any]]:

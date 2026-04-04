@@ -1,76 +1,77 @@
-import logging
 import asyncio
-import yfinance as yf
-from typing import Dict, Any, List
-from datetime import datetime, timezone
+import logging
+from datetime import UTC, datetime
+from typing import Any
+
 from src.api.agents.base import BaseAgent
+from src.live.news import get_all_news
 
 log = logging.getLogger(__name__)
 
 class NewsAgent(BaseAgent):
     """
-    Electronic News Surveillance: Aggregates global feeds (yfinance, akshare).
+    Electronic News Surveillance: Aggregates global feeds via NewsAPI, RSS, and GDELT.
     """
-    
-    def __init__(self):
-        super().__init__("NEWS_SENTIMENT")
+
+    def __init__(self) -> None:
+        super().__init__("news")
         self.status = "ACTIVE"
-        self.last_sync = datetime.now(timezone.utc)
-        
-    async def get_state(self) -> Dict[str, Any]:
+        self.last_sync = datetime.now(UTC)
+
+    async def get_state(self) -> dict[str, Any]:
         return {
-            "feeds": ["YFINANCE", "AKSHARE", "GDELT", "RSS_SHIPPING"],
-            "processed_today": 1500,
-            "overall_sentiment": 0.05
+            "feeds": ["NEWSAPI", "GDELT", "RSS_SHIPPING", "REUTERS"],
+            "status": "OPERATIONAL",
+            "overall_sentiment": "dynamic"
         }
 
-    async def get_latest_news(self, ticker: str = None) -> List[Dict[str, Any]]:
-        """Fetches real-time news via RSS (Reuters, Lloyd's, etc.)"""
-        import feedparser
-        feeds = [
-            "https://www.reutersagency.com/feed/?best-topics=business&post_type=best",
-            "https://export.arxiv.org/rss/cs.AI", # AI Intel
-            "https://www.lloydslist.com/rss/ship-operations", # Maritime intel
-        ]
-        
-        articles = []
-        for url in feeds:
-            try:
-                # Use a thread pool for the blocking feedparser call
-                loop = asyncio.get_event_loop()
-                feed = await loop.run_in_executor(None, feedparser.parse, url)
-                
-                for entry in feed.entries[:5]:
-                    articles.append({
-                        "title": entry.get("title", "No Title"),
-                        "url": entry.get("link", "#"),
-                        "source": feed.feed.get("title", "Unknown Source"),
-                        "sentiment": 0.0,
-                        "urgency": "MEDIUM",
-                        "impacted": [ticker.upper()] if ticker else ["GLOBAL"],
-                        "timestamp": entry.get("published", "")
-                    })
-            except Exception as e:
-                log.error(f"news_rss_error for {url}: {e}")
-        
-        # Fallback to institutional mocks if empty
-        if not articles:
-             articles = [
-                {
-                    "title": "Maersk reroutes fleet amid Bab al-Mandab escalation; spot rates surge 15%",
-                    "source": "Lloyd's List",
-                    "sentiment": -0.65,
-                    "urgency": "HIGH",
-                    "impacted": ["ZIM", "MAERSK", "MATX"],
-                    "url": "#"
-                }
-            ]
-        
-        return articles
+    async def get_latest_news(self, ticker: str = None) -> list[dict[str, Any]]:
+        """Fetches real-time news via unified news module."""
+        try:
+            # get_all_news is synchronous with caching, but we'll run it in executor if needed.
+            # For simplicity, we call it directly as it has internal TTL.
+            loop = asyncio.get_running_loop()
+            news_items = await loop.run_in_executor(None, get_all_news)
 
-    async def process_task(self, task_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
+            articles = []
+            for item in news_items:
+                # Basic sentiment estimation if needed, or default to 0.0
+                sentiment = 0.0 # Placeholder for real NLP sentiment analysis
+
+                # Filter by ticker if provided
+                if ticker and ticker.upper() not in item.title.upper() and ticker.upper() not in item.summary.upper():
+                    continue
+
+                articles.append({
+                    "title": item.title,
+                    "url": item.url,
+                    "summary": item.summary,
+                    "source": item.source,
+                    "sentiment": sentiment,
+                    "urgency": "HIGH" if "escalation" in item.title.lower() or "surge" in item.title.lower() else "MEDIUM",
+                    "impacted": [ticker.upper()] if ticker else [item.category.upper()],
+                    "timestamp": item.published
+                })
+
+            return articles[:50]
+        except Exception as e:
+            log.error(f"news_agent_error: {e}")
+            return []
+
+    async def process_task(self, task_type: str, params: dict[str, Any]) -> dict[str, Any]:
         if task_type == "NEWS_BRIEF":
             ticker = params.get("ticker")
             articles = await self.get_latest_news(ticker)
             return {"articles": articles}
+        elif task_type == "RESEARCH_QUERY":
+            ticker = params.get("query")
+            articles = await self.get_latest_news(ticker)
+            sentiment = "POSITIVE" if any(a["sentiment"] > 0 for a in articles) else "NEGATIVE" if any(a["sentiment"] < 0 for a in articles) else "NEUTRAL"
+            return {
+                "intent": "NEWS_INTEL",
+                "synthesis": f"News Surveillance for '{ticker or 'Global'}': Found {len(articles)} relevant articles. Sentiment leaning {sentiment}. Physical disruptions mentioned in {sum(1 for a in articles if 'disrupt' in a['title'].lower())} feeds.",
+                "data": {"articles": articles[:5], "sentiment": sentiment},
+                "timestamp": datetime.now(UTC).isoformat()
+            }
+
         return {"error": "Unknown task type"}

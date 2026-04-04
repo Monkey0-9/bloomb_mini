@@ -1,11 +1,12 @@
 from __future__ import annotations
+
 import asyncio
 import math
 import random
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import Dict, List, Optional, Any
+from typing import Any
 from uuid import uuid4
 
 import structlog
@@ -66,7 +67,7 @@ class FlightPosition:
     altitude_ft: int
     speed_knots: int
     heading: float
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 @dataclass
 class Flight:
@@ -78,10 +79,10 @@ class Flight:
     origin: str
     destination: str
     eta: datetime
-    affected_tickers: List[str] = field(default_factory=list)
+    affected_tickers: list[str] = field(default_factory=list)
     signal_direction: str = "NEUTRAL"
     signal_reason: str = ""
-    historical_track: List[FlightPosition] = field(default_factory=list)
+    historical_track: list[FlightPosition] = field(default_factory=list)
     id: str = field(default_factory=lambda: str(uuid4()))
 
 # --- CORE LOGIC ---
@@ -92,7 +93,7 @@ class FlightTracker:
     Tracks supply chain bottlenecks and high-value logistics signals.
     """
     def __init__(self):
-        self._flights: Dict[str, Flight] = {}
+        self._flights: dict[str, Flight] = {}
         self._cache = {}
 
     @staticmethod
@@ -105,22 +106,22 @@ class FlightTracker:
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
         return R * c
 
-    async def update_flight(self, state_vector: Dict[str, Any]):
+    async def update_flight(self, state_vector: dict[str, Any]):
         """
         Processes real-time ADS-B / OpenSky state vectors.
         """
         icao24 = state_vector["icao24"]
-        now = datetime.now(timezone.utc)
-        
+        now = datetime.now(UTC)
+
         # 1. Aircraft Metadata (Mocking DB lookup)
         operator = state_vector.get("operator", "Global Air")
         manufacturer = "Boeing" if random.random() > 0.4 else "Airbus"
-        
+
         # 2. Ticker Mapping
         tickers = []
         tickers.extend(AIRLINE_TO_TICKERS.get(operator, []))
         tickers.extend(MANUFACTURER_TO_TICKERS.get(manufacturer, []))
-        
+
         # 3. Signal Generation
         category = self._determine_category(state_vector)
         signal, reason = self._generate_signal(state_vector, category, operator)
@@ -151,10 +152,10 @@ class FlightTracker:
             signal_direction=signal,
             signal_reason=reason
         )
-        
+
         self._flights[icao24] = flight
 
-    def _determine_category(self, data: Dict) -> FlightCategory:
+    def _determine_category(self, data: dict) -> FlightCategory:
         """Heuristic-based category assignment."""
         callsign = data.get("callsign", "")
         if any(p in callsign for p in ["FDX", "UPS", "GTI", "CLX"]):
@@ -163,19 +164,19 @@ class FlightTracker:
             return FlightCategory.COMMERCIAL
         return FlightCategory.PRIVATE
 
-    def _generate_signal(self, data: Dict, category: FlightCategory, operator: str) -> tuple[str, str]:
+    def _generate_signal(self, data: dict, category: FlightCategory, operator: str) -> tuple[str, str]:
         """
         Identifies alpha signals (e.g. logistics bursts, supply chain anomalies).
         """
         if category == FlightCategory.CARGO and "Foxconn" in data.get("shipper", ""):
             return "BULLISH", "High-value electronics logistics burst detected (Foxconn -> Apple)"
-        
+
         if data.get("altitude", 35000) < 5000 and data.get("status") == "Emergency":
             return "BEARISH", f"Critical operational anomaly detected for {operator} aircraft"
-            
+
         return "NEUTRAL", "Standard operational flight path."
 
-    def get_market_intelligence(self) -> List[Dict]:
+    def get_market_intelligence(self) -> list[dict]:
         """Distills flight data into stock signals."""
         signals = []
         for f in self._flights.values():
@@ -196,42 +197,42 @@ class FlightTracker:
 
 # --- SYNTHETIC HIGH-DENSITY POPULATION ---
 
-    async def populate_global_fleet(self):
+    async def populate_global_fleet(self, limit: int = 100):
         """
-        Fetches live aircraft from OpenSky Network via adsb.py.
+        Fetches live aircraft from OpenSky Network via src.live.aircraft.
         100% Free. 100% Open Source.
         """
-        from src.globe.adsb import fetch_all_aircraft
+        from src.live.aircraft import fetch_aircraft
         log.info("FETCHING_OPENSKY_AIRCRAFT_INSTITUTIONAL")
-        aircraft_list = await fetch_all_aircraft()
-        
-        for a in aircraft_list:
+        aircraft_list = fetch_aircraft()
+
+        for a in aircraft_list[:limit]:
             # Map into our Flight internal format
             await self.update_flight({
                 "icao24": a.icao24,
                 "callsign": a.callsign,
                 "lat": a.lat,
                 "lon": a.lon,
-                "altitude": a.altitude_ft,
-                "speed": a.speed_knots,
+                "altitude": a.alt_ft,
+                "speed": a.speed_kts,
                 "heading": a.heading,
-                "operator": a.origin_country, # Use country as operator proxy if unknown
-                "category": a.aircraft_category,
+                "operator": a.operator or a.country,
+                "category": a.category,
                 "status": "Emergency" if a.alert else "Normal"
             })
 
-    def get_all_flights(self) -> List[Flight]:
+    def get_all_flights(self) -> list[Flight]:
         """Returns all flights in memory."""
         return list(self._flights.values())
 
-    def get_flight(self, callsign: str) -> Optional[Flight]:
+    def get_flight(self, callsign: str) -> Flight | None:
         """Lookup flight by callsign."""
         for f in self._flights.values():
             if f.callsign == callsign:
                 return f
         return None
 
-    def to_geojson_feature_collection(self) -> Dict[str, Any]:
+    def to_geojson_feature_collection(self) -> dict[str, Any]:
         """
         Formats all flights as GeoJSON for the WorldView frontend.
         """
@@ -259,11 +260,36 @@ class FlightTracker:
             "features": features
         }
 
+    async def get_ticker_flight_signal(self, ticker: str) -> dict:
+        """Alias for composite score engine."""
+        # Find airline/manufacturer for ticker
+        is_relevant = False
+        for airline, tickers in AIRLINE_TO_TICKERS.items():
+            if ticker in tickers:
+                is_relevant = True
+                break
+        if not is_relevant:
+            for manufacturer, tickers in MANUFACTURER_TO_TICKERS.items():
+                if ticker in tickers:
+                    is_relevant = True
+                    break
+
+        count = 0
+        if is_relevant:
+            count = sum(1 for f in self._flights.values() if ticker in f.affected_tickers)
+
+        return {
+            "ticker": ticker,
+            "flight_count": count,
+            "normalized_traffic": min(count / 10.0, 1.0),
+            "age_s": 300
+        }
+
 if __name__ == "__main__":
     tracker = FlightTracker()
     async def run_test():
         await tracker.populate_global_fleet(100)
         intel = tracker.get_market_intelligence()
         print(f"Captured {len(intel)} high-conviction aviation signals.")
-        
+
     asyncio.run(run_test())

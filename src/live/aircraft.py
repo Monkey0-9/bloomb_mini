@@ -1,17 +1,19 @@
-"""
-OpenSky Network — zero key, zero registration, zero cost.
-Returns every aircraft on Earth. 15,000-25,000 live at any moment.
-Updated every 10 seconds.
-API: https://opensky-network.org/api/states/all
-"""
+import os
 import time
-import httpx
-import structlog
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Literal
 
+import httpx
+import structlog
+from dotenv import load_dotenv
+
+load_dotenv()
+
 log = structlog.get_logger()
+
+OPENSKY_USER = os.getenv("OPENSKY_USERNAME")
+OPENSKY_PASS = os.getenv("OPENSKY_PASSWORD")
 
 # Military ICAO24 hex prefixes — compiled from public OSINT/academic sources
 MILITARY_HEX_PREFIXES = {
@@ -108,10 +110,16 @@ def fetch_aircraft(category_filter: list[str] | None = None) -> list[Aircraft]:
             result = [a for a in result if a.category in category_filter]
         return result
 
+    auth = None
+    if OPENSKY_USER and OPENSKY_PASS:
+        auth = (OPENSKY_USER, OPENSKY_PASS)
+        log.info("using_opensky_auth", user=OPENSKY_USER)
+
     try:
         resp = httpx.get(
             "https://opensky-network.org/api/states/all",
-            timeout=20,
+            auth=auth,
+            timeout=25,
         )
         if resp.status_code == 429:
             log.warning("opensky_rate_limited")
@@ -169,7 +177,7 @@ def fetch_aircraft(category_filter: list[str] | None = None) -> list[Aircraft]:
                 "callsign": callsign,
                 "lat":      s[6],
                 "lon":      s[5],
-                "ts":       datetime.now(timezone.utc).isoformat(),
+                "ts":       datetime.now(UTC).isoformat(),
             }
 
         aircraft.append(Aircraft(
@@ -187,7 +195,7 @@ def fetch_aircraft(category_filter: list[str] | None = None) -> list[Aircraft]:
             operator  = operator,
             vip       = vip,
             alert     = alert,
-            ts        = datetime.now(timezone.utc).isoformat(),
+            ts        = datetime.now(UTC).isoformat(),
         ))
 
     _cache    = aircraft
@@ -198,7 +206,7 @@ def fetch_aircraft(category_filter: list[str] | None = None) -> list[Aircraft]:
              cargo=sum(1 for a in aircraft if a.category=="CARGO"),
              govt=sum(1 for a in aircraft if a.category=="GOVERNMENT"),
              alerts=sum(1 for a in aircraft if a.alert))
-    
+
     result = aircraft
     if category_filter:
         result = [a for a in aircraft if a.category in category_filter]
@@ -246,6 +254,6 @@ def to_geojson(aircraft: list[Aircraft]) -> dict:
             "cargo":    sum(1 for a in aircraft if a.category=="CARGO"),
             "govt":     sum(1 for a in aircraft if a.category=="GOVERNMENT"),
             "alerts":   sum(1 for a in aircraft if a.alert),
-            "fetched":  datetime.now(timezone.utc).isoformat(),
+            "fetched":  datetime.now(UTC).isoformat(),
         },
     }

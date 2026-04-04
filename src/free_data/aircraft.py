@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any
 
 import httpx
 
@@ -41,28 +40,28 @@ async def get_live_aircraft() -> list[AircraftEvent]:
             resp = await client.get(OPENSKY_URL)
             data = resp.json()
             states = data.get("states", [])
-            
+
             events = []
             for s in states:
                 # v[5]=lon, v[6]=lat, v[0]=icao24, v[1]=callsign, v[7]=alt, v[14]=squawk
                 if not s[5] or not s[6]: continue
-                
+
                 icao = (s[0] or "").lower()
                 call = (s[1] or "").strip().upper()
                 squawk = str(s[14]).strip() if s[14] else ""
-                
+
                 category = "COMMERCIAL"
                 operator = "Civilian"
-                
+
                 if any(icao.startswith(p) for p in MILITARY_PREFIXES):
                     category = "MILITARY"
                     operator = MILITARY_PREFIXES[next(p for p in MILITARY_PREFIXES if icao.startswith(p))]
                 elif any(call.startswith(p) for p in CARGO_PREFIXES):
                     category = "CARGO"
                     operator = CARGO_PREFIXES[call[:3]]
-                
+
                 is_emergency = squawk in ["7700", "7600", "7500"]
-                
+
                 if category != "COMMERCIAL" or is_emergency:
                     events.append(AircraftEvent(
                         icao24=icao, callsign=call, category=category,
@@ -70,7 +69,7 @@ async def get_live_aircraft() -> list[AircraftEvent]:
                         alt_ft=float(s[7] or 0) * 3.28084,
                         squawk=squawk, operator=operator, is_emergency=is_emergency
                     ))
-            
+
             return events
     except Exception as e:
         logger.error(f"Aircraft tracking error: {e}")

@@ -4,7 +4,7 @@ Focuses on known cargo operators: FedEx, UPS, DHL, Amazon Air, Cargolux,
 Atlas Air, Korean Air Cargo, Air France Cargo, Lufthansa Cargo.
 No API key needed for OpenSky REST API at 10 req/minute.
 """
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
@@ -113,7 +113,7 @@ def get_cargo_flights(hubs: list[str] | None = None) -> dict:
                 "hub": hub_key,
                 "hub_desc": hub["hub_for"],
                 "source": "OpenSky-Network",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             })
 
     # Aggregate by operator for signal computation
@@ -139,5 +139,5 @@ def get_cargo_flights(hubs: list[str] | None = None) -> dict:
         "operator_summary": operator_summary,
         "total_cargo_flights": len(all_flights),
         "hubs_scanned": hubs_to_query,
-        "as_of": datetime.now(timezone.utc).isoformat(),
+        "as_of": datetime.now(UTC).isoformat(),
     }

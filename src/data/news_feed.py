@@ -2,11 +2,12 @@
 News Feed Aggregator — RSS + SEC EDGAR + NewsAPI (100% Authenticated).
 Aggregates financial and maritime news from public and free-key sources.
 """
+import logging
 import os
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-import logging
+
 import httpx
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
@@ -58,7 +59,7 @@ async def _parse_rss(source_name: str, url: str, limit: int = 10) -> list[NewsIt
         logger.info(f"news.fetching_rss: {source_name}")
         async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
             resp = await client.get(url, headers={"User-Agent": "SatTrade/2.0"})
-        
+
         # Strip namespaces for easier parsing
         content = re.sub(r'\sxmlns="[^"]+"', '', resp.text, count=1)
         root = ET.fromstring(content)
@@ -134,34 +135,34 @@ async def _fetch_newsapi(query: str = "shipping OR logistics OR commodities OR e
 def _enrich_news_item(item: NewsItem) -> NewsItem:
     """Add sentiment score and extract tickers locally."""
     text = f"{item.title} {item.summary}".lower()
-    
+
     # 1. Sentiment
     scores = _analyzer.polarity_scores(item.title)
     item.sentiment = scores["compound"]
-    
+
     # 2. Tickers (Keyword map)
     found_tickers = set()
     for kw, ticker in KEYWORD_TICKERS.items():
         if kw in text:
             found_tickers.add(ticker)
-            
+
     # 3. Tickers (Regex)
     raw_symbols = TICKER_PATTERN.findall(item.title)
     for sym in raw_symbols:
         if sym not in ["FOR", "THE", "AND", "NEW", "USA", "LNG", "AIS", "SEC", "CEO"]:
             found_tickers.add(sym)
-            
+
     item.tickers = list(found_tickers)
     return item
 
 async def get_news_feed(limit_per_source: int = 5) -> list[dict]:
     """Aggregate news from all sources and return as list of dicts."""
     import asyncio
-    
+
     # Fetch RSS in parallel
     rss_tasks = [asyncio.create_task(_parse_rss(name, url, limit=limit_per_source)) for name, url in RSS_FEEDS.items()]
     all_rss = await asyncio.gather(*rss_tasks, return_exceptions=True)
-    
+
     all_items: list[NewsItem] = []
     for res in all_rss:
         if not isinstance(res, Exception):

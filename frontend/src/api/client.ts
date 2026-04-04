@@ -1,4 +1,4 @@
-const BASE = "http://localhost:8000"
+const BASE = import.meta.env.VITE_API_URL || "http://localhost:9009"
 
 export const api = {
   aircraft:          () => fetch(`${BASE}/api/aircraft`).then(r=>r.json()),
@@ -20,11 +20,17 @@ export const api = {
   news:              (cat?:string) => fetch(`${BASE}/api/news${cat?`?category=${cat}`:""}`).then(r=>r.json()),
   newsSearch:        (q:string) => fetch(`${BASE}/api/news/search?q=${encodeURIComponent(q)}`).then(r=>r.json()),
   intelligence:      () => fetch(`${BASE}/api/intelligence`).then(r=>r.json()),
+  godmode:           (query:string) => fetch(`${BASE}/api/command/godmode`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query })
+  }).then(r=>r.json()),
 }
 
 // WebSocket for live aircraft updates
 export function connectLive(onMessage: (data:any)=>void): ()=>void {
-  const ws = new WebSocket("ws://localhost:8000/ws")
+  const wsUrl = BASE.replace("http", "ws") + "/ws"
+  const ws = new WebSocket(wsUrl)
   ws.onmessage = (e) => {
     try { onMessage(JSON.parse(e.data)) } catch {}
   }

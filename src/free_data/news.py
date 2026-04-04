@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
 
 import feedparser
 import httpx
@@ -44,7 +43,7 @@ async def get_rss_news(category: str) -> list[NewsArticle]:
                     pub_date=entry.get("published", "")
                 ))
         except Exception as e:
-            logger.error(f"RSS error for %s: %s", f_url, e)
+            logger.error("RSS error for %s: %s", f_url, e)
     return articles
 
 async def query_gdelt(query: str) -> list[NewsArticle]:
@@ -63,7 +62,7 @@ async def query_gdelt(query: str) -> list[NewsArticle]:
             # If GDELT fails or is throttled, it might not return valid JSON or empty articles
             if resp.status_code != 200:
                 raise Exception(f"GDELT status {resp.status_code}")
-                
+
             data = resp.json()
             articles = []
             for art in data.get("articles", [])[:30]:
@@ -74,17 +73,17 @@ async def query_gdelt(query: str) -> list[NewsArticle]:
                     pub_date=art["seendate"],
                     summary=art.get("sourcecountry", "")
                 ))
-            
+
             if not articles:
                 # Fallback to RSS if GDELT is empty
                 logger.info("GDELT empty, falling back to RSS")
                 m_news = await get_rss_news("Maritime")
                 d_news = await get_rss_news("Defense")
                 return sorted(m_news + d_news, key=lambda x: x.pub_date, reverse=True)
-                
+
             return articles
     except Exception as e:
-        logger.error(f"GDELT error for %s: %s. Falling back to RSS.", query, e)
+        logger.error("GDELT error for %s: %s. Falling back to RSS.", query, e)
         # Final fallback
         m_news = await get_rss_news("Maritime")
         d_news = await get_rss_news("Defense")

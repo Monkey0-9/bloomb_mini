@@ -1,6 +1,8 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, JSON, ForeignKey
+from sqlalchemy import JSON, Column, DateTime, Float, Integer, String
 from sqlalchemy.sql import func
+
 from src.db.session import Base
+
 
 class User(Base):
     __tablename__ = "users"

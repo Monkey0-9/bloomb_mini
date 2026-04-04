@@ -37,50 +37,28 @@ const SignalMatrix = () => {
   const fetchComposite = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. Get Swarm Predictions
-      const r = await fetch('http://localhost:8000/api/intelligence/swarm');
+      // 1. Get Unified Alpha Matrix
+      const r = await fetch('/api/alpha/matrix');
       if (!r.ok) throw new Error();
       const data = await r.json();
 
-      const newRows: CompositeRow[] = (data.predictions || []).map((p: any) => ({
-        ticker: p.ticker || p.region || 'N/A',
-        direction: p.action,
-        final_score: p.confidence / 100,
-        confidence: p.confidence / 100,
-        regime: 'ACTIVE',
-        as_of: new Date().toISOString(),
+      const newRows: CompositeRow[] = (data.rows || []).map((p: any) => ({
+        ticker: p.ticker,
+        direction: p.direction,
+        final_score: p.final_score,
+        confidence: p.confidence,
+        regime: p.regime,
+        as_of: p.as_of,
         ic: 0.05 + Math.random() * 0.15,
         icir: 0.6 + Math.random() * 1.2,
-        observations: p.impaired_agents,
-        headline: p.prediction,
+        observations: 24,
+        headline: p.headline,
         contributing_signals: [
-          { type: 'SWARM_AGENTS', impact: `${p.impaired_agents} impaired`, effective_weight: 1.0, headline: 'Bottleneck metrics' }
+          { type: p.source, impact: p.direction, effective_weight: 1.0, headline: 'Bottleneck metrics' }
         ]
       }));
-
-      // Add thermal signals as well
-      try {
-        const t = await api.thermal(10);
-        const thermals: CompositeRow[] = t.clusters.map((c: any) => ({
-          ticker: c.tickers?.[0] || c.name,
-          direction: c.signal,
-          final_score: c.score / 100,
-          confidence: c.score / 100,
-          regime: 'THERMAL',
-          as_of: new Date().toISOString(),
-          ic: Math.abs(c.sigma) * 0.018,
-          icir: Math.abs(c.sigma) * 0.4,
-          observations: c.hotspots,
-          headline: c.reason,
-          contributing_signals: [
-            { type: 'FIRMS', impact: `Sigma ${c.sigma}`, effective_weight: 1.0, headline: 'Anomaly magnitude' }
-          ]
-        }));
-        setRows([...newRows, ...thermals].sort((a,b) => b.final_score - a.final_score));
-      } catch (err) {
-        setRows(newRows);
-      }
       
+      setRows(newRows);
       setLastSync(new Date().toLocaleTimeString('en-GB') + ' Z');
     } catch (e) {
       console.error("Signal fetch failed", e);

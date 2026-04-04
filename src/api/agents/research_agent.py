@@ -1,8 +1,9 @@
+import logging
 from typing import Any
+
 from src.api.agents.base import BaseAgent
 from src.intelligence.engine import GlobalIntelligenceEngine
 from src.signals.composite_score import CompositeScorer
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -19,20 +20,20 @@ class ResearchAgent(BaseAgent):
     async def process_task(self, task_type: str, params: dict[str, Any]) -> dict[str, Any]:
         query = (params.get("query") or "").upper()
         self.log.info("processing_research_query", query=query)
-        
+
         # 1. Fetch high-fidelity composite score (Alternative Data Fusion)
         result = await self.scorer.score(query)
-        
+
         # 2. Extract synthesis from the score result
         sentiment = result["direction"]
         score = result["final_score"] * 50 + 50  # -1..1 -> 0..100
-        
+
         # 3. Build detailed synthesis (The "Bloomberg" Why)
         reasons = []
         for sig in result.get("contributing_signals", []):
             if sig.get("impact") != "NEUTRAL":
                 reasons.append(f"{sig['headline']} ({sig['impact']})")
-        
+
         if not reasons:
             reasons.append("No strong physical anomalies detected; sentiment is baseline neutral.")
 

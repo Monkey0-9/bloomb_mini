@@ -7,7 +7,7 @@ Zero API keys. All data from public domain sources:
 - Sanctions regimes: OFAC/UN public lists
 - Economic chokepoints: maritime + logistics intelligence
 """
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 # ── Active Conflict Zones ─────────────────────────────────────────────────
 CONFLICT_ZONES = [
@@ -173,7 +173,7 @@ INFRASTRUCTURE_EVENTS = [
 
 def get_strategic_intelligence() -> dict:
     """Return the full strategic intelligence picture."""
-    ts = datetime.now(timezone.utc).isoformat()
+    ts = datetime.now(UTC).isoformat()
     return {
         "conflicts": CONFLICT_ZONES,
         "military_bases": MILITARY_BASES,

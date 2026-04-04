@@ -1,6 +1,6 @@
-from fastapi import APIRouter, HTTPException
-from src.data.market_data import get_stock_price, get_options_chain, get_earnings_calendar
-from typing import Any
+from fastapi import APIRouter
+
+from src.data.market_data import get_earnings_calendar, get_options_chain, get_stock_price
 
 router = APIRouter(prefix="/api/market", tags=["Market Data"])
 

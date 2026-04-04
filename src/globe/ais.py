@@ -1,5 +1,7 @@
 import time
+
 import structlog
+
 from src.free_data.vessels import get_global_ships
 
 log = structlog.get_logger(__name__)
@@ -21,7 +23,7 @@ async def generate_fleet():
         log.info("ais.fetching_real_ships")
         # Fetch real ships from the free_data engine
         ships = await get_global_ships(limit=500)
-        
+
         fleet = []
         for v in ships:
             # Map common fields
@@ -36,13 +38,13 @@ async def generate_fleet():
                 'nav_status': v.get('status', 'UNDERWAY'),
                 'last_update': v.get('last_updated', time.time())
             })
-            
+
         if fleet:
             log.info("ais.real_ships_fetched", count=len(fleet))
             return fleet
     except Exception as e:
         log.error("ais.real_ships_fetch_failed", error=str(e))
-        
+
     return []
 
 fleet_state = {} # Use MMSI for deduplication
@@ -71,7 +73,7 @@ async def run_ais_pipeline(update_callback):
     """
     try:
         from src.globe.ais_live import run_aisstream_pipeline
-        
+
         async def internal_callback(msg):
             if msg.get("_topic") == "vessel":
                 update_fleet_from_live(msg.get("data", []))

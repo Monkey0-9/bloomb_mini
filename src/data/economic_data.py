@@ -3,10 +3,11 @@ Institutional Macro Economic Data — NO API KEY REQUIRED.
 Uses World Bank, IMF, Open-Meteo, and UN Comtrade public APIs.
 Replaces legacy FRED dependency.
 """
-from datetime import datetime, timezone
+import asyncio
+from datetime import UTC, datetime
+
 import httpx
 import structlog
-import asyncio
 
 log = structlog.get_logger()
 
@@ -79,7 +80,7 @@ async def get_macro_dashboard() -> dict:
     Uses asyncio.gather for parallel fetching.
     """
     result = {}
-    
+
     async def fetch_series(name: str, config: dict):
         source = config["source"]
         obs = []
@@ -92,7 +93,7 @@ async def get_macro_dashboard() -> dict:
         elif source == "comtrade":
             # Simplified static response for Comtrade to respect rate limits during demo
             obs = [{"date": "2023", "value": 1.2e9}] # Simulated Trade Flow
-            
+
         latest = obs[0] if obs else {"date": "N/A", "value": 0.0}
         result[name] = {
             "series_id": config.get("id", name),
@@ -103,8 +104,8 @@ async def get_macro_dashboard() -> dict:
 
     tasks = [fetch_series(name, config) for name, config in MACRO_SERIES.items()]
     await asyncio.gather(*tasks)
-    
-    result["_as_of"] = datetime.now(timezone.utc).isoformat()
+
+    result["_as_of"] = datetime.now(UTC).isoformat()
     return result
 
 async def get_series(series_id: str, limit: int = 90) -> dict:
@@ -116,10 +117,10 @@ async def get_series(series_id: str, limit: int = 90) -> dict:
         obs = await _fetch_imf_series(series_id)
     else:
         obs = await _fetch_wb_series(series_id, limit=limit)
-        
+
     return {
         "series_id": series_id,
         "observations": obs,
         "count": len(obs),
-        "as_of": datetime.now(timezone.utc).isoformat(),
+        "as_of": datetime.now(UTC).isoformat(),
     }

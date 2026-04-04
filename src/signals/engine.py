@@ -1,25 +1,38 @@
+"""
+SatTrade Signal Engine — Multi-Asset Swarm Intelligence
+=======================================================
+Orchestrates vessel, flight, and news signals into a unified
+Composite Score for predictive alpha.
+"""
+from __future__ import annotations
+
 from datetime import UTC, datetime
 from typing import Any
 
-from src.maritime.vessel_tracker import VesselTracker, VesselType, CargoType
-from src.maritime.flight_tracker import FlightTracker
-from src.signals.ic_analysis import ICAnalysisPipeline
-
 import structlog
 
-log = structlog.get_logger()
+from src.maritime.flight_tracker import FlightTracker
+from src.maritime.vessel_tracker import CargoType, VesselTracker, VesselType
+from src.signals.ic_analysis import ICAnalysisPipeline
+
+log = structlog.get_logger(__name__)
 
 
 class SignalEngine:
+    """
+    Unified signal processing engine.
+    Calculates live signals from physical-world data streams.
+    """
+
     def __init__(
         self,
         vessel_tracker: VesselTracker | None = None,
         flight_tracker: FlightTracker | None = None
-    ):
+    ) -> None:
         self.vessel_tracker = vessel_tracker or VesselTracker()
         self.flight_tracker = flight_tracker or FlightTracker()
         self.ic_pipeline = ICAnalysisPipeline()
-        self._cached_ic = {
+        self._cached_ic: dict[str, float] = {
             "port_throughput": 0.062,
             "energy_transit": 0.058,
             "mining_flow": 0.054,
@@ -28,13 +41,14 @@ class SignalEngine:
             "agri_bulk": 0.042
         }
 
-    def get_live_signals(self) -> dict[str, Any]:
+    async def get_live_signals(self) -> dict[str, Any]:
         """
         Calculates and returns all live signals.
+        Integrates dark vessel detection and chokepoint monitoring.
         """
         from src.signals.composite_score import compute_composite
 
-        signals = {}
+        signals: dict[str, Any] = {}
 
         # Define the signals we monitor
         monitored_signals = [
@@ -60,18 +74,21 @@ class SignalEngine:
             ),
         ]
 
-        dark_vessels = self.vessel_tracker.detect_dark_vessels()
+        # Get all vessels and filter for dark ones
+        all_vessels = await self.vessel_tracker.get_all_vessels()
+        dark_vessels = [v for v in all_vessels if v.dark_confidence in ("MED", "HIGH")]
+
         for dv in dark_vessels:
-            if dv.affected_tickers:
-                ticker = dv.affected_tickers[0]
+            if dv.linked_equities:
+                ticker = dv.linked_equities[0]
                 dv_signal = {
                     "signal_type": "dark_vessel",
-                    "signal": dv.signal_direction,
-                    "reason": dv.signal_reason,
-                    "sar_validated": dv.sar_validated,
+                    "signal": "BEARISH", # Dark vessels usually bearish for the asset
+                    "reason": f"{dv.dark_confidence} confidence dark vessel detected",
+                    "sar_validated": dv.sar_confirmed,
                     "vessel_name": dv.vessel_name
                 }
-                score_obj = compute_composite(
+                score_obj = await compute_composite(
                     ticker=ticker,
                     vessel_signal=dv_signal
                 )
@@ -79,43 +96,39 @@ class SignalEngine:
                 if score_obj.direction != "INSUFFICIENT_DATA":
                     signals[f"dark_{dv.mmsi}"] = {
                         "signal_name": f"Dark Vessel: {dv.vessel_name}",
-                        "location": (
-                            f"{dv.position.lat:.2f}, "
-                            f"{dv.position.lon:.2f}"
-                        ),
+                        "location": f"{dv.lat:.2f}, {dv.lon:.2f}",
                         "score": round((score_obj.final_score + 1) * 50, 1),
                         "direction": score_obj.direction,
                         "confidence": score_obj.confidence,
                         "delta": score_obj.final_score,
                         "ic": 0.22,
-                        "tickers": dv.affected_tickers,
+                        "tickers": dv.linked_equities,
                         "observations": 1,
                         "description": (
-                            f"{dv.signal_reason} "
-                            f"(SAR CONFIRMED: {dv.sar_validated})"
+                            f"{dv.dark_confidence} confidence dark vessel detected. "
+                            f"(SAR CONFIRMED: {dv.sar_confirmed})"
                         ),
-                        "as_of": dv.last_updated.isoformat()
+                        "as_of": datetime.now(UTC).isoformat()
                     }
 
         for key, name, loc, tickers in monitored_signals:
-            vessels = self.vessel_tracker.get_all_vessels()
             if key == "port_throughput":
-                m = [v for v in vessels if v.destination.port_code == "NLRTM"]
+                m = [v for v in all_vessels if v.destination == "NLRTM"]
             elif key == "energy_transit":
-                m = [v for v in vessels if v.vessel_type in [
+                m = [v for v in all_vessels if v.vessel_type in [
                     VesselType.CRUDE_TANKER, VesselType.LNG_TANKER
                 ]]
             elif key == "mining_flow":
-                m = [v for v in vessels if v.cargo.cargo_type == CargoType.IRON_ORE]
+                m = [v for v in all_vessels if v.cargo_commodity == CargoType.IRON_ORE]
             elif key == "automotive_export":
-                m = [v for v in vessels if v.vessel_type == VesselType.CAR_CARRIER]
+                m = [v for v in all_vessels if v.vessel_type == VesselType.CAR_CARRIER]
             else:
                 m = []
 
             feature_dict = {
                 "observations": len(m),
                 "avg_speed": (
-                    sum(v.position.speed_knots for v in m) / max(len(m), 1)
+                    sum(v.speed for v in m) / max(len(m), 1)
                 ),
                 "signal": (
                     "BULLISH" if len(m) > 30 else
@@ -124,7 +137,7 @@ class SignalEngine:
                 "reason": f"Activity density: {len(m)} vessels tracked."
             }
 
-            score_obj = compute_composite(
+            score_obj = await compute_composite(
                 ticker=tickers[0],
                 vessel_signal=feature_dict if key != "electronics_chain" else None,
                 flight_signal=feature_dict if key == "electronics_chain" else None,
@@ -152,11 +165,11 @@ class SignalEngine:
 
     def compute_ic(
         self,
-        signals: Any = None,
-        returns: Any = None,
+        signals: Any | None = None,
+        returns: Any | None = None,
         signal_key: str = "generic"
     ) -> Any:
-        # If signals/returns are provided as DataFrames, use them.
+        """Computes Information Coefficient for a signal set."""
         import numpy as np
         import pandas as pd
 

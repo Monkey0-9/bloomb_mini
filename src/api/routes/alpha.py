@@ -1,7 +1,9 @@
+import asyncio
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Request
+
+from fastapi import APIRouter, Depends, Request
+
 from src.api.orchestrator import SignalOrchestrator
-from typing import Any
 
 router = APIRouter(prefix="/api/alpha", tags=["Alpha Intelligence"])
 
@@ -54,3 +56,49 @@ async def get_news(ticker: str = None, orchestrator: SignalOrchestrator = Depend
 async def get_satellites(orchestrator: SignalOrchestrator = Depends(get_orchestrator)):
     result = await orchestrator.dispatch_task("satellite", "GET_STATE", {})
     return result
+
+@router.get("/earnings")
+async def get_earnings_alpha(orchestrator: SignalOrchestrator = Depends(get_orchestrator)):
+    result = await orchestrator.dispatch_task("fundamentals", "GET_EARNINGS", {})
+    return result
+
+@router.get("/matrix")
+async def get_alpha_matrix(orchestrator: SignalOrchestrator = Depends(get_orchestrator)):
+    """Unified alpha matrix for the frontend dashboard."""
+    from src.intelligence.swarm import run_swarm_simulation
+    from src.live.thermal import get_global_thermal
+
+    swarm_task = run_swarm_simulation()
+    thermal_task = get_global_thermal(top_n=20)
+
+    swarm, thermal = await asyncio.gather(swarm_task, thermal_task)
+
+    rows = []
+    # Swarm predictions
+    for p in swarm.get("predictions", []):
+        rows.append({
+            "ticker": p.get("ticker") or p.get("region"),
+            "direction": p.get("action"),
+            "final_score": p.get("confidence", 0) / 100,
+            "confidence": p.get("confidence", 0) / 100,
+            "regime": "ACTIVE_SWARM",
+            "as_of": datetime.now().isoformat(),
+            "headline": p.get("prediction"),
+            "source": "MiroFish Swarm"
+        })
+
+    # Thermal signals
+    for t in thermal:
+        ticker = t.tickers[0] if t.tickers else t.facility_name
+        rows.append({
+            "ticker": ticker,
+            "direction": t.signal,
+            "final_score": t.signal_score / 100,
+            "confidence": abs(t.anomaly_sigma) / 4.0, # Normalised
+            "regime": "THERMAL_DISCOVERY",
+            "as_of": t.detected_at,
+            "headline": t.signal_reason,
+            "source": "NASA FIRMS"
+        })
+
+    return {"rows": sorted(rows, key=lambda x: x["final_score"], reverse=True)}

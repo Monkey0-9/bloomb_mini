@@ -1,9 +1,11 @@
 import asyncio
+from datetime import UTC, datetime
+
 import structlog
-from datetime import datetime, timezone
-from src.globe.adsb import fetch_all_aircraft, get_squawk_alerts
-from src.common.trackers import vessel_tracker, flight_tracker
+
 from src.api.broadcast import broadcast_manager
+from src.common.trackers import flight_tracker, vessel_tracker
+from src.globe.adsb import fetch_all_aircraft, get_squawk_alerts
 
 log = structlog.get_logger()
 
@@ -18,13 +20,13 @@ async def run_ticker():
             # 1. Fetch aircraft from adsb.py (now uses adsb.fi fallback)
             aircraft = await asyncio.to_thread(fetch_all_aircraft)
             squawk_alerts = get_squawk_alerts(aircraft)
-            
+
             # 2. Update trackers
             try:
                 for a in aircraft:
                     # Map adsb.py Aircraft object to FlightTracker
                     flight_tracker.update_flight(
-                        a.callsign, a.lat, a.lon, 
+                        a.callsign, a.lat, a.lon,
                         a.altitude_ft, a.speed_knots
                     )
             except Exception as e:
@@ -50,14 +52,14 @@ async def run_ticker():
 
                 payload = {
                     "type": "TICKER_UPDATE",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                     "data": {
                         "aircraft": [a.__dict__ for a in aircraft],
                         "squawks": squawk_alerts,
                         "vessels": vessels
                     }
                 }
-                
+
                 await broadcast_manager.broadcast(payload)
                 log.info("ticker.broadcast_success", aircraft=len(aircraft), vessels=len(vessels))
             except Exception as e:
@@ -65,5 +67,5 @@ async def run_ticker():
 
         except Exception as e:
             log.error("ticker.loop_error", error=str(e))
-        
+
         await asyncio.sleep(3.0) # Balanced frequency

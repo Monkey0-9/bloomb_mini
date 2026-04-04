@@ -1,9 +1,9 @@
 import asyncio
 import json
-from datetime import datetime, timezone
-from typing import List, Dict, Any
-from fastapi import WebSocket
+from typing import Any
+
 import structlog
+from fastapi import WebSocket
 
 log = structlog.get_logger()
 
@@ -13,8 +13,8 @@ class BroadcastManager:
     Refactored for Top 0.1% performance: One producer, many consumers.
     """
     def __init__(self) -> None:
-        self.active_connections: List[WebSocket] = []
-        self.latest_snapshot: Dict[str, Any] = {}
+        self.active_connections: list[WebSocket] = []
+        self.latest_snapshot: dict[str, Any] = {}
         self._lock = asyncio.Lock()
 
     async def connect(self, websocket: WebSocket) -> None:
@@ -32,7 +32,7 @@ class BroadcastManager:
                 self.active_connections.remove(websocket)
         log.info("websocket.disconnected", count=len(self.active_connections))
 
-    async def broadcast(self, message: Dict[str, Any]) -> None:
+    async def broadcast(self, message: dict[str, Any]) -> None:
         """Broadcasts a message to all connected clients."""
         self.latest_snapshot = message
         if not self.active_connections:
@@ -47,7 +47,7 @@ class BroadcastManager:
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def _safe_send(self, websocket: WebSocket, message: Dict[str, Any]) -> None:
+    async def _safe_send(self, websocket: WebSocket, message: dict[str, Any]) -> None:
         try:
             await websocket.send_text(json.dumps(message))
         except Exception:

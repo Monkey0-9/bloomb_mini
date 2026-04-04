@@ -5,14 +5,14 @@ Predicts Global Trade Flow Index (GTFI) by correlating real-time seeds:
 2. Seismic Data (quakes.py)
 3. News OSINT (news.py)
 """
+import asyncio
 import logging
 import random
-import asyncio
-from enum import Enum
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from enum import Enum
 
-from src.free_data import vessels, quakes, news
+from src.free_data import news, quakes, vessels
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ class MaritimeAgent:
     def observe(self, seeds: dict):
         """Update agent state based on world seeds."""
         impact = 0.0
-        
+
         # 1. Seismic Reactivity
         for q in seeds.get('quakes', []):
             if q.mag > 5.0:
@@ -64,18 +64,18 @@ class SwarmAlert:
     risk_level: str  # LOW, MEDIUM, HIGH, CRITICAL
     reason: str
     impact_tickers: list[str]
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 @dataclass
 class TradeFlowSnapshot:
     global_index: float  # 0.0 to 1.0 (1.0 = optimal flow)
     alerts: list[SwarmAlert]
     congestion_map: dict[str, float]
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 class VesselSwarmEngine:
     """MiroFish-inspired Multi-Agent Coordination Engine."""
-    
+
     def __init__(self):
         self.agents: dict[str, MaritimeAgent] = {}
         self.last_snapshot: TradeFlowSnapshot | None = None
@@ -105,21 +105,21 @@ class VesselSwarmEngine:
                 vessels.get_global_ships(limit=100)
             ]
             port_data, quake_data, news_data, ship_data = await asyncio.gather(*tasks)
-            
+
             # 1. Update/Initialize Agents
             self._initialize_agents(ship_data)
-            
+
             # 2. Propagate Seeds to Agents
             seeds = {'quakes': quake_data, 'news': news_data, 'ports': port_data}
             for agent in self.agents.values():
                 agent.observe(seeds)
-            
+
             # 3. Aggregate Swarm Intelligence
             if not self.agents:
                 avg_health = 1.0
             else:
                 avg_health = sum(a.health for a in self.agents.values()) / len(self.agents)
-            
+
             alerts: list[SwarmAlert] = []
             # Surface agents in critical health (MiroFish profiling)
             for a in list(self.agents.values()):
@@ -135,23 +135,23 @@ class VesselSwarmEngine:
             congestion_map = {}
             for p in port_data[:5]:
                 congestion_map[p.get('name', 'Unknown Port')] = p.get('congestion', 0.0)
-            
+
             snapshot = TradeFlowSnapshot(
                 global_index=round(avg_health, 2),
                 alerts=alerts[:10],
                 congestion_map=congestion_map,
-                timestamp=datetime.now(timezone.utc)
+                timestamp=datetime.now(UTC)
             )
             self.last_snapshot = snapshot
             return snapshot
-            
+
         except Exception as e:
             logger.error(f"Swarm simulation failed: {e}")
             return TradeFlowSnapshot(
-                global_index=1.0, 
-                alerts=[], 
-                congestion_map={}, 
-                timestamp=datetime.now(timezone.utc)
+                global_index=1.0,
+                alerts=[],
+                congestion_map={},
+                timestamp=datetime.now(UTC)
             )
 
 swarm_engine = VesselSwarmEngine()

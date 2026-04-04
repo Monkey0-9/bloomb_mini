@@ -1,8 +1,9 @@
 import logging
-import asyncio
-from typing import Dict, Any, List
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any
+
 import yfinance as yf
+
 from src.api.agents.base import BaseAgent
 
 log = logging.getLogger(__name__)
@@ -19,12 +20,12 @@ class ExecutionAgent(BaseAgent):
     """
 
     def __init__(self):
-        super().__init__("EXECUTION_OMS")
+        super().__init__("execution")
         self.status = "ACTIVE"
-        self.last_sync = datetime.now(timezone.utc)
+        self.last_sync = datetime.now(UTC)
         log.info("OMS: Paper trading engine initialised (yfinance pricing)")
 
-    async def get_state(self) -> Dict[str, Any]:
+    async def get_state(self) -> dict[str, Any]:
         return {
             "cash": round(_portfolio["cash"], 2),
             "positions": _portfolio["positions"],
@@ -32,7 +33,7 @@ class ExecutionAgent(BaseAgent):
             "currency": "USD"
         }
 
-    async def place_order(self, ticker: str, qty: int, side: str) -> Dict[str, Any]:
+    async def place_order(self, ticker: str, qty: int, side: str) -> dict[str, Any]:
         """Simulate a market order using the live bid/ask from yfinance."""
         if not ticker:
             return {"error": "Ticker is required"}
@@ -66,7 +67,7 @@ class ExecutionAgent(BaseAgent):
             "total": round(cost, 2)
         }
 
-    async def process_task(self, task_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def process_task(self, task_type: str, params: dict[str, Any]) -> dict[str, Any]:
         if task_type == "EXECUTE_TRADE":
             return await self.place_order(
                 params.get("ticker", ""),

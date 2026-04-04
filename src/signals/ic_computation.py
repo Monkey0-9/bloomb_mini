@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import numpy as np
@@ -38,7 +38,7 @@ class ICResult:
     n_observations: int
     p_value: float           # Statistical significance
     computed_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc)
+        default_factory=lambda: datetime.now(UTC)
     )
     is_significant: bool = False   # p < 0.05
 

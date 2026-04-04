@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -84,7 +84,7 @@ class Detector:
 
         return DetectionResult(
             tile_id=tile_id,
-            detection_timestamp=datetime.now(timezone.utc),
+            detection_timestamp=datetime.now(UTC),
             model_version=self.model_version,
             class_counts=class_counts,
             confidence_scores=conf_avg,

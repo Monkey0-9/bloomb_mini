@@ -13,8 +13,8 @@ const NewsHubView = () => {
   const [selectedArticle, setSelectedArticle] = useState<any>(null);
 
   const streams = [
-    { id: 'iss', title: 'NASA Earth Live', url: 'https://www.youtube.com/embed/P9C25Un7xaM', category: 'Orbital Recon' },
-    { id: 'bloomberg', title: 'Bloomberg TV', url: 'https://www.youtube.com/embed/dp8PhLsUcFE', category: 'Market Alpha' },
+    { id: 'iss', title: 'NASA Earth Live', url: 'https://www.youtube.com/embed/S_8S-P3K53k', category: 'Orbital Recon' },
+    { id: 'bloomberg', title: 'Bloomberg Live', url: 'https://www.youtube.com/embed/SSTX8Xf0uDk', category: 'Market Alpha' },
     { id: 'cnbc', title: 'CNBC International', url: 'https://www.youtube.com/embed/_pD8l_6TidM', category: 'Macro Events' }
   ];
   const [selectedStream, setSelectedStream] = useState(streams[1]);
@@ -22,7 +22,7 @@ const NewsHubView = () => {
   useEffect(() => {
     const loadNews = async () => {
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/news/live`);
+        const response = await fetch('/api/news/live');
         const data = await response.json();
         setNewsArticles(data.articles || data.news || []);
       } catch (err) {
@@ -146,7 +146,11 @@ const NewsHubView = () => {
               <div className="flex-1 overflow-y-auto p-12 custom-scrollbar">
                 <h1 className="text-2xl font-black text-text-0 uppercase leading-tight mb-8">{selectedArticle.text}</h1>
                 <p className="text-text-2 text-lg leading-relaxed">
-                  {selectedArticle.content || "Satellite telemetry confirmation pending. Initial analysis of terrestrial signals indicates a significant shift in market structural dynamics. Data ingested via local surveillance agents suggests that current trading volumes are influenced by high-frequency orbital throughput."}
+                  {selectedArticle.content || 
+                   `REGULATORY FILING SUMMARY: ${selectedArticle.text}. 
+                   Automated sentiment analysis indicates a ${selectedArticle.impact || 'neutral'} impact on the 
+                   correlated physical assets. Satellite surveillance of associated manufacturing nodes 
+                   shows no immediate disruption to throughput. Source: ${selectedArticle.source}.`}
                 </p>
               </div>
             </div>

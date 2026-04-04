@@ -1,10 +1,10 @@
 import os
+from datetime import UTC, datetime, timedelta
+
 import jwt
-from datetime import datetime, timedelta, timezone
-from typing import Optional
-from fastapi import HTTPException, Security, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
+from fastapi import Depends, HTTPException, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 load_dotenv()
 
@@ -21,9 +21,9 @@ ROLES = {
 }
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + (
+    expire = datetime.now(UTC) + (
         expires_delta or timedelta(minutes=int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60")))
     )
     to_encode.update({"exp": expire})
@@ -48,7 +48,7 @@ def require_role(allowed_roles: list[str]):
         role = user.get("role", "ANALYST")
         if role not in allowed_roles:
             raise HTTPException(
-                status_code=403, 
+                status_code=403,
                 detail=f"Role {role} not authorized. Required: {allowed_roles}"
             )
         return user

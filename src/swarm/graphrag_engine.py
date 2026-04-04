@@ -11,9 +11,9 @@ Inspired by MiroFish GraphRAG architecture:
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, field
 from collections import defaultdict
+from dataclasses import dataclass, field
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ class KnowledgeNode:
     id: str
     type: str  # 'facility', 'company', 'ticker', 'sector', 'commodity', 'chokepoint', 'region'
     name: str
-    attributes: Dict[str, Any] = field(default_factory=dict)
+    attributes: dict[str, Any] = field(default_factory=dict)
     importance: float = 1.0  # 0.0 to 1.0
 
 
@@ -35,14 +35,14 @@ class KnowledgeEdge:
     target: str  # Node ID
     relation: str  # 'operates', 'owns', 'supplies', 'competes_with', 'located_in', 'ships_through', 'depends_on'
     strength: float  # 0.0 to 1.0, how strong the relationship
-    evidence: List[str] = field(default_factory=list)  # Source of this relationship
+    evidence: list[str] = field(default_factory=list)  # Source of this relationship
 
 
 @dataclass
 class GraphPath:
     """A path through the knowledge graph with reasoning."""
-    nodes: List[KnowledgeNode]
-    edges: List[KnowledgeEdge]
+    nodes: list[KnowledgeNode]
+    edges: list[KnowledgeEdge]
     reasoning: str
     impact_score: float  # Estimated market impact along this path
 
@@ -56,36 +56,36 @@ class FacilityMarketGraph:
     - "Which companies compete with this facility?"
     - "What happens to X if Hormuz has a disruption?"
     """
-    
+
     def __init__(self):
-        self.nodes: Dict[str, KnowledgeNode] = {}
-        self.edges: Dict[str, List[KnowledgeEdge]] = defaultdict(list)  # source -> edges
-        self._reverse_edges: Dict[str, List[KnowledgeEdge]] = defaultdict(list)  # target -> edges
-        
+        self.nodes: dict[str, KnowledgeNode] = {}
+        self.edges: dict[str, list[KnowledgeEdge]] = defaultdict(list)  # source -> edges
+        self._reverse_edges: dict[str, list[KnowledgeEdge]] = defaultdict(list)  # target -> edges
+
     def add_node(self, node: KnowledgeNode) -> None:
         """Add a node to the graph."""
         self.nodes[node.id] = node
-        
+
     def add_edge(self, edge: KnowledgeEdge) -> None:
         """Add an edge to the graph."""
         self.edges[edge.source].append(edge)
         self._reverse_edges[edge.target].append(edge)
-        
-    def get_node(self, node_id: str) -> Optional[KnowledgeNode]:
+
+    def get_node(self, node_id: str) -> KnowledgeNode | None:
         """Get a node by ID."""
         return self.nodes.get(node_id)
-        
-    def get_neighbors(self, node_id: str, relation: Optional[str] = None) -> List[KnowledgeNode]:
+
+    def get_neighbors(self, node_id: str, relation: str | None = None) -> list[KnowledgeNode]:
         """Get all nodes connected to given node."""
         edges = self.edges.get(node_id, [])
         if relation:
             edges = [e for e in edges if e.relation == relation]
         return [self.nodes[e.target] for e in edges if e.target in self.nodes]
-    
-    def find_paths(self, 
-                   start_id: str, 
-                   end_id: str, 
-                   max_depth: int = 4) -> List[GraphPath]:
+
+    def find_paths(self,
+                   start_id: str,
+                   end_id: str,
+                   max_depth: int = 4) -> list[GraphPath]:
         """
         Find all paths between two nodes up to max_depth hops.
         
@@ -93,22 +93,22 @@ class FacilityMarketGraph:
         """
         if start_id not in self.nodes or end_id not in self.nodes:
             return []
-        
+
         paths = []
         visited = set()
-        
+
         # BFS with path tracking
         queue = [(start_id, [start_id], [], 0)]
-        
+
         while queue:
             current, node_path, edge_path, depth = queue.pop(0)
-            
+
             if current == end_id and depth > 0:
                 # Found a path
                 nodes = [self.nodes[n] for n in node_path]
                 reasoning = self._generate_path_reasoning(nodes, edge_path)
                 impact = self._calculate_path_impact(edge_path)
-                
+
                 paths.append(GraphPath(
                     nodes=nodes,
                     edges=edge_path,
@@ -116,10 +116,10 @@ class FacilityMarketGraph:
                     impact_score=impact
                 ))
                 continue
-            
+
             if depth >= max_depth:
                 continue
-            
+
             # Explore neighbors
             for edge in self.edges.get(current, []):
                 if edge.target not in visited and edge.target not in node_path:
@@ -129,12 +129,12 @@ class FacilityMarketGraph:
                         edge_path + [edge],
                         depth + 1
                     ))
-        
+
         # Sort by impact score
         paths.sort(key=lambda p: p.impact_score, reverse=True)
         return paths
-    
-    def query_impact(self, facility_id: str) -> Dict[str, Any]:
+
+    def query_impact(self, facility_id: str) -> dict[str, Any]:
         """
         Query what tickers/sectors are impacted by a facility event.
         
@@ -143,9 +143,9 @@ class FacilityMarketGraph:
         """
         if facility_id not in self.nodes:
             return {'error': f'Facility {facility_id} not found'}
-        
+
         facility = self.nodes[facility_id]
-        
+
         # Find all paths from facility to tickers
         ticker_paths = []
         for node_id, node in self.nodes.items():
@@ -157,16 +157,16 @@ class FacilityMarketGraph:
                         'best_path': paths[0],  # Highest impact
                         'all_paths': paths
                     })
-        
+
         # Sort by impact
         ticker_paths.sort(key=lambda x: x['best_path'].impact_score, reverse=True)
-        
+
         # Group by sector
         sectors = defaultdict(list)
         for tp in ticker_paths:
             sector = tp['ticker'].attributes.get('sector', 'Unknown')
             sectors[sector].append(tp['ticker'].name)
-        
+
         return {
             'facility': facility,
             'direct_tickers': [tp['ticker'].name for tp in ticker_paths[:5]],
@@ -176,14 +176,14 @@ class FacilityMarketGraph:
             'max_impact_score': ticker_paths[0]['best_path'].impact_score if ticker_paths else 0,
             'reasoning': ticker_paths[0]['best_path'].reasoning if ticker_paths else 'No direct impact paths found'
         }
-    
-    def _generate_path_reasoning(self, nodes: List[KnowledgeNode], edges: List[KnowledgeEdge]) -> str:
+
+    def _generate_path_reasoning(self, nodes: list[KnowledgeNode], edges: list[KnowledgeEdge]) -> str:
         """Generate human-readable reasoning for a path."""
         if not nodes or len(nodes) < 2:
             return "No path"
-        
+
         parts = [f"{nodes[0].name}"]
-        
+
         for i, edge in enumerate(edges):
             relation_desc = {
                 'operates': 'operates',
@@ -196,25 +196,25 @@ class FacilityMarketGraph:
                 'parent_of': 'is parent of',
                 'subsidiary_of': 'is subsidiary of'
             }.get(edge.relation, edge.relation)
-            
+
             parts.append(f" {relation_desc} {nodes[i+1].name}")
-        
+
         return " → ".join(parts)
-    
-    def _calculate_path_impact(self, edges: List[KnowledgeEdge]) -> float:
+
+    def _calculate_path_impact(self, edges: list[KnowledgeEdge]) -> float:
         """Calculate cumulative impact score along a path."""
         if not edges:
             return 0.0
-        
+
         # Impact decays with each hop
         total_impact = 1.0
         for i, edge in enumerate(edges):
             hop_decay = 0.8 ** i  # 1.0, 0.8, 0.64, ...
             total_impact *= edge.strength * hop_decay
-        
+
         return round(total_impact, 3)
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Serialize graph to dict."""
         return {
             'nodes': [
@@ -239,12 +239,12 @@ class FacilityMarketGraph:
                 for e in edges
             ]
         }
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'FacilityMarketGraph':
+    def from_dict(cls, data: dict[str, Any]) -> FacilityMarketGraph:
         """Deserialize graph from dict."""
         graph = cls()
-        
+
         for n in data.get('nodes', []):
             graph.add_node(KnowledgeNode(
                 id=n['id'],
@@ -253,7 +253,7 @@ class FacilityMarketGraph:
                 attributes=n.get('attributes', {}),
                 importance=n.get('importance', 1.0)
             ))
-        
+
         for e in data.get('edges', []):
             graph.add_edge(KnowledgeEdge(
                 source=e['source'],
@@ -262,7 +262,7 @@ class FacilityMarketGraph:
                 strength=e['strength'],
                 evidence=e.get('evidence', [])
             ))
-        
+
         return graph
 
 
@@ -276,11 +276,11 @@ class GraphRAGEngine:
     - Satellite facility detections
     - News/chronicle extraction
     """
-    
+
     def __init__(self):
         self.graph = FacilityMarketGraph()
         self._initialize_core_graph()
-    
+
     def _initialize_core_graph(self):
         """Initialize with core industrial facility relationships."""
         # ArcelorMittal network
@@ -295,7 +295,7 @@ class GraphRAGEngine:
             competitors=['X', 'NUE', 'TS'],
             supplies_to=['auto', 'construction', 'shipbuilding']
         )
-        
+
         # Cheniere LNG network
         self._add_facility_network(
             facility_id='sabine_pass',
@@ -308,7 +308,7 @@ class GraphRAGEngine:
             competitors=['GLNG', 'GLOG'],
             supplies_to=['Europe', 'Asia', 'power_utilities']
         )
-        
+
         # Port networks
         self._add_port_network(
             port_id='rotterdam',
@@ -317,7 +317,7 @@ class GraphRAGEngine:
             major_players=['AMKBY', 'HLAG.DE'],
             chokepoint_dependencies=['suez', 'bosphorus']
         )
-        
+
         self._add_port_network(
             port_id='singapore',
             port_name='Singapore PSA',
@@ -325,14 +325,14 @@ class GraphRAGEngine:
             major_players=['ZIM', '1919.HK'],
             chokepoint_dependencies=['malacca', 'suez']
         )
-        
+
         # Chokepoints
         self._add_chokepoint('hormuz', 'Strait of Hormuz', ['XOM', 'CVX', 'LNG'], 0.20)
         self._add_chokepoint('suez', 'Suez Canal', ['AMKBY', 'ZIM', '1919.HK'], 0.12)
         self._add_chokepoint('malacca', 'Strait of Malacca', ['AMKBY', 'ZIM', 'XOM'], 0.80)
-        
+
         logger.info(f"Initialized core graph with {len(self.graph.nodes)} nodes, {sum(len(e) for e in self.graph.edges.values())} edges")
-    
+
     def _add_facility_network(self, **kwargs):
         """Add a complete facility-company-ticker network."""
         # Facility node
@@ -346,7 +346,7 @@ class GraphRAGEngine:
             },
             importance=0.9
         ))
-        
+
         # Company node
         company_id = f"company_{kwargs['company'].lower().replace(' ', '_')}"
         self.graph.add_node(KnowledgeNode(
@@ -356,7 +356,7 @@ class GraphRAGEngine:
             attributes={'sector': kwargs['sector']},
             importance=0.8
         ))
-        
+
         # Ticker node
         self.graph.add_node(KnowledgeNode(
             id=f"ticker_{kwargs['ticker']}",
@@ -365,7 +365,7 @@ class GraphRAGEngine:
             attributes={'sector': kwargs['sector']},
             importance=0.7
         ))
-        
+
         # Sector node
         sector_id = f"sector_{kwargs['sector'].lower()}"
         if sector_id not in self.graph.nodes:
@@ -375,7 +375,7 @@ class GraphRAGEngine:
                 name=kwargs['sector'],
                 importance=0.6
             ))
-        
+
         # Edges
         self.graph.add_edge(KnowledgeEdge(
             source=company_id,
@@ -384,7 +384,7 @@ class GraphRAGEngine:
             strength=1.0,
             evidence=['Company filings', 'Satellite imagery']
         ))
-        
+
         self.graph.add_edge(KnowledgeEdge(
             source=company_id,
             target=f"ticker_{kwargs['ticker']}",
@@ -392,14 +392,14 @@ class GraphRAGEngine:
             strength=1.0,
             evidence=['Exchange listing']
         ))
-        
+
         self.graph.add_edge(KnowledgeEdge(
             source=f"ticker_{kwargs['ticker']}",
             target=sector_id,
             relation='belongs_to',
             strength=1.0
         ))
-        
+
         # Competitor edges
         for comp in kwargs.get('competitors', []):
             comp_id = f"ticker_{comp}"
@@ -410,11 +410,11 @@ class GraphRAGEngine:
                     relation='competes_with',
                     strength=0.6
                 ))
-    
+
     def _add_port_network(self, **kwargs):
         """Add port and shipping network."""
         port_node_id = f"port_{kwargs['port_id']}"
-        
+
         self.graph.add_node(KnowledgeNode(
             id=port_node_id,
             type='facility',
@@ -422,7 +422,7 @@ class GraphRAGEngine:
             attributes={'type': 'port', 'country': kwargs['country']},
             importance=0.85
         ))
-        
+
         # Connect shipping tickers
         for ticker in kwargs.get('major_players', []):
             ticker_id = f"ticker_{ticker}"
@@ -433,7 +433,7 @@ class GraphRAGEngine:
                     relation='operates_through',
                     strength=0.7
                 ))
-        
+
         # Chokepoint dependencies
         for choke in kwargs.get('chokepoint_dependencies', []):
             choke_id = f"chokepoint_{choke}"
@@ -444,11 +444,11 @@ class GraphRAGEngine:
                     relation='depends_on',
                     strength=0.9
                 ))
-    
-    def _add_chokepoint(self, choke_id: str, name: str, affected_tickers: List[str], global_trade_pct: float):
+
+    def _add_chokepoint(self, choke_id: str, name: str, affected_tickers: list[str], global_trade_pct: float):
         """Add a strategic chokepoint."""
         node_id = f"chokepoint_{choke_id}"
-        
+
         self.graph.add_node(KnowledgeNode(
             id=node_id,
             type='chokepoint',
@@ -456,7 +456,7 @@ class GraphRAGEngine:
             attributes={'global_trade_pct': global_trade_pct},
             importance=0.95
         ))
-        
+
         for ticker in affected_tickers:
             ticker_id = f"ticker_{ticker}"
             if ticker_id in self.graph.nodes:
@@ -466,8 +466,8 @@ class GraphRAGEngine:
                     relation='affects',
                     strength=0.8
                 ))
-    
-    def analyze_facility_event(self, facility_id: str, event_type: str, severity: float) -> Dict[str, Any]:
+
+    def analyze_facility_event(self, facility_id: str, event_type: str, severity: float) -> dict[str, Any]:
         """
         Analyze market impact of a facility event using graph reasoning.
         
@@ -481,10 +481,10 @@ class GraphRAGEngine:
         """
         # Get base impact paths
         base_impact = self.graph.query_impact(facility_id)
-        
+
         if 'error' in base_impact:
             return base_impact
-        
+
         # Adjust based on event type and severity
         event_multipliers = {
             'production_surge': 1.2 if severity > 0.7 else 0.8,
@@ -492,19 +492,19 @@ class GraphRAGEngine:
             'maintenance': -0.3,
             'thermal_anomaly': 0.6 if severity > 0.8 else 0.3
         }
-        
+
         multiplier = event_multipliers.get(event_type, 0.5)
-        
+
         # Calculate adjusted impact scores
         adjusted_tickers = []
         for ticker_name in base_impact.get('all_tickers', []):
             ticker_id = f"ticker_{ticker_name}"
             paths = self.graph.find_paths(facility_id, ticker_id, max_depth=3)
-            
+
             if paths:
                 base_score = paths[0].impact_score
                 adjusted_score = base_score * severity * multiplier
-                
+
                 adjusted_tickers.append({
                     'ticker': ticker_name,
                     'impact_score': round(adjusted_score, 3),
@@ -512,14 +512,14 @@ class GraphRAGEngine:
                     'confidence': min(0.95, abs(adjusted_score)),
                     'reasoning': paths[0].reasoning
                 })
-        
+
         # Sort by absolute impact
         adjusted_tickers.sort(key=lambda x: abs(x['impact_score']), reverse=True)
-        
+
         # Get primary ticker safely
         direct_tickers = base_impact.get('direct_tickers', [])
         primary_ticker = direct_tickers[0] if direct_tickers else None
-        
+
         return {
             'event': {'facility': facility_id, 'type': event_type, 'severity': severity},
             'primary_ticker': primary_ticker,
@@ -529,18 +529,18 @@ class GraphRAGEngine:
             'market_sentiment': 'BULLISH' if multiplier > 0 else 'BEARISH',
             'graph_reasoning': base_impact.get('reasoning', '')
         }
-    
-    def get_graph_summary(self) -> Dict[str, Any]:
+
+    def get_graph_summary(self) -> dict[str, Any]:
         """Get summary statistics of the knowledge graph."""
         node_types = defaultdict(int)
         for node in self.graph.nodes.values():
             node_types[node.type] += 1
-        
+
         relation_types = defaultdict(int)
         for edges in self.graph.edges.values():
             for edge in edges:
                 relation_types[edge.relation] += 1
-        
+
         return {
             'total_nodes': len(self.graph.nodes),
             'total_edges': sum(len(e) for e in self.graph.edges.values()),
@@ -551,7 +551,7 @@ class GraphRAGEngine:
 
 
 # Singleton
-_graph_engine: Optional[GraphRAGEngine] = None
+_graph_engine: GraphRAGEngine | None = None
 
 def get_graphrag_engine() -> GraphRAGEngine:
     """Get or create the GraphRAG engine."""
@@ -563,26 +563,26 @@ def get_graphrag_engine() -> GraphRAGEngine:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    
+
     engine = GraphRAGEngine()
-    
+
     print("\nGraphRAG Engine Summary:")
     summary = engine.get_graph_summary()
     print(f"  Nodes: {summary['total_nodes']}")
     print(f"  Edges: {summary['total_edges']}")
     print(f"  Node types: {summary['node_types']}")
-    
+
     # Example: Analyze ArcelorMittal thermal anomaly
     print("\n" + "="*60)
     print("Event Analysis: ArcelorMittal Dunkirk Production Surge")
     print("="*60)
-    
+
     analysis = engine.analyze_facility_event('arcelor_dunkirk', 'production_surge', 0.85)
-    
+
     print(f"\nEvent: {analysis['event']}")
     print(f"Primary Ticker: {analysis['primary_ticker']}")
     print(f"Market Sentiment: {analysis['market_sentiment']}")
-    print(f"\nAffected Tickers:")
+    print("\nAffected Tickers:")
     for t in analysis['affected_tickers'][:5]:
         print(f"  {t['ticker']}: {t['direction']} (score: {t['impact_score']}, confidence: {t['confidence']})")
         print(f"    → {t['reasoning'][:60]}...")

@@ -39,13 +39,14 @@ const ChartView = () => {
   const signalSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const overlaySeriesRefs = useRef<Map<string, ISeriesApi<"Line">>>(new Map());
   const [activeRange, setActiveRange] = useState('1M');
+  const [smoothing, setSmoothing] = useState(3);
 
   // Fetch TFT quantile forecast from backend
   const fetchForecast = async (ticker: string) => {
     setForecastLoading(true);
     try {
       const symbol = ticker.split(' ')[0];
-      const resp = await fetch(`/api/signals/forecast/${symbol}`);
+      const resp = await fetch(`/api/alpha/forecast/${symbol}`);
       if (resp.ok) {
         const data = await resp.json();
         setForecast(data.bands || null);
@@ -66,8 +67,9 @@ const ChartView = () => {
 
     const fetchHistory = async () => {
       try {
+        const symbol = currentTicker.split(' ')[0];
         const period = periodMap[activeRange] || '3mo';
-        const resp = await fetch(`http://localhost:8000/api/market/chart/${currentTicker}?period=${period}`);
+        const resp = await fetch(`/api/market/chart/${symbol}?period=${period}`);
         if (!resp.ok) throw new Error('Failed to fetch history');
         const data = await resp.json();
 
@@ -101,14 +103,11 @@ const ChartView = () => {
           }
 
           // Render TFT quantile bands if available
-          if (forecast && p50SeriesRef.current && p10SeriesRef.current && p90SeriesRef.current && data.data.length > 0) {
-            const lastCandle = data.data[data.data.length - 1];
+          if (forecast && p50SeriesRef.current && p10SeriesRef.current && p90SeriesRef.current && data.ohlcv.length > 0) {
+            const lastCandle = data.ohlcv[data.ohlcv.length - 1];
             const lastDate = new Date(lastCandle.date);
             const lastTime = Math.floor(lastDate.getTime() / 1000);
-            const lastVal = lastCandle.close;
-            const range = lastVal * 0.1;
-
-            // Forecast bands start from last price. Ensure yfinance time string formatting compatibility
+            
             const formatTime = (ts: number) => new Date(ts * 1000).toISOString().split('T')[0];
             const p50Data = forecast.map(f => ({ time: formatTime(lastTime + (f.time * 86400)), value: f.p50 }));
             const p10Data = forecast.map(f => ({ time: formatTime(lastTime + (f.time * 86400)), value: f.p10 }));
@@ -126,7 +125,7 @@ const ChartView = () => {
 
     const fetchOverlayHistory = async (ticker: string) => {
         try {
-            const resp = await fetch(`http://localhost:8000/api/market/chart/${ticker}?period=${periodMap[activeRange] || '3mo'}`);
+            const resp = await fetch(`/api/market/chart/${ticker}?period=${periodMap[activeRange] || '3mo'}`);
             if (resp.ok) {
                 const data = await resp.json();
                 const series = overlaySeriesRefs.current.get(ticker);
@@ -299,7 +298,7 @@ const ChartView = () => {
   const [earningsData, setEarningsData] = useState<any[]>([]);
   useEffect(() => {
     const symbol = currentTicker.split(' ')[0];
-    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/market/chart/${symbol}?period=3mo`)
+    fetch(`/api/market/chart/${symbol}?period=3mo`)
       .then(res => res.json())
       .then(d => {
         if(d.earnings) setEarningsData(d.earnings);
@@ -384,6 +383,23 @@ const ChartView = () => {
           <div className="flex items-center gap-2">
             <div className="w-3 h-[1px] border-t border-dotted border-[#FFB70060]"></div>
             <span className="type-data-xs text-[#FFB70060]">P10/P90 CI</span>
+          </div>
+
+          <div className="h-[1px] bg-white/5 my-1 w-full"></div>
+
+          <div className="flex flex-col gap-1.5 pointer-events-auto">
+            <div className="flex justify-between items-center w-full">
+              <span className="text-[8px] text-text-4 uppercase tracking-widest font-bold">Smoothing</span>
+              <span className="text-[8px] text-accent-primary font-mono">{smoothing}pts</span>
+            </div>
+            <input 
+              type="range" 
+              min="1" 
+              max="10" 
+              value={smoothing} 
+              onChange={(e) => setSmoothing(parseInt(e.target.value))}
+              className="w-full h-1 bg-surface-2 appearance-none cursor-pointer accent-accent-primary"
+            />
           </div>
         </div>
 

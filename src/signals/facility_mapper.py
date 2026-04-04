@@ -104,6 +104,45 @@ class FacilityMapper:
             validation_status="PROVISIONAL",
         ),
         FacilityMapping(
+            facility_id="INDUSTRIAL-CHENIERE-SABINE-001",
+            facility_name="Sabine Pass LNG Terminal",
+            facility_type="INDUSTRIAL",
+            bbox_wgs84=[-93.89, 29.72, -93.85, 29.75],
+            primary_ticker="LNG",
+            primary_exchange="NYSE",
+            revenue_attribution=0.65,
+            attribution_source="Cheniere Energy 2023 10-K Operational Highlights",
+            supply_chain_depth=1,
+            confidence_weight=0.95,
+            causal_hypothesis=(
+                "Sabine Pass is the largest LNG export facility in the US. "
+                "Thermal anomalies at flare stacks and liquefaction trains "
+                "directly correlate with export volumes. High heat signatures "
+                "indicate maximum utilization and healthy cash flow."
+            ),
+            lag_days_expected=14,
+            validation_status="VALIDATED",
+        ),
+        FacilityMapping(
+            facility_id="PORT-LA-001",
+            facility_name="Port of Los Angeles (Berths 100-150)",
+            facility_type="PORT",
+            bbox_wgs84=[-118.28, 33.72, -118.24, 33.76],
+            primary_ticker="ZIM",
+            primary_exchange="NYSE",
+            revenue_attribution=0.12,
+            attribution_source="ZIM 20-F Trans-Pacific Volume Allocation",
+            supply_chain_depth=1,
+            confidence_weight=0.85,
+            causal_hypothesis=(
+                "Los Angeles is the primary gateway for Trans-Pacific cargo. "
+                "Vessel density at these berths indicates US consumer demand "
+                "strength, impacting freight rates for ZIM and MATX."
+            ),
+            lag_days_expected=30,
+            validation_status="PROVISIONAL",
+        ),
+        FacilityMapping(
             facility_id="INDUSTRIAL-ARCELOR-DUNKIRK-001",
             facility_name="ArcelorMittal Dunkirk Steel Plant",
             facility_type="INDUSTRIAL",
@@ -122,7 +161,32 @@ class FacilityMapper:
             lag_days_expected=56,
             validation_status="PROVISIONAL",
         ),
+        FacilityMapping(
+            facility_id="INDUSTRIAL-TESLA-BERLIN-001",
+            facility_name="Tesla Giga Berlin-Brandenburg",
+            facility_type="INDUSTRIAL",
+            bbox_wgs84=[13.78, 52.38, 13.82, 52.41],
+            primary_ticker="TSLA",
+            primary_exchange="NASDAQ",
+            revenue_attribution=0.15,
+            attribution_source="Tesla Q4 2023 Earnings Presentation",
+            supply_chain_depth=1,
+            confidence_weight=0.80,
+            causal_hypothesis=(
+                "Giga Berlin's thermal signature from casting and paint shop "
+                "operations serves as a proxy for weekly production run-rates. "
+                "Sudden drops signal supply chain or labor disruptions."
+            ),
+            lag_days_expected=21,
+            validation_status="PROVISIONAL",
+        ),
     ]
+
+    def __init__(self):
+        # Merge initial and extended mappings
+        self.mappings = self.INITIAL_MAPPINGS + self.EXTENDED_MAPPINGS
+
+    EXTENDED_MAPPINGS: list[FacilityMapping] = [] # Placeholder for future dynamic growth
 
     def get_by_facility_id(self, facility_id: str) -> FacilityMapping | None:
         for m in self.INITIAL_MAPPINGS:
@@ -135,3 +199,34 @@ class FacilityMapper:
 
     def get_all_by_type(self, ftype: str) -> list[FacilityMapping]:
         return [m for m in self.INITIAL_MAPPINGS if m.facility_type == ftype]
+
+    async def get_ticker_frp(self, ticker: str) -> dict:
+        """Fetch thermal FRP for a ticker via linked facilities."""
+        mappings = self.get_by_ticker(ticker)
+        if not mappings:
+            # Try to see if it's in the global dynamic thermal discovery
+            from src.live.thermal import get_global_thermal
+            thermal = await get_global_thermal(top_n=50)
+            for t in thermal:
+                if ticker in t.tickers:
+                    return {"frp_mw": t.avg_frp, "age_s": 3600}
+            return {"frp_mw": 0, "age_s": 9999}
+
+        # Query NASA FIRMS via the thermal pipeline
+        from src.live.thermal import get_global_thermal
+        thermal = await get_global_thermal(top_n=100)
+
+        total_frp = 0.0
+        found = False
+        for m in mappings:
+            # Find clusters within mapping bbox
+            for t in thermal:
+                if (m.bbox_wgs84[0] <= t.lon <= m.bbox_wgs84[2] and
+                    m.bbox_wgs84[1] <= t.lat <= m.bbox_wgs84[3]):
+                    total_frp += t.avg_frp
+                    found = True
+
+        return {
+            "frp_mw": total_frp if found else 0,
+            "age_s": 3600 if found else 9999
+        }

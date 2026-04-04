@@ -3,14 +3,14 @@ NASA GIBS (Global Imagery Browse Services) Ingestor.
 NO-KEY WMTS tile server for satellite imagery.
 """
 
-import math
 import hashlib
-import aiohttp
+import math
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-import structlog
 from typing import Any, cast
+
+import structlog
 
 log = cast(Any, structlog.get_logger())
 
@@ -77,11 +77,11 @@ class GibsIngester:
         center_lon = (bbox[0] + bbox[2]) / 2.0
         center_lat = (bbox[1] + bbox[3]) / 2.0
         x, y = deg2num(center_lat, center_lon, zoom)
-        
+
         # NASA GIBS uses YYYY-MM-DD for date
         date_str = (datetime.now(UTC) - timedelta(days=1)).strftime("%Y-%m-%d")
         layer_name = LAYERS[layer_key]
-        
+
         url = WMTS_TEMPLATE.format(layer=layer_name, date=date_str, z=zoom, x=x, y=y)
         tile_id = f"gibs_{layer_name}_z{zoom}_x{x}_y{y}_{date_str}_{location_key}"
         file_path = self.raw_data_dir / f"{tile_id}.jpg"
@@ -104,7 +104,7 @@ class GibsIngester:
                     else:
                         resp.raise_for_status()
                         content = await resp.read()
-                    
+
                     with open(file_path, "wb") as f:
                         f.write(content)
             log.info("gibs_tile_saved", file=str(file_path))

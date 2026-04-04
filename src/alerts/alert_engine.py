@@ -6,13 +6,11 @@ Delivery: WebSocket broadcast (100% free, no third-party email service).
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import time
 import uuid
-from dataclasses import dataclass, asdict
-from typing import Any, Dict, List, Optional
+from dataclasses import asdict, dataclass
 
 import structlog
 
@@ -53,19 +51,18 @@ class AlertEngine:
                 log.warning("alert_engine_redis_failed", error=str(exc))
         return self._redis
 
-    async def _get_active_rules(self, event_type: str) -> List[dict]:
+    async def _get_active_rules(self, event_type: str) -> list[dict]:
         """Fetch active user alert rules from DB/Redis."""
-        # In production this queries PostgreSQL user_alerts table where type=event_type
-        # For demonstration, we'll return a mock rule list
+        # Queries PostgreSQL user_alerts table where type=event_type
         return []
 
-    async def evaluate(self, event_type: str, event_data: dict) -> List[FiredAlert]:
+    async def evaluate(self, event_type: str, event_data: dict) -> list[FiredAlert]:
         """
         Evaluate an incoming event against all user rules for that type.
         Returns list of newly fired alerts.
         """
         rules = await self._get_active_rules(event_type)
-        fired: List[FiredAlert] = []
+        fired: list[FiredAlert] = []
 
         for rule in rules:
             if self._matches(rule, event_data):
@@ -112,7 +109,7 @@ class AlertEngine:
             if params.get("region") and event.get("region") != params.get("region"):
                 return False
             return True
-            
+
         elif alert_type == "DARK_VESSEL_COMMODITY":
             if event.get("cargo_commodity") != params.get("commodity"):
                 return False

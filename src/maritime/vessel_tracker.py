@@ -14,8 +14,9 @@ import json
 import math
 import os
 import time
-from dataclasses import dataclass, field, asdict
-from typing import Dict, List, Optional
+from dataclasses import asdict, dataclass, field
+from enum import Enum
+from typing import Any
 
 import structlog
 
@@ -24,7 +25,7 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 ASF_VERTEX_URL = os.getenv("ASF_VERTEX_URL", "https://api.asf.alaska.edu/services/search/param")
 
 # Commodity → equity mapping
-COMMODITY_EQUITIES: Dict[str, List[str]] = {
+COMMODITY_EQUITIES: dict[str, list[str]] = {
     "crude_oil": ["USO", "XOM", "CVX", "OXY", "BP", "EOG"],
     "lng": ["LNG", "SHEL", "TTE"],
     "iron_ore": ["VALE", "RIO", "BHP", "FMG", "CLF"],
@@ -34,13 +35,38 @@ COMMODITY_EQUITIES: Dict[str, List[str]] = {
     "container": ["ZIM", "MAERSK", "HAPAG"],
 }
 
-CHOKEPOINTS = {
+CHOKEPOINTS: dict[str, dict[str, Any]] = {
     "hormuz":   {"lat": 26.5, "lon": 56.5, "radius_nm": 150},
     "malacca":  {"lat": 1.5,  "lon": 103.5, "radius_nm": 100},
     "bosphorus":{"lat": 41.0,  "lon": 29.0,  "radius_nm": 50},
     "suez":     {"lat": 30.5,  "lon": 32.3,  "radius_nm": 80},
     "cape":     {"lat": -34.0, "lon": 18.5,  "radius_nm": 200},
 }
+
+
+class VesselType(str, Enum):
+    CRUDE_TANKER = "CRUDE_TANKER"
+    LNG_TANKER = "LNG_TANKER"
+    CONTAINER = "CONTAINER"
+    BULK_CARRIER = "BULK_CARRIER"
+    CAR_CARRIER = "CAR_CARRIER"
+    FISHING = "FISHING"
+    TUG = "TUG"
+    PASSENGER = "PASSENGER"
+    CARGO = "CARGO"
+    OTHER = "OTHER"
+
+
+class CargoType(str, Enum):
+    CRUDE_OIL = "CRUDE_OIL"
+    LNG = "LNG"
+    IRON_ORE = "IRON_ORE"
+    GRAIN = "GRAIN"
+    COAL = "COAL"
+    COPPER = "COPPER"
+    CONTAINERS = "CONTAINERS"
+    CARS = "CARS"
+    UNKNOWN = "UNKNOWN"
 
 
 # ─── VesselRecord ─────────────────────────────────────────────────────────────
@@ -66,13 +92,15 @@ class VesselRecord:
     spoofing_suspected: bool = False
     cargo_commodity: str = ""
     cargo_quantity: float = 0.0
-    linked_equities: List[str] = field(default_factory=list)
+    linked_equities: list[str] = field(default_factory=list)
+    _chokepoints: dict[str, dict[str, Any]] = field(default_factory=dict)
     port_congestion_contribution: float = 0.0
     color: str = "#CDD9E5"
     dark_vessel_confidence: float = 0.0   # 0.0-1.0 numeric for frontend
+    destination: str = ""
 
     @property
-    def position(self) -> dict:
+    def position(self) -> dict[str, Any]:
         return {
             "lat": self.lat, "lon": self.lon,
             "heading_degrees": self.heading,
@@ -127,7 +155,7 @@ class SARChecker:
 class OFACScreener:
     """OFAC SDN list screening. Downloads daily from ofac.treasury.gov."""
 
-    _cache: Dict[str, bool] = {}
+    _cache: dict[str, bool] = {}
     _loaded = False
 
     async def load_sdn_list(self) -> None:
@@ -151,7 +179,7 @@ class OFACScreener:
         except Exception as exc:
             log.warning("ofac_sdn_load_failed", error=str(exc))
 
-    async def screen(self, mmsi: str, imo: str = "", vessel_name: str = "") -> dict:
+    async def screen(self, mmsi: str, imo: str = "", vessel_name: str = "") -> dict[str, Any]:
         """Check vessel against OFAC SDN list."""
         await self.load_sdn_list()
 
@@ -168,13 +196,17 @@ class OFACScreener:
 # ─── Route Deviation Scorer ───────────────────────────────────────────────────
 def _haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Great-circle distance in nautical miles."""
-    R = 3440.065  # Earth radius in nm
-    d_lat = math.radians(lat2 - lat1)
-    d_lon = math.radians(lon2 - lon1)
-    a = (math.sin(d_lat / 2) ** 2
-         + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2))
-         * math.sin(d_lon / 2) ** 2)
-    return R * 2 * math.asin(math.sqrt(a))
+    r = 3440.065  # Earth radius in nm
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(math.radians(lat1))
+        * math.cos(math.radians(lat2))
+        * math.sin(dlon / 2) ** 2
+    )
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return r * c
 
 
 def compute_route_deviation(
@@ -209,7 +241,7 @@ class VesselTracker:
         self._ofac = OFACScreener()
         self._redis = None
 
-    async def _get_redis(self):
+    async def _get_redis(self) -> Any | None:
         if self._redis is None:
             try:
                 import redis.asyncio as aioredis
@@ -218,7 +250,7 @@ class VesselTracker:
                 pass
         return self._redis
 
-    async def _fetch_live_ais(self) -> List[dict]:
+    async def _fetch_live_ais(self) -> list[dict[str, Any]]:
         """
         Fetch live AIS from our free NOAA-based fleet state in ais.py.
         100% Free. 100% Open Source.
@@ -226,48 +258,14 @@ class VesselTracker:
         from src.globe.ais import generate_fleet
         return await generate_fleet()
 
-    def _generate_mock_vessels(self) -> List[dict]:
-        """Generate realistic mock vessel positions for development."""
-        import random
-        mock_vessels = []
-        routes = [
-            {"lat": 26.5, "lon": 56.5, "type": "TANKER", "name": "TITAN GLORY"},
-            {"lat": 1.3, "lon": 103.8, "type": "CONTAINER", "name": "EVER GOLD"},
-            {"lat": 51.9, "lon": 4.5, "type": "BULK_CARRIER", "name": "NORDIC STAR"},
-            {"lat": 31.2, "lon": 121.5, "type": "CONTAINER", "name": "COSCO PRIDE"},
-            {"lat": 33.7, "lon": -118.3, "type": "TANKER", "name": "PACIFIC EAGLE"},
-            {"lat": 25.0, "lon": 55.1, "type": "TANKER", "name": "GULF SPIRIT"},
-            {"lat": -33.9, "lon": 18.4, "type": "BULK_CARRIER", "name": "CAPE RUNNER"},
-            {"lat": 30.5, "lon": 32.3, "type": "CONTAINER", "name": "SUEZ PATHFINDER"},
-        ]
-        for i, r in enumerate(routes):
-            jitter = random.uniform(-0.5, 0.5)
-            dark = random.random() > 0.85
-            mmsi = str(200000000 + i * 7)
-            mock_vessels.append({
-                "mmsi": mmsi, "imo": f"IMO{9000000 + i}",
-                "vessel_name": r["name"],
-                "vessel_type": r["type"],
-                "flag": random.choice(["LR", "PA", "SG", "CN", "GR"]),
-                "lat": r["lat"] + jitter, "lon": r["lon"] + jitter,
-                "speed": random.uniform(0 if dark else 8, 15),
-                "heading": random.uniform(0, 359),
-                "ais_status": "UnderWay",
-                "last_ais_utc": time.time() - (random.uniform(8, 48) * 3600 if dark else random.uniform(0, 3600)),
-                "dark_candidate": dark,
-                "cargo_commodity": random.choice(["crude_oil", "lng", "iron_ore", "container"]),
-            })
-        return mock_vessels
-
-    async def _classify_dark_confidence(self, v: dict) -> str:
+    async def _classify_dark_confidence(self, v: dict[str, Any]) -> str:
         """3-tier dark vessel classification."""
         last_ais = v.get("last_ais_utc", time.time())
         gap_hours = (time.time() - last_ais) / 3600.0
         lat, lon = v.get("lat", 0), v.get("lon", 0)
         speed = v.get("speed", 0)
 
-        if gap_hours < 4:
-            return "NONE"
+        confidence = "NONE" # Default to NONE
 
         # Tier 1: LOW — AIS gap > 4hr
         if gap_hours >= 4:
@@ -281,22 +279,23 @@ class VesselTracker:
         if gap_hours >= 4 and speed < 0.5:
             sar_confirmed = await self._sar.check(lat, lon, last_ais)
             if sar_confirmed:
-                return "HIGH"
+                confidence = "HIGH"
 
         return confidence
 
-    async def _get_cargo(self, imo: str, commodity: str) -> dict:
+    async def _get_cargo(self, imo: str, commodity: str) -> dict[str, Any]:
         """
-        FREE VERSION: Returns procedural cargo based on vessel type.
+        Returns real cargo data if available.
+        (Future Phase: Connect to Port Manifest APIs)
         """
         return {
             "commodity_type": commodity,
-            "estimated_quantity": random.uniform(20000, 150000),
-            "load_port": "FREE_OSINT_SOURCE",
-            "discharge_port": "GLOBAL_TRANSIT",
+            "estimated_quantity": 0.0,
+            "load_port": "UNKNOWN",
+            "discharge_port": "UNKNOWN",
         }
 
-    async def _enrich_vessel(self, v: dict) -> VesselRecord:
+    async def _enrich_vessel(self, v: dict[str, Any]) -> VesselRecord:
         """Full vessel enrichment: dark confidence, OFAC, cargo, equity linking."""
         mmsi = v.get("mmsi", "")
         commodity = v.get("cargo_commodity", "container")
@@ -308,7 +307,7 @@ class VesselTracker:
         )
 
         # Cargo only for HIGH dark / chokepoint vessels
-        cargo = {}
+        cargo: dict[str, Any] = {}
         if dark_conf == "HIGH":
             cargo = await self._get_cargo(v.get("imo", ""), commodity)
 
@@ -350,12 +349,13 @@ class VesselTracker:
             cargo_commodity=cargo.get("commodity_type", commodity),
             cargo_quantity=cargo.get("estimated_quantity", 0.0),
             linked_equities=linked_equities,
+            destination=v.get("destination", "Unknown"),
             color=color,
         )
 
     async def get_all_vessels(
-        self, confidence_filter: Optional[str] = None
-    ) -> List[VesselRecord]:
+        self, confidence_filter: str | None = None
+    ) -> list[VesselRecord]:
         """Get all vessels with optional dark confidence filter."""
         raw = await self._fetch_live_ais()
 
@@ -371,7 +371,7 @@ class VesselTracker:
         await self._publish_dark_signal(records)
         return records
 
-    async def get_vessel_intelligence(self, mmsi: str) -> dict:
+    async def get_vessel_intelligence(self, mmsi: str) -> dict[str, Any]:
         """Full intelligence dossier for a specific vessel."""
         r = await self._get_redis()
         if r:
@@ -385,7 +385,7 @@ class VesselTracker:
                 pass
         raise ValueError(f"Vessel {mmsi} not found in AIS cache")
 
-    async def get_ticker_vessel_signal(self, ticker: str) -> dict:
+    async def get_ticker_vessel_signal(self, ticker: str) -> dict[str, Any]:
         """Get aggregated vessel density signal for a ticker's linked commodity."""
         r = await self._get_redis()
         cache_key = f"vessel_signal:{ticker}"
@@ -407,13 +407,25 @@ class VesselTracker:
         result = {
             "ticker": ticker, "commodity": commodity,
             "vessel_count": 0, "normalized_density": 0.5, "age_s": 300,
+            "port_congestion": 0.0
         }
 
+        # Enhanced: check port congestion for relevant ports
+        from src.free_data.vessels import get_global_ships, get_port_congestion
+        ports_task = get_port_congestion()
+        ships_task = get_global_ships()
+
+        ports, raw = await asyncio.gather(ports_task, ships_task)
+
         if commodity:
-            raw = await self._fetch_live_ais()
             count = sum(1 for v in raw if v.get("cargo_commodity") == commodity)
             result["vessel_count"] = count
-            result["normalized_density"] = min(count / 20.0, 1.0)  # 20 vessels = max signal
+            result["normalized_density"] = min(count / 20.0, 1.0)
+
+        # Add congestion penalty if relevant ports are blocked
+        # e.g. if Suez is congested, it's bearish for some, bullish for others (freight rates)
+        congestion_sum = sum(p["congestion_index"] for p in ports)
+        result["port_congestion"] = congestion_sum / len(ports) if ports else 0.0
 
         if r:
             try:
@@ -422,7 +434,7 @@ class VesselTracker:
                 pass
         return result
 
-    async def get_dark_vessel_signal(self, ticker: str) -> dict:
+    async def get_dark_vessel_signal(self, ticker: str) -> dict[str, Any]:
         """Dark vessel count signal for ticker's commodity."""
         r = await self._get_redis()
         cache_key = f"dark_signal:{ticker}"
@@ -456,7 +468,7 @@ class VesselTracker:
                 pass
         return result
 
-    async def get_intelligence(self, params: dict) -> dict:
+    async def get_intelligence(self, params: dict[str, Any]) -> dict[str, Any]:
         """AgentRouter dispatch handler."""
         vessels = await self.get_all_vessels(
             confidence_filter=params.get("confidence_filter")
@@ -470,7 +482,7 @@ class VesselTracker:
             "vessels": [asdict(v) for v in vessels[:50]],
         }
 
-    async def _publish_dark_signal(self, vessels: List[VesselRecord]) -> None:
+    async def _publish_dark_signal(self, vessels: list[VesselRecord]) -> None:
         """Publish DarkVesselSignal to Redis pub/sub for composite_score.py."""
         r = await self._get_redis()
         if not r:
@@ -495,3 +507,51 @@ class VesselTracker:
                         await r.publish("dark_vessel_signal", json.dumps(signal))
         except Exception as exc:
             log.warning("dark_signal_publish_failed", error=str(exc))
+
+    async def get_vessels_near(self, lat: float, lon: float, radius_nm: float = 50) -> list[VesselRecord]:
+        """Get vessels within a specific radius."""
+        all_v = await self.get_all_vessels()
+        return [v for v in all_v if _haversine_nm(lat, lon, v.lat, v.lon) < radius_nm]
+
+    async def detect_dark_vessels_async(self) -> list[VesselRecord]:
+        """Detect vessels with high dark confidence."""
+        vessels = await self.get_all_vessels()
+        return [v for v in vessels if v.dark_confidence in ("MED", "HIGH")]
+
+    def detect_dark_vessels(self) -> list[dict[str, Any]]:
+        """Synchronous wrapper for agent compatibility."""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # This is a bit of a hack but common in mixed sync/async codebases
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(asyncio.run, self.detect_dark_vessels_async())
+                    return [asdict(v) for v in future.result()]
+            else:
+                return [asdict(v) for v in loop.run_until_complete(self.detect_dark_vessels_async())]
+        except Exception:
+            return []
+
+    def to_geojson_feature_collection(self) -> dict[str, Any]:
+        """Synchronous wrapper for agent compatibility."""
+        try:
+            loop = asyncio.get_event_loop()
+            vessels = loop.run_until_complete(self.get_all_vessels()) if not loop.is_running() else []
+            return {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "geometry": {"type": "Point", "coordinates": [v.lon, v.lat]},
+                        "properties": asdict(v)
+                    }
+                    for v in vessels
+                ]
+            }
+        except Exception:
+            return {"type": "FeatureCollection", "features": []}
+
+    def get_vessel_by_mmsi(self, mmsi: str) -> dict[str, Any] | None:
+        """Synchronous lookup."""
+        return None

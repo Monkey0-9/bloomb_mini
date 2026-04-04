@@ -2,12 +2,13 @@
 FRED macro data via public CSV endpoint — no API key for CSV.
 ECB Data Portal — no key ever.
 """
+import asyncio
 import io
 import time
+
 import httpx
 import pandas as pd
 import structlog
-from datetime import datetime, timezone
 
 log = structlog.get_logger()
 
@@ -34,16 +35,16 @@ _macro_cache: dict = {}
 _macro_ts: float = 0.0
 MACRO_TTL = 3600.0  # 1 hour
 
-def get_series(key: str, limit: int = 260) -> list[dict]:
+async def get_series(key: str, limit: int = 260) -> list[dict]:
     """Fetch a FRED time series via CSV. No key needed."""
     series_id = FRED_SERIES.get(key.upper(), (None,))[0]
     if not series_id:
         return []
     try:
-        resp = httpx.get(
-            f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}",
-            timeout=15,
-        )
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}",
+            )
         resp.raise_for_status()
         df = pd.read_csv(io.StringIO(resp.text), na_values=".").dropna()
         df.columns = ["date", "value"]
@@ -53,7 +54,7 @@ def get_series(key: str, limit: int = 260) -> list[dict]:
         log.error("fred_error", key=key, error=str(e))
         return []
 
-def get_macro_snapshot() -> dict:
+async def get_macro_snapshot() -> dict:
     """Get latest value for all macro indicators."""
     global _macro_cache, _macro_ts
 
@@ -61,14 +62,14 @@ def get_macro_snapshot() -> dict:
     if _macro_cache and (now - _macro_ts) < MACRO_TTL:
         return _macro_cache
 
-    result = {}
-    for key, (series_id, label, unit) in FRED_SERIES.items():
-        data = get_series(key, limit=3)
+    # 1. Fetch FRED series
+    async def _fetch_one(key, series_id, label, unit):
+        data = await get_series(key, limit=3)
         if data:
             curr = data[-1]
             prev = data[-2] if len(data) >= 2 else curr
             chg  = curr["value"] - prev["value"]
-            result[key] = {
+            return key, {
                 "label":  label,
                 "unit":   unit,
                 "value":  curr["value"],
@@ -76,6 +77,42 @@ def get_macro_snapshot() -> dict:
                 "change": round(chg, 4),
                 "date":   curr["date"],
             }
+        return key, None
+
+    fred_tasks = [
+        _fetch_one(key, s_id, label, unit)
+        for key, (s_id, label, unit) in FRED_SERIES.items()
+    ]
+
+    # 2. Fetch Public-APIs Financial Pulse
+    async def _fetch_pulse():
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                rates_resp = await client.get("https://open.er-api.com/v6/latest/USD")
+                rates = rates_resp.json().get("rates", {}) if rates_resp.status_code == 200 else {}
+
+                crypto_resp = await client.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd")
+                crypto = crypto_resp.json().get("bitcoin", {}) if crypto_resp.status_code == 200 else {}
+
+                return {
+                    "USD_CNY": {"label": "USD/CNY", "value": rates.get("CNY"), "unit": "rate"},
+                    "BTC_USD": {"label": "Bitcoin", "value": crypto.get("usd"), "unit": "usd"}
+                }
+        except Exception:
+            return {}
+
+    pulse_task = _fetch_pulse()
+
+    results = await asyncio.gather(*fred_tasks, pulse_task)
+    pulse_data = results[-1]
+    fred_results = results[:-1]
+
+    result = {}
+    for key, data in fred_results:
+        if data:
+            result[key] = data
+
+    result.update(pulse_data)
 
     _macro_cache = result
     _macro_ts    = now

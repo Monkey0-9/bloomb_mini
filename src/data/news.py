@@ -1,9 +1,9 @@
-import feedparser  # type: ignore[import-untyped]
-import httpx
-import structlog  # type: ignore[import-untyped]
-from datetime import datetime, timezone
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
+
+import feedparser  # type: ignore[import-untyped]
+import structlog  # type: ignore[import-untyped]
 
 log = structlog.get_logger()
 
@@ -106,7 +106,7 @@ def fetch_all_news(max_per_feed: int = 5) -> list[NewsItem]:
                     pub_dt = parsedate_to_datetime(published_str)
                     pub_iso = pub_dt.isoformat()
                 except Exception:
-                    pub_iso = datetime.now(timezone.utc).isoformat()
+                    pub_iso = datetime.now(UTC).isoformat()
 
                 all_items.append(NewsItem(
                     title=title,

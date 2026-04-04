@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -119,7 +119,7 @@ class SentinelFreeIngester:
         bbox = [lon - d_lon, lat - d_lat, lon + d_lon, lat + d_lat]
 
         from datetime import timedelta
-        end_dt = datetime.now(timezone.utc)
+        end_dt = datetime.now(UTC)
         start_dt = end_dt - timedelta(days=days_back)
         time_range = f"{start_dt.strftime('%Y-%m-%dT%H:%M:%SZ')}/{end_dt.strftime('%Y-%m-%dT%H:%M:%SZ')}"
 

@@ -19,6 +19,7 @@ const Masthead = () => {
   };
 
   const agents = [
+    { name: 'HFT-CORE', status: 'optimal', color: 'bg-accent-primary' },
     { name: 'ALPHA', status: 'optimal', color: 'bg-bull' },
     { name: 'RISK', status: 'optimal', color: 'bg-bull' },
     { name: 'MACRO', status: 'syncing', color: 'bg-[#00C8FF]' },
@@ -37,7 +38,7 @@ const Masthead = () => {
         <div className="h-4 w-[1px] bg-[var(--border-subtle)] mx-3"></div>
         <div className="flex flex-col">
           <span className="text-[8px] text-[var(--text-tertiary)] tracking-[0.2em] font-bold uppercase">TERMINAL</span>
-          <span className="text-[6px] text-accent-primary/40 tracking-[0.1em] font-bold uppercase">V2.6.4-PRIME [OSINT_MODE]</span>
+          <span className="text-[6px] text-accent-primary/40 tracking-[0.1em] font-bold uppercase">V3.0.0-PRIME [INSTITUTIONAL_ULTRA]</span>
         </div>
       </div>
       

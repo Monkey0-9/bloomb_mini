@@ -1,10 +1,11 @@
-import httpx
-import io
 import csv
-import structlog
+import io
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
+import httpx
+import structlog
 
 log = structlog.get_logger()
 
@@ -121,7 +122,7 @@ def fetch_firms_thermal(map_key: str | None = None,
                     brightness_kelvin=avg_brightness,
                     frp_mw=avg_frp,
                     confidence=detections[0].get("confidence", "nominal"),
-                    detection_time=datetime.now(timezone.utc),
+                    detection_time=datetime.now(UTC),
                     tickers=facility["tickers"],
                     country=facility["country"],
                     anomaly_vs_baseline=round(anomaly_sigma, 2),
@@ -163,7 +164,7 @@ def _simulated_thermal_anomalies() -> list[ThermalAnomaly]:
             brightness_kelvin=round(brightness, 1),
             frp_mw=round(frp, 1),
             confidence="nominal",
-            detection_time=datetime.now(timezone.utc),
+            detection_time=datetime.now(UTC),
             tickers=facility["tickers"],
             country=facility["country"],
             anomaly_vs_baseline=round(anomaly, 2),

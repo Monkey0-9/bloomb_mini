@@ -1,7 +1,7 @@
 import hashlib
 import sqlite3
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from src.common.schemas import QualityGateResult, TileMetadata
 

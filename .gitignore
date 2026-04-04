@@ -187,3 +187,10 @@ test_server.py
 list_collections.py
 summarize_mypy.py
 demo_full_system.py
+
+# Large Data & Cache
+data/
+*.zip
+*.csv
+*.pt
+*.onnx

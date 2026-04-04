@@ -13,7 +13,7 @@ pip install ./sdk/sattrade
 from sattrade import Terminal
 
 # Initialize client
-tl = Terminal(api_base="http://localhost:8000")
+tl = Terminal(api_base="http://localhost:9009")
 
 # Fetch bullish signals
 signals = tl.get_signals(ticker="ZIM")

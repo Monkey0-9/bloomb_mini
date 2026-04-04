@@ -7,18 +7,22 @@ Caching: In-memory TTL dict (no Redis dependency).
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import os
-import time
-from typing import Dict, Optional
+from typing import Any
 
 import structlog
+from dotenv import load_dotenv
+
+load_dotenv()
 
 log = structlog.get_logger(__name__)
 
-_CACHE: dict = {}
-_CACHE_TS: dict = {}
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+FMP_API_KEY = os.getenv("FMP_API_KEY")
+
+_CACHE: dict[str, Any] = {}
+_CACHE_TS: dict[str, float] = {}
 
 
 class FundamentalsEngine:
@@ -39,11 +43,11 @@ class FundamentalsEngine:
                 pass
         return self._redis
 
-    async def _fetch_fmp(self, ticker: str) -> Optional[dict]:
+    async def _fetch_fmp(self, ticker: str) -> dict | None:
         """FMP API - Primary"""
         if not FMP_API_KEY:
             return None
-        
+
         try:
             import aiohttp
             url = f"https://financialmodelingprep.com/api/v3/profile/{ticker}?apikey={FMP_API_KEY}"
@@ -57,13 +61,13 @@ class FundamentalsEngine:
             log.warning("fmp_api_failed", ticker=ticker, error=str(exc))
         return None
 
-    async def _fetch_sec_edgar(self, ticker: str) -> Optional[dict]:
+    async def _fetch_sec_edgar(self, ticker: str) -> dict | None:
         """SEC EDGAR API - Fallback"""
         try:
             import aiohttp
             # SEC requires a descriptive User-Agent
             headers = {"User-Agent": "SatTrade Terminal (contact@sattrade.com)"}
-            
+
             # Step 1: Get CIK from ticker map
             async with aiohttp.ClientSession(headers=headers) as session:
                 async with session.get("https://www.sec.gov/files/company_tickers.json", timeout=10) as resp:
@@ -95,11 +99,11 @@ class FundamentalsEngine:
             log.warning("sec_edgar_failed", ticker=ticker, error=str(exc))
         return None
 
-    async def get_fundamentals(self, ticker: str) -> dict:
+    async def get_fundamentals(self, ticker: str) -> dict[str, Any]:
         """Get company profile and valuation metrics."""
         r = await self._get_redis()
         cache_key = f"fundamentals:{ticker}"
-        
+
         if r:
             try:
                 cached = await r.get(cache_key)
@@ -110,11 +114,11 @@ class FundamentalsEngine:
 
         # Primary: FMP
         data = await self._fetch_fmp(ticker)
-        
+
         # Secondary: SEC EDGAR
         if not data:
             data = await self._fetch_sec_edgar(ticker)
-            
+
         # Fallback: Empty skeleton
         if not data:
             log.warning("fundamentals_unavailable", ticker=ticker)

@@ -3,10 +3,11 @@ Real-time earthquake data from USGS.
 Zero key needed. Free, public data.
 """
 import time
+from dataclasses import dataclass
+from datetime import UTC, datetime
+
 import httpx
 import structlog
-from dataclasses import dataclass
-from datetime import datetime, timezone
 
 log = structlog.get_logger()
 
@@ -22,6 +23,10 @@ class Quake:
     depth_km:  float
     ts:        str
 
+    @property
+    def magnitude(self) -> float:
+        return self.mag
+
 _quake_cache: list[Quake] = []
 _quake_ts: float = 0.0
 QUAKE_TTL = 300  # 5 minutes
@@ -36,18 +41,18 @@ def get_latest_quakes() -> list[Quake]:
         resp = httpx.get(USGS_URL, timeout=15)
         resp.raise_for_status()
         features = resp.json().get("features", [])
-        
+
         quakes = []
         for f in features:
             props = f.get("properties", {})
             geom = f.get("geometry", {}).get("coordinates", [0, 0, 0])
-            
+
             # Convert timestamp ms to isoformat
             time_ms = props.get("time", 0)
             if time_ms:
-                ts_str = datetime.fromtimestamp(time_ms / 1000.0, timezone.utc).isoformat()
+                ts_str = datetime.fromtimestamp(time_ms / 1000.0, UTC).isoformat()
             else:
-                ts_str = datetime.now(timezone.utc).isoformat()
+                ts_str = datetime.now(UTC).isoformat()
 
             quakes.append(Quake(
                 id       = f.get("id", ""),
@@ -58,7 +63,7 @@ def get_latest_quakes() -> list[Quake]:
                 depth_km = float(geom[2]),
                 ts       = ts_str,
             ))
-            
+
         _quake_cache = sorted(quakes, key=lambda q: q.mag, reverse=True)
         _quake_ts = now
         log.info("quakes_fetched", count=len(_quake_cache))

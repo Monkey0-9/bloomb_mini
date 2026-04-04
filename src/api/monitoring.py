@@ -1,9 +1,10 @@
 import time
 import uuid
-from fastapi import Request
-from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
-from fastapi.responses import Response
+
 import structlog
+from fastapi import Request
+from fastapi.responses import Response
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 
 log = structlog.get_logger()
 
@@ -19,14 +20,14 @@ async def metrics_middleware(request: Request, call_next):
     start_time = time.time()
     response = await call_next(request)
     latency = time.time() - start_time
-    
+
     endpoint = request.url.path
     method = request.method
     status = response.status_code
-    
+
     REQUEST_COUNT.labels(method=method, endpoint=endpoint, http_status=status).inc()
     REQUEST_LATENCY.labels(method=method, endpoint=endpoint).observe(latency)
-    
+
     return response
 
 async def tracing_middleware(request: Request, call_next):

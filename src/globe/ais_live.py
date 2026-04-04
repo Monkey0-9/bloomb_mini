@@ -2,10 +2,11 @@ import csv
 import io
 import os
 import zipfile
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
 import httpx
 import structlog
-from datetime import datetime, timezone, timedelta
-from pathlib import Path
 
 log = structlog.get_logger()
 
@@ -28,7 +29,7 @@ def download_noaa_ais_zone(zone: int, date: datetime | None = None) -> list[dict
     Data is typically 1-2 days delayed.
     """
     if date is None:
-        date = datetime.now(timezone.utc) - timedelta(days=2)
+        date = datetime.now(UTC) - timedelta(days=2)
 
     year = date.year
     date_str = date.strftime("%Y%m%d")
@@ -49,7 +50,7 @@ def download_noaa_ais_zone(zone: int, date: datetime | None = None) -> list[dict
                 return []
         except Exception as e:
             log.error("noaa_ais_error", zone=zone, error=str(e))
-            return _generate_mock_vessels()
+            return []
 
     vessels = []
     try:
@@ -86,9 +87,11 @@ def download_noaa_ais_zone(zone: int, date: datetime | None = None) -> list[dict
     return vessels
 
 
-import json
-import websockets
 import asyncio
+import json
+
+import websockets
+
 
 async def run_aisstream_pipeline(update_callback):
     """
@@ -103,11 +106,11 @@ async def run_aisstream_pipeline(update_callback):
         [[8.5, -80.0], [9.5, -79.0]],  # Panama Canal
         [[-35.0, 17.0], [-33.0, 20.0]] # Cape of Good Hope
     ]
-    
+
     API_KEY = os.environ.get("AISSTREAM_API_KEY", "707d7265655f6169735f64656d6f5f6b6579") # Public demo key or free key
-    
+
     url = "wss://stream.aisstream.io/v0/stream"
-    
+
     while True:
         try:
             async with websockets.connect(url) as websocket:
@@ -116,17 +119,17 @@ async def run_aisstream_pipeline(update_callback):
                     "BoundingBoxes": bounding_boxes,
                 }
                 await websocket.send(json.dumps(subscribe_msg))
-                
+
                 vessels = {} # Use dict to deduplicate by MMSI
-                
+
                 async for message in websocket:
                     data = json.loads(message)
                     msg_type = data.get("MessageType")
-                    
+
                     if msg_type == "PositionReport":
                         v_data = data.get("MetaData", {})
                         mmsi = str(v_data.get("MMSI"))
-                        
+
                         vessels[mmsi] = {
                             "mmsi": mmsi,
                             "vessel_name": v_data.get("VesselName", "").strip(),
@@ -135,49 +138,18 @@ async def run_aisstream_pipeline(update_callback):
                             "sog": v_data.get("Speed"),
                             "cog": v_data.get("Course"),
                             "heading": v_data.get("Heading"),
-                            "last_update": datetime.now(timezone.utc).isoformat(),
+                            "last_update": datetime.now(UTC).isoformat(),
                         }
-                        
+
                         # Batch updates every 5 seconds to avoid websocket spam
                         if len(vessels) >= 50:
                             await update_callback({
                                 "_topic": "vessel",
                                 "data": list(vessels.values())
                             })
-                            vessels = {} 
-        
+                            vessels = {}
+
         except Exception as e:
             log.error("aisstream_error", error=str(e))
             await asyncio.sleep(10) # Reconnect backoff
 
-def _generate_mock_vessels() -> list[dict]:
-    """Fallback high-density mock vessel data."""
-    import random
-    import time
-    vessels = []
-    chokepoints = [
-        {"name": "Suez Canal", "lat": 30.5, "lon": 32.3},
-        {"name": "Strait of Hormuz", "lat": 26.5, "lon": 56.5},
-        {"name": "Panama Canal", "lat": 9.1, "lon": -79.7},
-        {"name": "Strait of Malacca", "lat": 1.3, "lon": 103.2},
-    ]
-    for i in range(100):
-        cp = random.choice(chokepoints)
-        mmsi = f"999{i:06d}"
-        vessels.append({
-            "mmsi": mmsi,
-            "vessel_name": f"MOCK_VESSEL_{i}",
-            "lat": cp["lat"] + random.uniform(-2, 2),
-            "lon": cp["lon"] + random.uniform(-2, 2),
-            "sog": random.uniform(5, 20),
-            "cog": random.uniform(0, 360),
-            "heading": random.uniform(0, 360),
-            "vessel_type": 70, # Cargo
-            "length": 250,
-            "width": 32,
-            "draft": 12,
-            "cargo": 0,
-            "status": "UnderWay",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
-    return vessels

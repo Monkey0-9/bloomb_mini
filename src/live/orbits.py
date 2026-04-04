@@ -5,16 +5,17 @@ Propagates using sgp4 Python library (open source, free).
 """
 import math
 import time
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+
 import httpx
 import structlog
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
 from sgp4.api import Satrec, jday
 
 log = structlog.get_logger()
 
 # Celestrak group TLE — all Earth Resources satellites at once
-CELESTRAK_EO_GROUP = "https://celestrak.org/NORAD/elements/gp.php?GROUP=earth-resources&FORMAT=tle"
+CELESTRAK_EO_GROUP = "https://celestrak.org/NORAD/elements/gp.php?GROUP=resource&FORMAT=tle"
 
 # Key satellites with individual URLs for guaranteed availability
 KEY_SATELLITES = {
@@ -44,6 +45,14 @@ class SatOrbit:
     period_min:   float
     inclination:  float
     altitude_km:  float
+
+    @property
+    def lat(self) -> float:
+        return self.current.lat
+
+    @property
+    def lon(self) -> float:
+        return self.current.lon
 
 _tle_cache: dict[str, tuple[str, str]] = {}
 _tle_ts:    dict[str, float] = {}
@@ -90,7 +99,7 @@ def propagate_orbit(name: str, tle1: str, tle2: str,
     """Propagate satellite orbit for next N minutes."""
     try:
         sat = Satrec.twoline2rv(tle1, tle2)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         track = []
 
         for i in range(0, minutes + 1, 1):
@@ -145,7 +154,8 @@ def get_all_eo_satellites() -> list[SatOrbit]:
     # First try the group TLE (all EO satellites at once)
     orbits = []
     try:
-        resp = httpx.get(CELESTRAK_EO_GROUP, timeout=20)
+        headers = {"User-Agent": "SatTrade/2.0 research@sattrade.io"}
+        resp = httpx.get(CELESTRAK_EO_GROUP, timeout=20, headers=headers)
         lines = [l.strip() for l in resp.text.split("\n") if l.strip()]
 
         i = 0

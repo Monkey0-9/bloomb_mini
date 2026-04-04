@@ -1,5 +1,7 @@
-from fastapi import APIRouter, HTTPException, Body, Request, Depends
-from typing import Dict, Any
+from typing import Any
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
+
 from src.api.orchestrator import SignalOrchestrator
 
 router = APIRouter(prefix="/api/execution", tags=["trading"])
@@ -12,7 +14,7 @@ async def get_account_status(orchestrator: SignalOrchestrator = Depends(get_orch
     return await orchestrator.dispatch_task("execution", "GET_STATE", {})
 
 @router.post("/trade")
-async def execute_trade(payload: Dict[str, Any] = Body(...), orchestrator: SignalOrchestrator = Depends(get_orchestrator)):
+async def execute_trade(payload: dict[str, Any] = Body(...), orchestrator: SignalOrchestrator = Depends(get_orchestrator)):
     """
     Institutional endpoint with pre-trade risk audit.
     """
@@ -20,7 +22,7 @@ async def execute_trade(payload: Dict[str, Any] = Body(...), orchestrator: Signa
     qty = payload.get("qty", 1)
     side = payload.get("side", "BUY")
     notional = payload.get("notional", qty * 150.0) # Mock price if not provided
-    
+
     if not ticker:
         raise HTTPException(status_code=400, detail="Ticker required")
 
@@ -36,24 +38,24 @@ async def execute_trade(payload: Dict[str, Any] = Body(...), orchestrator: Signa
         }
     }
     audit = await orchestrator.dispatch_task("risk", "RUN_AUDIT", audit_params)
-    
+
     if not audit.get("passed"):
         return {
             "status": "REJECTED",
             "reason": "Risk limits exceeded",
             "audit_results": audit.get("results")
         }
-        
+
     # 2. Execution
     execution_result = await orchestrator.dispatch_task(
-        "execution", 
-        "EXECUTE_TRADE", 
+        "execution",
+        "EXECUTE_TRADE",
         {"ticker": ticker, "qty": qty, "side": side}
     )
-    
+
     if "error" in execution_result:
         raise HTTPException(status_code=500, detail=execution_result["error"])
-        
+
     return {
         "status": "FILLED",
         "execution": execution_result,

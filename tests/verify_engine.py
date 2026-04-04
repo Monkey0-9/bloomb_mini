@@ -43,7 +43,14 @@ async def main():
         if sats:
             print(f"Sample: {sats[0].name} at {sats[0].lat}, {sats[0].lon}")
 
-        print("\n[6] Testing Unified World Report...")
+        print("\n[6] Testing News Feed...")
+        from src.live.news import get_all_news
+        news = await get_all_news()
+        print(f"Aggregated {len(news)} news articles.")
+        if news:
+            print(f"Sample: {news[0].source}: {news[0].title[:60]}... Tickers: {news[0].tickers}")
+
+        print("\n[7] Testing Unified World Report...")
         report = await engine.get_world_intelligence_report()
         print(f"Unified Threat Score: {report.threat_score}")
         print(f"Total Signals Generated: {len(report.signals)}")

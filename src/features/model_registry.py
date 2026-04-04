@@ -1,6 +1,7 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Any
+
 import structlog
 
 log = structlog.get_logger()
@@ -9,8 +10,8 @@ log = structlog.get_logger()
 class ModelVersion:
     version: str
     trained_at: datetime
-    metrics: Dict[str, float]
-    parameters: Dict[str, Any]
+    metrics: dict[str, float]
+    parameters: dict[str, Any]
     is_live: bool = False
 
 class ModelRegistry:
@@ -18,7 +19,7 @@ class ModelRegistry:
     Tracks different versions of ML models and their performance metrics.
     """
     def __init__(self):
-        self._models: Dict[str, List[ModelVersion]] = {}
+        self._models: dict[str, list[ModelVersion]] = {}
 
     def register_version(self, model_name: str, version: ModelVersion):
         if model_name not in self._models:

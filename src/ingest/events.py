@@ -18,10 +18,11 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Iterator
+from typing import Any
 
 logger = logging.getLogger(__name__)
 

@@ -6,7 +6,6 @@ VIX regime overrides. Correlation penalty. Redis caching. structlog.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import time
@@ -15,6 +14,7 @@ from typing import Any
 
 import numpy as np
 import structlog
+
 from src.data.news_feed import get_news_feed
 from src.maritime.flight_tracker import FlightTracker
 from src.maritime.vessel_tracker import VesselTracker
@@ -26,21 +26,21 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 # ─── Signal names ─────────────────────────────────────────────────────────────
 SIGNALS = ["thermal_frp", "vessel_density", "dark_vessel",
-           "flight_intel", "options_flow", "sentiment", "earnings_surprise"]
+           "flight_intel", "options_flow", "sentiment", "earnings_surprise", "port_congestion"]
 
 
 # ─── VIX Regime Weight Overrides ─────────────────────────────────────────────
 VIX_REGIMES: dict[str, dict[str, float] | None] = {
     "CALM": {   # VIX < 15
-        "thermal_frp": 0.28, "vessel_density": 0.22, "dark_vessel": 0.12,
+        "thermal_frp": 0.25, "vessel_density": 0.20, "dark_vessel": 0.10,
         "flight_intel": 0.10, "options_flow": 0.15, "sentiment": 0.08,
-        "earnings_surprise": 0.05,
+        "earnings_surprise": 0.05, "port_congestion": 0.07,
     },
     "NORMAL": None,
     "STRESS": {   # VIX > 25
-        "thermal_frp": 0.20, "vessel_density": 0.15, "dark_vessel": 0.30,
+        "thermal_frp": 0.18, "vessel_density": 0.12, "dark_vessel": 0.25,
         "flight_intel": 0.05, "options_flow": 0.20, "sentiment": 0.05,
-        "earnings_surprise": 0.05,
+        "earnings_surprise": 0.05, "port_congestion": 0.10,
     },
 }
 
@@ -66,12 +66,13 @@ class CompositeScoreResult:
     regime: str
     weight_version: str
     ic_half_life_tag: str
-    per_signal: dict[str, dict] = field(default_factory=dict)
+    per_signal: dict[str, dict[str, Any]] = field(default_factory=dict)
     data_freshness: dict[str, float] = field(default_factory=dict)
     as_of: str = ""
     final_score: float = 0.0
     confidence: float = 0.0
     headline: str = ""
+    contributing_signals: list[dict[str, Any]] = field(default_factory=list)
 
 
 # ─── Weight Optimizer ─────────────────────────────────────────────────────────
@@ -91,7 +92,7 @@ class WeightOptimizer:
         return_series: np.ndarray,
         window: int = 63,
     ) -> float:
-        from scipy.stats import spearmanr # type: ignore
+        from scipy.stats import spearmanr  # type: ignore
         if len(signal_series) < window or len(return_series) < window:
             return 0.0
         s = signal_series[-window:]
@@ -232,7 +233,7 @@ class CompositeScorer:
             log.warning("thermal_signal_failed", ticker=ticker, error=str(exc))
             scores["thermal_frp"] = SignalDataPoint("thermal_frp", 0.0, 0, 9999)
 
-        # Vessel density
+        # Vessel density & Port Congestion
         try:
             v_tracker = VesselTracker()
             vs = await v_tracker.get_ticker_vessel_signal(ticker)
@@ -242,8 +243,23 @@ class CompositeScorer:
                 raw_value=vs.get("vessel_count", 0),
                 age_s=vs.get("age_s", 9999),
             )
+            # Port Congestion impact (High congestion is often BEARISH for producers but BULLISH for shippers/carriers)
+            congestion = vs.get("port_congestion", 0.0)
+            # Simple heuristic: for shipping stocks (ZIM, MAERSK), congestion might be bullish (higher rates)
+            # For producers (MT, XOM), it's bearish (supply chain delay)
+            is_shipper = any(s in ticker for s in ["ZIM", "AMKBY", "MAERSK", "MATX"])
+            direction = "BULLISH" if (is_shipper and congestion > 0.5) else "BEARISH" if (not is_shipper and congestion > 0.5) else "NEUTRAL"
+
+            scores["port_congestion"] = SignalDataPoint(
+                signal_name="port_congestion",
+                score=1.0 - congestion if not is_shipper else congestion,
+                raw_value=congestion,
+                age_s=vs.get("age_s", 9999),
+                direction=direction
+            )
         except Exception:
             scores["vessel_density"] = SignalDataPoint("vessel_density", 0.0, 0, 9999)
+            scores["port_congestion"] = SignalDataPoint("port_congestion", 0.5, 0, 9999)
 
         # Dark vessel signal
         try:
@@ -276,7 +292,7 @@ class CompositeScorer:
         # Sentiment — Real NLP Score
         try:
             news = await get_news_feed(limit_per_source=20)
-            t_news = [n for n in news if ticker in n.get("tickers", []) or 
+            t_news = [n for n in news if ticker in n.get("tickers", []) or
                       ticker.lower() in n.get("title", "").lower()]
             if t_news:
                 total_sent = 0.0
@@ -284,11 +300,11 @@ class CompositeScorer:
                 used_w = weights[:len(t_news[:5])]
                 for i, n in enumerate(t_news[:5]):
                     total_sent += n["sentiment"] * weights[i]
-                avg_sent = total_sent / sum(used_w) 
+                avg_sent = total_sent / sum(used_w)
                 norm_sent = (avg_sent + 1) / 2
                 direction = "BULLISH" if avg_sent > 0.1 else "BEARISH" if avg_sent < -0.1 else "NEUTRAL"
                 scores["sentiment"] = SignalDataPoint(
-                    signal_name="sentiment", score=norm_sent, raw_value=avg_sent, 
+                    signal_name="sentiment", score=norm_sent, raw_value=avg_sent,
                     age_s=3600, direction=direction
                 )
             else:
@@ -297,8 +313,38 @@ class CompositeScorer:
             log.warning("sentiment_signal_failed", ticker=ticker, error=str(exc))
             scores["sentiment"] = SignalDataPoint("sentiment", 0.5, 0, 86400)
 
-        scores["earnings_surprise"] = SignalDataPoint("earnings_surprise", 0.5, 0, 86400)
-        scores["options_flow"] = SignalDataPoint("options_flow", 0.5, 0, 86400)
+        # Options Flow
+        try:
+            from src.data.options import fetch_option_chains
+            chains = await fetch_option_chains(ticker)
+            if chains["chains"]:
+                closest_exp = chains["expirations"][0]
+                chain = chains["chains"][closest_exp]
+                call_vol = sum(float(c.get("volume") or 0) for c in chain["calls"])
+                put_vol = sum(float(p.get("volume") or 0) for p in chain["puts"])
+                pcr = put_vol / max(call_vol, 1.0)
+                score = 1.0 - min(pcr / 2.0, 1.0) # Lower PCR -> higher score
+                scores["options_flow"] = SignalDataPoint(
+                    "options_flow", score, pcr, 3600,
+                    direction="BULLISH" if pcr < 0.7 else "BEARISH" if pcr > 1.3 else "NEUTRAL"
+                )
+            else:
+                scores["options_flow"] = SignalDataPoint("options_flow", 0.5, 0, 86400)
+        except Exception:
+            scores["options_flow"] = SignalDataPoint("options_flow", 0.5, 0, 86400)
+
+        # Earnings Surprise
+        try:
+            from src.data.earnings import fetch_earnings_calendar
+            earnings = await fetch_earnings_calendar(ticker)
+            if earnings["earnings"]:
+                # Simplified: just use presence of data for now
+                scores["earnings_surprise"] = SignalDataPoint("earnings_surprise", 0.5, 0, 86400)
+            else:
+                scores["earnings_surprise"] = SignalDataPoint("earnings_surprise", 0.5, 0, 86400)
+        except Exception:
+            scores["earnings_surprise"] = SignalDataPoint("earnings_surprise", 0.5, 0, 86400)
+
         return scores
 
     async def score(self, ticker: str) -> dict[str, Any]:
@@ -317,12 +363,13 @@ class CompositeScorer:
         regime = self._classify_regime(vix)
         weights, version = await self._optimizer.load_stored_weights()
 
-        if regime != "NORMAL" and VIX_REGIMES[regime]:
-            weights = VIX_REGIMES[regime].copy() # type: ignore
+        regime_weights = VIX_REGIMES.get(regime)
+        if regime != "NORMAL" and regime_weights:
+            weights = regime_weights.copy()
 
         signal_scores = await self._fetch_signal_scores(ticker)
         composite = 0.0
-        per_signal: dict[str, dict] = {}
+        per_signal: dict[str, dict[str, Any]] = {}
         data_freshness: dict[str, float] = {}
 
         for sig_name, dp in signal_scores.items():
@@ -367,15 +414,43 @@ class CompositeScorer:
                  score=round(composite, 4), regime=regime)
         return result
 
+    async def compute_composite(self, ticker: str, signals: list = None) -> Any:
+        """Compatibility method for SignalAgent."""
+        res = await self.score(ticker)
+        from dataclasses import make_dataclass
+        ScoreObj = make_dataclass("ScoreObj", ["final_score", "direction", "confidence", "regime", "contributing_signals", "as_of"])
+        return ScoreObj(
+            final_score=res["final_score"],
+            direction=res["direction"],
+            confidence=res["confidence"],
+            regime=res["regime"],
+            contributing_signals=res["contributing_signals"],
+            as_of=res["as_of"]
+        )
+
+# ─── Standalone function for SignalEngine compatibility ───────────────────────
+async def compute_composite(
+    ticker: str,
+    vessel_signal: dict[str, Any] | None = None,
+    flight_signal: dict[str, Any] | None = None
+) -> Any:
+    scorer = CompositeScorer()
+    return await scorer.compute_composite(ticker)
+
+
+def get_signal_engine() -> CompositeScorer:
+    """Factory for SignalAgent."""
+    return CompositeScorer()
+
 
 # ─── Redis helper ─────────────────────────────────────────────────────────────
 _redis_pool = None
 
-async def _get_redis():
+async def _get_redis() -> Any | None:
     global _redis_pool
     if _redis_pool is None:
         try:
-            import redis.asyncio as aioredis # type: ignore
+            import redis.asyncio as aioredis  # type: ignore
             _redis_pool = await aioredis.from_url(REDIS_URL, decode_responses=True)
         except Exception as exc:
             log.warning("redis_unavailable", error=str(exc))

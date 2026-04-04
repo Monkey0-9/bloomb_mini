@@ -1,10 +1,9 @@
-import logging
-import numpy as np
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Literal
 from uuid import uuid4
+
 
 class IngestStatus(str, Enum):
     # Expanded combined statuses based on specs
@@ -40,7 +39,7 @@ class BoundingBox:
 class TileMetadata:
     tile_id: str = field(default_factory=lambda: str(uuid4()))
     source: str = ""
-    acquisition_utc: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    acquisition_utc: datetime = field(default_factory=lambda: datetime.now(UTC))
     processing_level: ProcessingLevel = ProcessingLevel.L2A
     sensor_type: SensorType = SensorType.OPTICAL
     resolution_m: float = 10.0
@@ -50,7 +49,7 @@ class TileMetadata:
     commercial_use_ok: bool = True
     checksum_sha256: str = ""
     preprocessing_ver: str = "0.0.0"
-    ingest_timestamp_utc: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    ingest_timestamp_utc: datetime = field(default_factory=lambda: datetime.now(UTC))
     file_path: str = ""
     location_key: str = ""
 
@@ -68,8 +67,8 @@ class FeatureRecord:
     entity_id: str = ""
     feature_name: str = ""
     feature_value: float = 0.0
-    event_timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    created_timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    event_timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
+    created_timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     source_tile_id: str = ""
     model_version: str = "1.0.0"
 
@@ -79,10 +78,10 @@ class IngestEvent:
     source: str = ""
     sensor_type: str = ""
     bbox: list[float] = field(default_factory=list)
-    acquisition_utc: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    acquisition_utc: datetime = field(default_factory=lambda: datetime.now(UTC))
     status: IngestStatus = IngestStatus.RECEIVED
     reason_if_not_accepted: str | None = None
-    ingest_timestamp_utc: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    ingest_timestamp_utc: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 @dataclass
 class SignalRecord:
@@ -94,7 +93,7 @@ class SignalRecord:
     ic: float = 0.0
     icir: float = 0.0
     status: Literal["BULLISH", "BEARISH", "NEUTRAL"] = "NEUTRAL"
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     confidence: float = 0.0
 
 @dataclass

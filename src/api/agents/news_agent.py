@@ -1,16 +1,18 @@
 import asyncio
-from typing import Any, Dict
+from typing import Any
+
 from src.api.agents.base import BaseAgent
 from src.data.news import fetch_all_news
+
 
 class NewsAgent(BaseAgent):
     def __init__(self):
         super().__init__("news")
 
-    async def process_task(self, task_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def process_task(self, task_type: str, params: dict[str, Any]) -> dict[str, Any]:
         self.log.info("processing_news_task", task_type=task_type)
         news_items = await asyncio.to_thread(fetch_all_news)
-        
+
         # Check if we have input from a previous task
         thermal_input = params.get("input_t1", {})
         if thermal_input:
@@ -18,7 +20,7 @@ class NewsAgent(BaseAgent):
             tickers = set()
             for a in thermal_input.get("anomalies", []):
                 tickers.update(a.get("tickers", []))
-            
+
             if tickers:
                 news_items = [i for i in news_items if any(t in i.tickers_mentioned for t in tickers)]
 

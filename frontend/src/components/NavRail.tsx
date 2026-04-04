@@ -12,7 +12,8 @@ import {
   Newspaper,
   HelpCircle,
   Bell,
-  Eye
+  Eye,
+  Shield
 } from 'lucide-react';
 import { useTerminalStore } from '../store';
 
@@ -76,6 +77,9 @@ const NavRail = () => {
     { id: 'workflow',  icon: <Layout size={16} strokeWidth={1.5} />,       label: 'Workflow Engine',    shortcut: 'W' },
     { id: 'dark_pools',icon: <Search size={16} strokeWidth={1.5} />,       label: 'Dark Pool Sonar',    shortcut: 'D' },
     { id: 'insider',   icon: <Eye size={16} strokeWidth={1.5} />,          label: 'Insider AI Tracker', shortcut: 'I' },
+    { id: 'war_room',  icon: <Shield size={16} strokeWidth={1.5} />,         label: 'War Surveillance',   shortcut: 'X' },
+    { id: 'godmode',   icon: <Zap size={16} strokeWidth={1.5} />,            label: 'GodMode Intel',      shortcut: 'G' },
+    { id: 'sandbox',   icon: <Layout size={16} strokeWidth={1.5} />,         label: 'MiroFish Sandbox',   shortcut: 'S' },
     { id: 'terminal',  icon: <Terminal size={16} strokeWidth={1.5} />,     label: 'Direct Kernel',      shortcut: 'K' },
   ];
 

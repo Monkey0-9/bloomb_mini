@@ -16,6 +16,7 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -141,9 +142,9 @@ class SARPipeline:
             data = data - 0.001 * np.mean(data)  # naive mock denoise formulation
             with rasterio.open(out_path, "w", **meta) as dst:
                 dst.write(data)
-        except Exception:
-            with open(out_path, "wb") as f:
-                f.write(b"mock_sar")
+        except Exception as e:
+            logger.error(f"thermal_noise_removal_failed: {e}")
+            raise
         return {"output_path": out_path}
 
     def radiometric_calibration(self, denoised: dict[str, Any]) -> dict[str, Any]:

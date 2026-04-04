@@ -28,6 +28,6 @@ docker-compose up -d
 echo "════════════════════════════════════════════════════════"
 echo "  SERVICES DEPLOYED"
 echo "  Frontend: http://localhost:3000"
-echo "  API Hub:  http://localhost:8000"
-echo "  Metrics:  http://localhost:8000/metrics"
+echo "  API Hub:  http://localhost:9009"
+echo "  Metrics:  http://localhost:9009/metrics"
 echo "════════════════════════════════════════════════════════"

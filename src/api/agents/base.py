@@ -1,19 +1,21 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any
+
 import structlog
+
 from src.common.message_bus import bus
 
 log = structlog.get_logger()
 
 class BaseAgent(ABC):
     """Base interface for all specialized agents."""
-    
+
     def __init__(self, name: str) -> None:
         self.name = name
         self.log = log.bind(agent=name)
 
     @abstractmethod
-    async def process_task(self, task_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def process_task(self, task_type: str, params: dict[str, Any]) -> dict[str, Any]:
         """Process a specific task and return a result."""
         pass
 

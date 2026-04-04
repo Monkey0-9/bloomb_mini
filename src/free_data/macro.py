@@ -57,5 +57,5 @@ async def get_macro_data(series_name: str) -> list[MacroPoint]:
                     continue
             return points[-30:]  # Last 30 days/points
     except Exception as e:
-        logger.error(f"Macro data error for %s: %s", series_name, e)
+        logger.error("Macro data error for %s: %s", series_name, e)
         return []

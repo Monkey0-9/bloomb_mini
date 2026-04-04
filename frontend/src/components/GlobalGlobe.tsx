@@ -1,8 +1,7 @@
 import React, { useEffect, useRef, useMemo, useCallback } from 'react';
 import Globe from 'react-globe.gl';
 import * as THREE from 'three';
-import { useTerminalStore } from '../store';
-import { useEquityStore } from '../store/equityStore';
+import { useTerminalStore, useEquityStore } from '../store';
 import { countryLabels } from '../data/countries';
 import { api, connectLive } from '../api/client';
 
@@ -23,6 +22,15 @@ interface HexBin {
   label: string;
   signal?: string;
   score?: number;
+}
+
+interface Satellite {
+  name: string;
+  lat: number;
+  lon: number;
+  alt_km: number;
+  next_lat?: number;
+  next_lon?: number;
 }
 
 const GlobalGlobe: React.FC = () => {
@@ -218,6 +226,27 @@ const GlobalGlobe: React.FC = () => {
       }));
     }
 
+    if (activeLayers.includes('VESSELS') && zoomLevel > 3) {
+      filteredVessels.forEach(v => data.push({
+        lat: v.lat, lng: v.lon, size: 8, color: COL.signal,
+        label: `${v.name || 'VESSEL'}\n${v.type || ''}`, shape: 'vessel',
+        type: 'VESSEL'
+      }));
+    }
+
+    if (activeLayers.includes('AIRCRAFT') && zoomLevel > 5) {
+      filteredFlights.forEach(f => {
+        const props = f.properties || f;
+        data.push({
+          lat: props.lat || f.geometry?.coordinates[1],
+          lng: props.lon || f.geometry?.coordinates[0],
+          size: 6, color: COL.purple,
+          label: `${props.callsign || 'FLIGHT'}\n${props.origin_country || ''}`, shape: 'flight',
+          type: 'AIRCRAFT'
+        });
+      });
+    }
+
     return data;
   }, [conflicts, strategic, activeLayers]);
 
@@ -352,6 +381,15 @@ const GlobalGlobe: React.FC = () => {
     fMesh.instanceMatrix.needsUpdate = true;
   }, [filteredVessels, filteredFlights]);
 
+  const pathsData = useMemo(() => {
+    if (!activeLayers.includes('SATELLITES')) return [];
+    return satellites.map((s: any) => ({
+      coords: s.ground_track.map((p: any) => [p.lat, p.lon]),
+      color: COL.signal,
+      name: s.name
+    }));
+  }, [satellites, activeLayers]);
+
   return (
     <div className={`w-full h-full relative transition-opacity duration-500`}>
       <Globe
@@ -362,6 +400,13 @@ const GlobalGlobe: React.FC = () => {
         polygonSideColor={() => 'rgba(0, 212, 255, 0.15)'}
         polygonStrokeColor={() => '#38bdf8'}
         showGraticules={true} showAtmosphere atmosphereColor="#38bdf8" atmosphereAltitude={0.25}
+        
+        pathsData={pathsData}
+        pathColor={(d: any) => d.color}
+        pathDashLength={0.1}
+        pathDashGap={0.008}
+        pathDashAnimateTime={12000}
+        pathStroke={0.4}
         
         hexBinPointsData={activeLayers.includes('THERMAL') ? thermalBins : []}
         hexBinPointWeight="weight" hexBinResolution={4} hexMargin={0.1}
@@ -384,8 +429,7 @@ const GlobalGlobe: React.FC = () => {
         
         labelsData={useMemo(() => {
           const altitude = zoomLevel ? 4 / zoomLevel : 2.5;
-          if (altitude > 3.0) return []; 
-          const limit = altitude < 0.6 ? 208 : altitude < 1.2 ? 120 : 60;
+          const limit = altitude < 0.6 ? 500 : altitude < 1.2 ? 300 : 150;
           return countryLabels.slice(0, limit);
         }, [zoomLevel])}
         labelLat="lat" labelLng="lng" labelText={(d: any) => d.name.toUpperCase()}

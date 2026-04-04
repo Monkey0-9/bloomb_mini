@@ -133,11 +133,21 @@ const WatchlistPanel = () => {
       </div>
 
       {/* FOOTER ACTION */}
-      <div className="h-8 border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] shrink-0 flex items-center justify-center cursor-pointer hover:bg-[var(--bg-hover)] transition-colors group">
-        <span className="text-[9px] text-[var(--text-secondary)] uppercase tracking-[0.1em] font-bold group-hover:text-[var(--text-primary)] transition-colors flex items-center gap-2">
-           <div className="w-1.5 h-1.5 bg-[var(--neon-bull)] shadow-[0_0_4px_var(--neon-bull)]"></div>
-           Configure Alert Webhooks
-        </span>
+      <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] shrink-0 flex flex-col">
+        <div className="grid grid-cols-2 border-b border-[var(--border-subtle)]">
+            <button className="h-8 flex items-center justify-center gap-2 text-[9px] text-[var(--text-secondary)] uppercase tracking-[0.15em] font-bold hover:bg-bull/10 hover:text-bull transition-all border-r border-[var(--border-subtle)]">
+                <div className="w-1.5 h-1.5 bg-bull"></div> Bulk Trade
+            </button>
+            <button className="h-8 flex items-center justify-center gap-2 text-[9px] text-[var(--text-secondary)] uppercase tracking-[0.15em] font-bold hover:bg-accent-primary/10 hover:text-accent-primary transition-all">
+                Matrix Analysis
+            </button>
+        </div>
+        <div className="h-8 flex items-center justify-center cursor-pointer hover:bg-[var(--bg-hover)] transition-colors group">
+            <span className="text-[9px] text-[var(--text-secondary)] uppercase tracking-[0.1em] font-bold group-hover:text-[var(--text-primary)] transition-colors flex items-center gap-2">
+            <div className="w-1.5 h-1.5 bg-[var(--neon-bull)] shadow-[0_0_4px_var(--neon-bull)]"></div>
+            Configure Alert Webhooks
+            </span>
+        </div>
       </div>
     </div>
   );

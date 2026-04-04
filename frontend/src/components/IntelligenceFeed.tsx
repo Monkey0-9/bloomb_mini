@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, AlertTriangle, Radio, ShieldAlert, Navigation, Flame, Zap } from 'lucide-react';
+import { Activity, AlertTriangle, Radio, ShieldAlert, Navigation, Flame, Zap, ChevronRight } from 'lucide-react';
 import { useTerminalStore, useSignalStore, useFlightStore, useVesselStore } from '../store';
 
 const getEventColor = (type: string) => {
@@ -24,10 +24,28 @@ const getEventIcon = (type: string) => {
   }
 };
 
+const formatTime = (dateStr: string | null) => {
+  if (!dateStr) return new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    return d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  } catch {
+    return new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  }
+};
+
+const getTimestamp = (dateStr: string | null) => {
+  if (!dateStr) return Date.now();
+  const d = new Date(dateStr);
+  return isNaN(d.getTime()) ? Date.now() : d.getTime();
+};
+
 const IntelligenceFeed = () => {
   const { signals, fetchSignals } = useSignalStore();
   const { flights, fetchFlights } = useFlightStore();
   const { vessels, fetchVessels } = useVesselStore();
+  const { setSelectedIntelligenceEvent } = useTerminalStore();
   
   // Create a unified master timeline of all global intel
   const [feed, setFeed] = useState<any[]>([]);
@@ -44,55 +62,56 @@ const IntelligenceFeed = () => {
     
     // Add thermal signals
     signals.forEach((s: any, i) => {
-      if(i > 5) return;
+      if(i > 15) return;
       events.push({
         id: `th-${s.id}`,
-        time: new Date(Date.now() - Math.random() * 3600000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+        time: formatTime(s.detected_at || s.as_of),
+        timestamp: getTimestamp(s.detected_at || s.as_of),
         type: 'THERMAL',
         title: s.name,
         location: s.location || 'Unknown',
-        detail: `Confidence: ${s.score.toFixed(1)} | Signal: ${s.signal}`,
-        severity: s.score > 80 ? 'CRITICAL' : 'ELEVATED'
+        detail: `Confidence: ${s.score?.toFixed(1) || '0.0'} | Signal: ${s.signal || 'NEUTRAL'}`,
+        severity: (s.score || 0) > 80 ? 'CRITICAL' : 'ELEVATED',
+        raw: s
       });
     });
 
     // Add high-interest flights (military/cargo)
-    let fCount = 0;
     flights.forEach((f: any) => {
-      if(f.category !== 'COMMERCIAL' && fCount < 6) {
+      if(f.category !== 'COMMERCIAL') {
         events.push({
           id: `fl-${f.icao24}`,
           time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+          timestamp: Date.now(),
           type: 'AIRCRAFT',
           title: `[${f.category}] ${f.callsign}`,
           location: f.route || 'Airspace',
           detail: `Operator: ${f.operator} | Alt: ${f.position?.alt_ft || f.alt_ft || 0}ft | Cargo: ${f.cargo || 'Unknown'}`,
-          severity: f.category === 'MILITARY' ? 'HIGH' : 'INFO'
+          severity: f.category === 'MILITARY' ? 'HIGH' : 'INFO',
+          raw: f
         });
-        fCount++;
       }
     });
 
     // Add high-interest vessels (dark ships / tankers)
-    let vCount = 0;
     vessels.forEach((v: any) => {
-      if(v.cargo !== 'Unknown' && vCount < 6) {
+      if(v.cargo !== 'Unknown') {
         events.push({
           id: `vs-${v.id || v.mmsi}`,
           time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+          timestamp: Date.now(),
           type: 'VESSEL',
           title: `[MARINE] MMSI ${v.id || v.mmsi}`,
           location: v.destination || 'Maritime Route',
           detail: `Status: ${v.status} | Cargo: ${v.cargo}`,
-          severity: 'INFO'
+          severity: 'INFO',
+          raw: v
         });
-        vCount++;
       }
     });
 
-    // Sort by "time" roughly (or just random weave for now)
-    // To make it look dynamic, shuffle or sort
-    events.sort(() => 0.5 - Math.random());
+    // Sort by timestamp descending
+    events.sort((a, b) => b.timestamp - a.timestamp);
     setFeed(events);
   }, [signals, flights, vessels]);
 
@@ -124,7 +143,7 @@ const IntelligenceFeed = () => {
         {feed.map((ev, i) => {
           const colorClass = getEventColor(ev.type);
           return (
-            <div key={`${ev.id}-${i}`} className="relative pl-4 group">
+            <div key={`${ev.id}-${i}`} className="relative pl-4 group" onClick={() => setSelectedIntelligenceEvent(ev)}>
               {/* Timeline Stem */}
               <div className="absolute left-[7px] top-4 bottom-[-10px] w-px bg-white/10 group-last:hidden"></div>
               
@@ -161,6 +180,12 @@ const IntelligenceFeed = () => {
                    <div className={`px-1 rounded-sm text-[8px] tracking-widest font-bold ${ev.severity === 'CRITICAL' || ev.severity === 'HIGH' ? 'bg-[#FF4560]/20 text-[#FF4560]' : 'bg-[#38bdf8]/20 text-[#38bdf8]'}`}>
                      {ev.severity}
                    </div>
+                </div>
+
+                <div className="mt-2 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 text-[8px] text-accent-primary font-bold uppercase tracking-widest">
+                        Inspect Signal <ChevronRight size={10} />
+                    </div>
                 </div>
               </div>
             </div>

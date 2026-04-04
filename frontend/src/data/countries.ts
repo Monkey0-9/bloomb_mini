@@ -195,7 +195,6 @@ export const countryLabels = [
   { name: 'YEMEN', lat: 15.5527, lng: 48.5164 },
   { name: 'ZAMBIA', lat: -13.1339, lng: 27.8493 },
   { name: 'ZIMBABWE', lat: -19.0154, lng: 29.1549 },
-  { name: 'TAIWAN', lat: 23.6978, lng: 120.9605 },
   { name: 'HONG KONG', lat: 22.3193, lng: 114.1694 },
   { name: 'MACAO', lat: 22.1987, lng: 113.5439 },
   { name: 'PUERTO RICO', lat: 18.2208, lng: -66.5901 },

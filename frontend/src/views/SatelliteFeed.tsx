@@ -4,7 +4,9 @@ import { useSignalStore } from '../store';
 
 const SatelliteFeed = () => {
   const [search, setSearch] = React.useState('');
-  const { signals } = useSignalStore();
+  const [brightness, setBrightness] = React.useState(75);
+  const [filter, setFilter] = React.useState('ALL');
+  const { signals, satFeed } = useSignalStore();
   
   const images = useMemo(() => {
     // Start with curated base imagery
@@ -34,32 +36,36 @@ const SatelliteFeed = () => {
     ];
 
     // Map live signals to high-fidelity feed items
-    const liveItems = signals.slice(0, 10).map((s: any) => ({
+    const liveItems = (satFeed || []).map((s: any) => ({
       id: s.id,
-      location: s.name,
-      time: 'LIVE',
-      cloud: '0%',
-      res: '0.5m',
-      type: 'WORLDVIEW-3',
-      signal: s.status.toUpperCase(),
-      detail: s.headline + '. ' + s.implication,
-      url: s.status === 'bullish' 
-        ? 'https://images.unsplash.com/photo-1570535560965-09559e4d4669?auto=format&fit=crop&w=800&q=80'
-        : 'https://images.unsplash.com/photo-1541829070764-84a7d30dee6b?auto=format&fit=crop&w=800&q=80'
+      location: s.location,
+      time: s.time,
+      cloud: s.cloud,
+      res: s.res,
+      type: s.type,
+      signal: s.signal as 'bullish' | 'bearish' | 'neutral',
+      detail: s.detail,
+      url: s.url
     }));
 
     return [...liveItems, ...baseImagery];
-  }, [signals]);
+  }, [satFeed]);
 
   const filteredImages = useMemo(() => {
-    if (!search) return images;
-    const lowercasedSearch = search.toLowerCase();
-    return images.filter((img: any) => 
-      img.location.toLowerCase().includes(lowercasedSearch) ||
-      img.detail.toLowerCase().includes(lowercasedSearch) ||
-      img.type.toLowerCase().includes(lowercasedSearch)
-    );
-  }, [images, search]);
+    let result = images;
+    if (search) {
+      const lowercasedSearch = search.toLowerCase();
+      result = result.filter((img: any) => 
+        img.location.toLowerCase().includes(lowercasedSearch) ||
+        img.detail.toLowerCase().includes(lowercasedSearch) ||
+        img.type.toLowerCase().includes(lowercasedSearch)
+      );
+    }
+    if (filter !== 'ALL') {
+      result = result.filter((img: any) => img.signal === filter);
+    }
+    return result;
+  }, [images, search, filter]);
 
   return (
     <div className="flex-1 flex flex-col bg-[var(--bg-base)] overflow-hidden font-mono">
@@ -78,8 +84,36 @@ const SatelliteFeed = () => {
                   placeholder="QUERY TARGET..." 
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="bg-transparent outline-none text-[10px] uppercase text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] w-48 font-mono"
+                  className="bg-transparent outline-none text-[10px] uppercase text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] w-32 font-mono"
                />
+            </div>
+
+            {/* QUICK FILTERS */}
+            <div className="flex gap-1 ml-2">
+              {['ALL', 'BULLISH', 'BEARISH'].map(f => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`text-[8px] font-bold px-1.5 py-0.5 border transition-all uppercase tracking-widest ${
+                    filter === f ? 'bg-[var(--neon-bull)] text-black border-[var(--neon-bull)]' : 'bg-[var(--bg-overlay)] border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+
+            {/* BRIGHTNESS SLIDER */}
+            <div className="flex items-center gap-2 ml-4">
+              <span className="text-[8px] text-[var(--text-tertiary)] uppercase font-bold tracking-widest">LUM:</span>
+              <input 
+                type="range" 
+                min="0" 
+                max="150" 
+                value={brightness} 
+                onChange={(e) => setBrightness(parseInt(e.target.value))}
+                className="w-20 h-1 bg-[var(--bg-overlay)] appearance-none cursor-pointer accent-[var(--neon-bull)]"
+              />
             </div>
          </div>
          
@@ -99,7 +133,12 @@ const SatelliteFeed = () => {
             >
               {/* IMAGE COLUMN */}
               <div className="w-[240px] shrink-0 relative overflow-hidden border-r border-[var(--border-subtle)]">
-                <img src={img.url} alt={img.location} className="w-full h-full object-cover grayscale brightness-75 group-hover:grayscale-0 group-hover:scale-105 transition-all duration-700" />
+                <img 
+                  src={img.url} 
+                  alt={img.location} 
+                  style={{ filter: `grayscale(1) brightness(${brightness}%)` }}
+                  className="w-full h-full object-cover group-hover:grayscale-0 group-hover:scale-105 transition-all duration-700" 
+                />
                 <div className="absolute inset-0 bg-[var(--neon-bull)] opacity-10 group-hover:opacity-0 transition-opacity mix-blend-color"></div>
                 
                 <div className="absolute top-2 left-2 flex gap-1">

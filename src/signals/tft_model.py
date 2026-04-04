@@ -11,7 +11,9 @@ import asyncio
 import json
 import os
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
+from typing import Any, Optional
+
 import numpy as np
 import structlog
 import torch
@@ -53,10 +55,10 @@ class ModelServer:
         self._model = None
         self._model_loaded = False
         self._drift_ic_rolling: dict[str, float] = {}
-        self._low_confidence_tickers: set = set()
-        self._redis = None
+        self._low_confidence_tickers: set[str] = set()
+        self._redis: Any = None
 
-    async def _get_redis(self):
+    async def _get_redis(self) -> Any:
         if self._redis is None:
             try:
                 import redis.asyncio as aioredis
@@ -82,7 +84,7 @@ class ModelServer:
             return False
 
     async def _run_tft_inference(
-        self, ticker: str, horizon: int, price_series: np.ndarray
+        self, ticker: str, horizon: int, price_series: np.ndarray[Any, Any]
     ) -> ForecastResult:
         """Run actual TFT inference if model is available."""
         try:
@@ -108,7 +110,7 @@ class ModelServer:
         self,
         ticker: str,
         horizon: int,
-        price_series: np.ndarray,
+        price_series: np.ndarray[Any, Any],
     ) -> ForecastResult:
         """
         Bootstrap statistical fallback when TFT model unavailable.
@@ -116,15 +118,25 @@ class ModelServer:
         composite signal direction.
         """
         if len(price_series) < 30:
-            price_series = np.ones(30) * 100.0
+            price_series = np.ones(30) * (price_series[-1] if len(price_series) > 0 else 100.0)
 
-        returns = np.diff(np.log(price_series))
-        mu = float(np.mean(returns))
-        sigma = float(np.std(returns)) or 0.015
+        # Ensure no zeros for log
+        ps = np.clip(price_series, 0.01, None)
+        returns = np.diff(np.log(ps))
+
+        # Filter out NaNs/Infs from returns
+        returns = returns[np.isfinite(returns)]
+
+        if len(returns) < 5:
+            mu = 0.0003
+            sigma = 0.015
+        else:
+            mu = float(np.mean(returns))
+            sigma = float(np.std(returns)) or 0.015
 
         # 1000 Monte Carlo paths for quantile extraction
         n_sims = 1000
-        last_price = float(price_series[-1])
+        last_price = float(ps[-1].item())
         sims = np.zeros((n_sims, horizon))
 
         for i in range(n_sims):
@@ -134,9 +146,10 @@ class ModelServer:
                 p = p * np.exp(shock)
                 sims[i, j] = p
 
-        p10 = np.percentile(sims, 10, axis=0).tolist()
-        p50 = np.percentile(sims, 50, axis=0).tolist()
-        p90 = np.percentile(sims, 90, axis=0).tolist()
+        # Ensure we don't have NaNs in quantiles
+        p10 = np.nan_to_num(np.percentile(sims, 10, axis=0), nan=last_price*0.9).tolist()
+        p50 = np.nan_to_num(np.percentile(sims, 50, axis=0), nan=last_price).tolist()
+        p90 = np.nan_to_num(np.percentile(sims, 90, axis=0), nan=last_price*1.1).tolist()
 
         return self._build_result(ticker, horizon, p10, p50, p90,
                                    price_series, inference_latency_ms=0,
@@ -149,11 +162,11 @@ class ModelServer:
         p10: list[float],
         p50: list[float],
         p90: list[float],
-        price_series: np.ndarray,
+        price_series: np.ndarray[Any, Any],
         inference_latency_ms: int = 0,
         confidence: str = "HIGH",
     ) -> ForecastResult:
-        last_price = float(price_series[-1]) if len(price_series) > 0 else 100.0
+        last_price = price_series[-1].item() if len(price_series) > 0 else 100.0
         final_p50 = p50[-1] if p50 else last_price
         magnitude_pct = (final_p50 - last_price) / last_price * 100 if last_price else 0.0
         direction = "UP" if magnitude_pct > 0.5 else "DOWN" if magnitude_pct < -0.5 else "FLAT"
@@ -186,7 +199,7 @@ class ModelServer:
             as_of=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         )
 
-    async def _get_price_series(self, ticker: str) -> np.ndarray:
+    async def _get_price_series(self, ticker: str) -> np.ndarray[Any, Any]:
         """Fetch historical price series for inference."""
         redis = await self._get_redis()
         if redis:
@@ -267,6 +280,17 @@ class ModelServer:
                  model_available=model_available)
         return result_dict
 
+    async def get_forecast(self, ticker: str, history: Optional[np.ndarray] = None) -> Any:
+        """Alias for SignalAgent."""
+        res = await self.predict(ticker)
+        from dataclasses import make_dataclass
+        PredObj = make_dataclass("PredObj", ["predictions", "prediction_intervals", "model_version"])
+        return PredObj(
+            predictions=res["p50"],
+            prediction_intervals=[res["p10"], res["p90"]],
+            model_version=res.get("as_of", "v1.0")
+        )
+
     async def predict_batch(
         self, tickers: list[str], horizon_days: int = 21
     ) -> dict[str, dict]:
@@ -319,3 +343,6 @@ class ModelServer:
                     log.error("drift_alert_publish_failed", error=str(exc))
         else:
             self._low_confidence_tickers.discard(ticker)
+
+def get_tft_server() -> ModelServer:
+    return ModelServer()

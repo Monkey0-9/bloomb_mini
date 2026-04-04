@@ -9,11 +9,9 @@ Pipeline:
   3. Merge into vessel_tracker position store
 """
 
-import csv
-import io
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
@@ -85,7 +83,7 @@ def _fetch_aishub(zone_key: str, bbox: dict) -> list[LiveVesselPosition]:
                     course=float(v.get("COG", 0)) / 10.0,
                     vessel_type=int(v.get("TYPE", 0)),
                     status=_decode_nav_status(int(v.get("NAVSTAT", 0))),
-                    timestamp=v.get("TIME", datetime.now(timezone.utc).isoformat()),
+                    timestamp=v.get("TIME", datetime.now(UTC).isoformat()),
                     zone=zone_key,
                     source="AISHUB",
                 ))
@@ -125,7 +123,7 @@ def _fetch_noaa_zone(zone_key: str, bbox: dict, limit: int = 25) -> list[LiveVes
                     course=float(props.get("COG", 0)),
                     vessel_type=int(props.get("VesselType", 0)),
                     status=_decode_nav_status(int(props.get("Status", 0))),
-                    timestamp=props.get("BaseDateTime", datetime.now(timezone.utc).isoformat()),
+                    timestamp=props.get("BaseDateTime", datetime.now(UTC).isoformat()),
                     zone=zone_key,
                     source="NOAA",
                 ))
@@ -205,5 +203,5 @@ def get_live_ais(zones: list[str] | None = None) -> dict:
         "total_count": len(all_positions),
         "dark_count": len(dark_alerts),
         "zones_scanned": zones_to_query,
-        "as_of": datetime.now(timezone.utc).isoformat(),
+        "as_of": datetime.now(UTC).isoformat(),
     }

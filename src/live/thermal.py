@@ -6,16 +6,17 @@ Clusters detections spatially to find persistent industrial hotspots.
 Reverse geocodes via OpenStreetMap Nominatim to discover facility name.
 Finds stock ticker via yfinance Search automatically.
 """
+import asyncio
 import csv
 import io
 import time
-import math
+from collections import defaultdict
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+
 import httpx
 import structlog
-from collections import defaultdict
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from pathlib import Path
 
 log = structlog.get_logger()
 
@@ -42,19 +43,24 @@ class ThermalCluster:
     data_quality:   str    # "real" or "simulated"
     detected_at:    str
 
+    @property
+    def sector(self) -> str:
+        return self.facility_type
+
 _global_hotspots_24h: list[dict] = []
 _global_hotspots_7d:  list[dict] = []
 _firms_ts: float = 0.0
 FIRMS_TTL = 600  # 10 minutes
 
-def _download_firms(url: str, label: str) -> list[dict]:
+async def _download_firms(url: str, label: str) -> list[dict]:
     """Download FIRMS CSV from NASA. No key needed."""
     cache_file = Path(f"data/cache/firms_{label}.csv")
     cache_file.parent.mkdir(parents=True, exist_ok=True)
 
     try:
         log.info("firms_downloading", url=url)
-        resp = httpx.get(url, timeout=90, follow_redirects=True)
+        async with httpx.AsyncClient(timeout=90, follow_redirects=True) as client:
+            resp = await client.get(url)
         resp.raise_for_status()
         cache_file.write_bytes(resp.content)
         text = resp.text
@@ -91,16 +97,23 @@ def _cluster_points(points: list[dict], grid_km: float = 1.5) -> dict:
         clusters[cell_key].append(p)
     return clusters
 
-def _reverse_geocode(lat: float, lon: float) -> dict:
+async def _reverse_geocode(lat: float, lon: float) -> dict:
     """Reverse geocode via OpenStreetMap Nominatim. Free, no key. 1 req/sec."""
     try:
-        time.sleep(0.12)  # Respect Nominatim rate limit
-        resp = httpx.get(
-            "https://nominatim.openstreetmap.org/reverse",
-            params={"lat": lat, "lon": lon, "format": "json", "zoom": 16},
-            headers={"User-Agent": "SatTrade/2.0 research@sattrade.io"},
-            timeout=12,
-        )
+        await asyncio.sleep(1.1)  # Respect Nominatim rate limit (1 req/sec)
+        async with httpx.AsyncClient(timeout=12) as client:
+            resp = await client.get(
+                "https://nominatim.openstreetmap.org/reverse",
+                params={"lat": lat, "lon": lon, "format": "json", "zoom": 16},
+                headers={"User-Agent": "SatTrade/2.0 research@sattrade.io"},
+            )
+        if resp.status_code == 429:
+            log.warning("nominatim_rate_limited", status=429)
+            return {
+                "name":    f"Industrial site {lat:.3f}°N {lon:.3f}°E",
+                "type":    "industrial",
+                "country": "Unknown",
+            }
         data = resp.json()
         addr = data.get("address", {})
         name = (
@@ -123,6 +136,7 @@ def _reverse_geocode(lat: float, lon: float) -> dict:
         }
 
 def _find_tickers(facility_name: str, facility_type: str) -> list[str]:
+
     """Find stock tickers for a facility using yfinance Search."""
     import yfinance as yf
 
@@ -173,7 +187,7 @@ def _find_tickers(facility_name: str, facility_type: str) -> list[str]:
 
     return tickers[:3]
 
-def get_global_thermal(top_n: int = 150) -> list[ThermalCluster]:
+async def get_global_thermal(top_n: int = 150) -> list[ThermalCluster]:
     """
     Get top N industrial thermal anomalies from the entire planet.
     Fully dynamic — no hardcoded facility list.
@@ -182,51 +196,71 @@ def get_global_thermal(top_n: int = 150) -> list[ThermalCluster]:
 
     now = time.time()
     if _global_hotspots_24h and (now - _firms_ts) < FIRMS_TTL:
-        return _build_clusters(_global_hotspots_24h, _global_hotspots_7d, top_n)
+        return await _build_clusters(_global_hotspots_24h, _global_hotspots_7d, top_n)
 
-    _global_hotspots_24h = _download_firms(FIRMS_24H, "24h")
-    _global_hotspots_7d  = _download_firms(FIRMS_7D,  "7d")
+    _global_hotspots_24h = await _download_firms(FIRMS_24H, "24h")
+    _global_hotspots_7d  = await _download_firms(FIRMS_7D,  "7d")
     _firms_ts = now
 
-    return _build_clusters(_global_hotspots_24h, _global_hotspots_7d, top_n)
+    return await _build_clusters(_global_hotspots_24h, _global_hotspots_7d, top_n)
 
-def _build_clusters(points_24h: list[dict], points_7d: list[dict],
+async def _build_clusters(points_24h: list[dict], points_7d: list[dict],
                     top_n: int) -> list[ThermalCluster]:
     clusters_24h = _cluster_points(points_24h, grid_km=1.5)
     clusters_7d  = _cluster_points(points_7d,  grid_km=1.5)
 
     significant = []
     geocode_cache = {}
+    geocode_count = 0
+    max_geocodes = 20 # Cap geocoding to prevent TLE or extreme latency
 
+    # Filter and sort by sigma before geocoding
+    candidate_clusters = []
     for cell_key, detections in clusters_24h.items():
         if len(detections) < 2:
             continue
-
         avg_frp = sum(d["frp"] for d in detections) / len(detections)
         if avg_frp < 15.0:
-            continue  # Too weak — likely wildfire or natural
+            continue
+        baseline_detections = clusters_7d.get(cell_key, detections)
+        baseline_frp = sum(d["frp"] for d in baseline_detections) / len(baseline_detections)
+        baseline_frp = max(baseline_frp, 1.0)
+        sigma = (avg_frp - baseline_frp) / (baseline_frp * 0.25)
+        if abs(sigma) < 0.5:
+            continue
+
+        candidate_clusters.append({
+            "cell_key": cell_key,
+            "detections": detections,
+            "avg_frp": avg_frp,
+            "sigma": sigma,
+            "baseline_frp": baseline_frp
+        })
+
+    candidate_clusters.sort(key=lambda x: abs(x["sigma"]), reverse=True)
+
+    for cand in candidate_clusters:
+        detections = cand["detections"]
+        cell_key = cand["cell_key"]
+        avg_frp = cand["avg_frp"]
+        sigma = cand["sigma"]
+        baseline_frp = cand["baseline_frp"]
 
         lat = sum(d["lat"] for d in detections) / len(detections)
         lon = sum(d["lon"] for d in detections) / len(detections)
         max_frp = max(d["frp"] for d in detections)
 
-        # 7-day baseline
-        baseline_detections = clusters_7d.get(cell_key, detections)
-        baseline_frp = sum(d["frp"] for d in baseline_detections) / len(baseline_detections)
-        baseline_frp = max(baseline_frp, 1.0)  # avoid division by zero
-
-        # Anomaly sigma
-        sigma = (avg_frp - baseline_frp) / (baseline_frp * 0.25)
-
-        if abs(sigma) < 0.5:
-            continue  # Not anomalous enough
-
-        # Reverse geocode (with cache to avoid hammering Nominatim)
+        # Reverse geocode
         geo_key = f"{round(lat,2)}_{round(lon,2)}"
-        if geo_key not in geocode_cache:
-            geocode_cache[geo_key] = _reverse_geocode(lat, lon)
-            time.sleep(0.05)  # Rate limit buffer
-        facility = geocode_cache[geo_key]
+        if geo_key not in geocode_cache and geocode_count < max_geocodes:
+            geocode_cache[geo_key] = await _reverse_geocode(lat, lon)
+            geocode_count += 1
+
+        facility = geocode_cache.get(geo_key, {
+            "name": f"Industrial site {lat:.3f}°N {lon:.3f}°E",
+            "type": "industrial",
+            "country": "Unknown"
+        })
 
         # Find tickers
         tickers = _find_tickers(facility["name"], facility["type"])
@@ -256,7 +290,7 @@ def _build_clusters(points_24h: list[dict], points_7d: list[dict],
             signal_reason = reason,
             tickers       = tickers,
             data_quality  = "real_nasa_firms",
-            detected_at   = datetime.now(timezone.utc).isoformat(),
+            detected_at   = datetime.now(UTC).isoformat(),
         ))
 
     # Sort by absolute anomaly magnitude — most significant first

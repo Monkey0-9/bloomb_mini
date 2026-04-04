@@ -7,11 +7,8 @@ Endpoint: POST /api/v1/risk/size
 from __future__ import annotations
 
 import asyncio
-import json
 import os
-import time
-from dataclasses import dataclass, asdict
-from typing import Optional
+from dataclasses import asdict, dataclass
 
 import structlog
 
