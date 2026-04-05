@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: always
+    environment:
+      - ENV=production
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - .env
+    ports:
+      - "9009:9009"
+    depends_on:
+      - redis
+    networks:
+      - sat-trade-network
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - sat-trade-network
+    volumes:
+      - redis_data:/data
+
+networks:
+  sat-trade-network:
+    driver: bridge
+
+volumes:
+  redis_data:

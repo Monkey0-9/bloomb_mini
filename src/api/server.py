@@ -23,6 +23,7 @@ from src.api.agents.signal_alpha import SignalAgent
 from src.api.agents.thermal import ThermalAgent
 from src.api.orchestrator import SignalOrchestrator
 from src.api.routes import alpha, command, execution, market, portfolio
+from src.common.production import global_exception_handler, validate_environment
 from src.intelligence.black_swan import get_black_swan_detector
 from src.intelligence.engine import GlobalIntelligenceEngine
 from src.intelligence.mirofish_agent import agent as mirofish_agent
@@ -50,6 +51,10 @@ _global_engine = GlobalIntelligenceEngine()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Validate environment on startup
+    if not validate_environment():
+        log.warning("startup_warning_missing_env_vars")
+
     # Initialize the Global Signal Orchestrator
     orchestrator = SignalOrchestrator()
 
@@ -77,6 +82,7 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title="SatTrade Intelligence Terminal v2", version="2.0.0", lifespan=lifespan)
+app.add_exception_handler(Exception, global_exception_handler)
 app.add_middleware(CORSMiddleware,
     allow_origins=["*"], allow_credentials=True,
     allow_methods=["*"], allow_headers=["*"])
