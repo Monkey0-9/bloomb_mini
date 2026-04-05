@@ -1,136 +1,86 @@
 import { 
   Globe, 
   Table, 
-  Satellite, 
   BarChart3, 
   Briefcase, 
+  Layout, 
   Search, 
+  Newspaper, 
+  Satellite, 
+  Shield, 
+  Zap, 
   Settings, 
-  Terminal,
-  TrendingUp,
-  Layout,
-  Newspaper,
   HelpCircle,
-  Bell,
-  Eye,
-  Shield
+  Terminal,
+  Activity
 } from 'lucide-react';
 import { useTerminalStore } from '../store';
-
-const NavButton = ({ item, isActive, onClick }: any) => (
-  <button 
-    onClick={onClick}
-    className="w-12 h-12 group relative flex flex-col justify-center items-center shrink-0 transition-colors border-l-[2px] border-transparent"
-    style={{
-      backgroundColor: isActive ? 'var(--color-surface-2)' : 'transparent',
-      borderLeftColor: isActive ? 'var(--color-accent-primary)' : 'transparent',
-    }}
-  >
-    <div 
-      className="transition-colors duration-200"
-      style={{ color: isActive ? 'var(--color-accent-primary)' : 'var(--color-neutral)' }}
-    >
-      {item.icon}
-    </div>
-    
-    {/* MACRO KEY TAG (Bloomberg Style shortcut) */}
-    <div className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 transition-opacity">
-       <span 
-         className="text-[8px] font-bold font-mono px-0.5 border"
-         style={{ backgroundColor: 'var(--color-surface-1)', borderColor: 'var(--color-surface-4)', color: 'var(--color-neutral)' }}
-       >{item.shortcut}</span>
-    </div>
-
-    {/* SEVERE TOOLTIP */}
-    <div 
-      className="absolute left-[56px] px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 text-[9px] uppercase font-bold tracking-[0.1em] border shadow-[0_4px_12px_rgba(0,0,0,0.8)]"
-      style={{ 
-        backgroundColor: 'var(--color-surface-1)', 
-        borderColor: 'var(--color-accent-primary)',
-        color: 'var(--color-accent-primary)'
-      }}
-    >
-      <div className="flex items-center gap-2">
-         {item.label} <span className="text-[8px] text-[var(--text-secondary)] px-1 bg-[var(--bg-card)]">CTRL + {item.shortcut}</span>
-      </div>
-    </div>
-  </button>
-);
 
 const NavRail = () => {
   const { selectedView, setView } = useTerminalStore();
 
-  const primaryNav = [
-    { id: 'world',     icon: <Globe size={18} strokeWidth={1.5} />,        label: 'Orbital Visualizer', shortcut: 'W' },
-    { id: 'matrix',    icon: <Table size={18} strokeWidth={1.5} />,        label: 'Signal Matrix',      shortcut: 'M' },
-    { id: 'charts',    icon: <BarChart3 size={18} strokeWidth={1.5} />,    label: 'Price Action',       shortcut: 'C' },
-    { id: 'portfolio', icon: <Briefcase size={18} strokeWidth={1.5} />,    label: 'Portfolio Engine',   shortcut: 'P' },
-    { id: 'economics', icon: <TrendingUp size={18} strokeWidth={1.5} />,   label: 'Macro Surveillance', shortcut: 'E' },
-    { id: 'launchpad', icon: <Layout size={18} strokeWidth={1.5} />,       label: 'Launchpad / LP',    shortcut: 'L' },
-    { id: 'research',  icon: <Search size={18} strokeWidth={1.5} />,       label: 'AI Copilot / RAG',   shortcut: 'R' },
-  ];
-
-  const secondaryNav = [
-    { id: 'news',      icon: <Newspaper size={16} strokeWidth={1.5} />,    label: 'Intelligence Hub',   shortcut: 'N' },
-    { id: 'feed',      icon: <Satellite size={16} strokeWidth={1.5} />,    label: 'Raw STAC Feed',      shortcut: 'F' },
-    { id: 'alerts',    icon: <Bell size={16} strokeWidth={1.5} />,         label: 'Alert Hub',          shortcut: 'A' },
-    { id: 'workflow',  icon: <Layout size={16} strokeWidth={1.5} />,       label: 'Workflow Engine',    shortcut: 'W' },
-    { id: 'dark_pools',icon: <Search size={16} strokeWidth={1.5} />,       label: 'Dark Pool Sonar',    shortcut: 'D' },
-    { id: 'insider',   icon: <Eye size={16} strokeWidth={1.5} />,          label: 'Insider AI Tracker', shortcut: 'I' },
-    { id: 'war_room',  icon: <Shield size={16} strokeWidth={1.5} />,         label: 'War Surveillance',   shortcut: 'X' },
-    { id: 'godmode',   icon: <Zap size={16} strokeWidth={1.5} />,            label: 'GodMode Intel',      shortcut: 'G' },
-    { id: 'sandbox',   icon: <Layout size={16} strokeWidth={1.5} />,         label: 'MiroFish Sandbox',   shortcut: 'S' },
-    { id: 'terminal',  icon: <Terminal size={16} strokeWidth={1.5} />,     label: 'Direct Kernel',      shortcut: 'K' },
-  ];
-
-  const bottomNav = [
-    { id: 'help',      icon: <HelpCircle size={16} strokeWidth={1.5} />,     label: 'Documentation',      shortcut: 'H' },
-    { id: 'settings',  icon: <Settings size={16} strokeWidth={1.5} />,     label: 'Core Settings',      shortcut: 'S' },
+  const navItems = [
+    { id: 'world', icon: Globe, label: 'World' },
+    { id: 'matrix', icon: Table, label: 'Matrix' },
+    { id: 'charts', icon: BarChart3, label: 'Charts' },
+    { id: 'portfolio', icon: Briefcase, label: 'Risk' },
+    { id: 'economics', icon: Layout, label: 'Macro' },
+    { id: 'news', icon: Newspaper, label: 'Intel' },
+    { id: 'feed', icon: Satellite, label: 'Raw' },
+    { id: 'war_room', icon: Shield, label: 'Defcon' },
+    { id: 'godmode', icon: Zap, label: 'GodMode' },
   ];
 
   return (
-    <nav 
-      className="w-12 h-full flex flex-col justify-between shrink-0 z-50 relative pb-2 bg-void"
-      style={{ borderRight: '1px solid var(--color-surface-4)' }}
-    >
-        {/* LOGO MARK */}
-        <div className="w-12 h-10 flex items-center justify-center shrink-0 border-b border-surface-4 bg-surface-1 cursor-pointer hover:bg-surface-2 transition-colors group">
-            <span className="text-[14px] font-bold text-accent-primary font-mono">ST</span>
-        </div>
+    <nav className="w-16 bg-slate-950 border-r border-white/5 flex flex-col items-center py-6 gap-8 z-50">
+      <div className="w-10 h-10 bg-accent-primary/20 border border-accent-primary/40 rounded-lg flex items-center justify-center mb-4">
+        <span className="font-display text-2xl text-accent-primary">ST</span>
+      </div>
 
-      <div className="flex flex-col w-full flex-1 pt-2">
-        {primaryNav.map((item) => (
-          <NavButton
+      <div className="flex-1 flex flex-col gap-4">
+        {navItems.map((item) => (
+          <button
             key={item.id}
-            item={item}
-            isActive={selectedView === item.id}
             onClick={() => setView(item.id as any)}
-          />
-        ))}
-        
-        <div className="h-4 w-full flex items-center justify-center my-2">
-            <div className="w-4 h-[1px] bg-[var(--border-subtle)]"></div>
-        </div>
+            title={item.label}
+            className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all group relative ${
+              selectedView === item.id 
+                ? 'bg-accent-primary text-slate-950 shadow-[0_0_15px_rgba(56,189,248,0.4)]' 
+                : 'text-slate-500 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <item.icon size={18} strokeWidth={selectedView === item.id ? 2.5 : 1.5} />
+            
+            {/* Tooltip */}
+            <div className="absolute left-14 px-2 py-1 bg-slate-900 border border-white/10 rounded text-[10px] font-bold text-white uppercase tracking-widest opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap shadow-2xl z-[100]">
+              {item.label}
+            </div>
 
-        {secondaryNav.map((item) => (
-          <NavButton
-            key={item.id}
-            item={item}
-            isActive={selectedView === item.id}
-            onClick={() => setView(item.id as any)}
-          />
+            {/* Active Indicator */}
+            {selectedView === item.id && (
+              <div className="absolute -left-3 w-1 h-6 bg-accent-primary rounded-r-full shadow-[0_0_10px_#38bdf8]" />
+            )}
+          </button>
         ))}
       </div>
 
-      <div className="flex flex-col w-full pt-2 border-t border-surface-4">
-        {bottomNav.map((item) => (
-          <NavButton
-            key={item.id}
-            item={item}
-            isActive={selectedView === item.id}
-            onClick={() => setView(item.id as any)}
-          />
-        ))}
+      <div className="flex flex-col gap-4 mt-auto">
+        <button 
+          onClick={() => setView('terminal')}
+          className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
+            selectedView === 'terminal' ? 'text-accent-primary bg-white/5' : 'text-slate-500 hover:text-white'
+          }`}
+        >
+          <Terminal size={18} />
+        </button>
+        <button 
+          onClick={() => setView('settings')}
+          className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
+            selectedView === 'settings' ? 'text-accent-primary bg-white/5' : 'text-slate-500 hover:text-white'
+          }`}
+        >
+          <Settings size={18} />
+        </button>
       </div>
     </nav>
   );

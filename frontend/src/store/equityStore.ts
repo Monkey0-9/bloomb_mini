@@ -15,6 +15,8 @@ export interface Equity {
 interface EquityState {
   equities: Equity[];
   watchlist: string[];
+  _hasHydrated: boolean;
+  setHasHydrated: (state: boolean) => void;
   fetchEquities: () => Promise<void>;
   setEquities: (equities: Equity[]) => void;
   addToWatchlist: (ticker: string) => void;
@@ -26,12 +28,14 @@ export const useEquityStore = create<EquityState>()(
     (set, get) => ({
       equities: [],
       watchlist: ['SPY', 'QQQ', 'WTI', 'GLD', 'BTC'],
+      _hasHydrated: false,
+      setHasHydrated: (state) => set({ _hasHydrated: state }),
       setEquities: (equities) => set({ equities }),
-      addToWatchlist: (ticker) => set((state) => ({ 
-        watchlist: [...new Set([...state.watchlist, ticker.toUpperCase()])] 
+      addToWatchlist: (ticker) => set((state) => ({
+        watchlist: [...new Set([...state.watchlist, ticker.toUpperCase()])]
       })),
-      removeFromWatchlist: (ticker) => set((state) => ({ 
-        watchlist: state.watchlist.filter(t => t !== ticker) 
+      removeFromWatchlist: (ticker) => set((state) => ({
+        watchlist: state.watchlist.filter(t => t !== ticker)
       })),
       fetchEquities: async () => {
         try {
@@ -40,7 +44,7 @@ export const useEquityStore = create<EquityState>()(
           const response = await fetch(`/api/market/prices?tickers=${tickers}`);
           if (!response.ok) throw new Error('Network response was not ok');
           const data = await response.json();
-          
+
           const newEquities = Object.values(data.prices || {}).map((p: any) => ({
              ticker: p.ticker,
              name: p.ticker,
@@ -60,6 +64,9 @@ export const useEquityStore = create<EquityState>()(
     {
       name: 'sattrade-equities',
       partialize: (state) => ({ watchlist: state.watchlist }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      }
     }
   )
 );

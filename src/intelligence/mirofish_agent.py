@@ -13,6 +13,7 @@ from anthropic import Anthropic
 
 from src.intelligence.swarm import run_swarm_simulation
 from src.live.market import Quote, get_prices
+from src.swarm.graphrag_engine import get_graphrag_engine
 
 log = structlog.get_logger()
 
@@ -41,15 +42,19 @@ class MarketReportAgent:
         # 1. Run the Swarm Simulation (The "Parallel Digital World")
         swarm_result = await run_swarm_simulation()
 
-        # 2. Extract Real-Time Market Context (The "Seeds")
+        # 2. Query Knowledge Graph for Context (The "Deep Insight")
+        graph_engine = get_graphrag_engine()
+        graph_summary = graph_engine.get_graph_summary()
+        
+        # 3. Extract Real-Time Market Context (The "Seeds")
         market_context = get_prices()
 
-        # 3. Synthesize the Report (LLM-Driven)
+        # 4. Synthesize the Report (LLM-Driven)
         if not self.client:
             return self._generate_fallback_report(swarm_result, market_context, requirement, persona)
 
         try:
-            report_md = await self._synthesize_with_llm(swarm_result, market_context, requirement, persona)
+            report_md = await self._synthesize_with_llm(swarm_result, market_context, graph_engine, requirement, persona)
             return {
                 "status": "success",
                 "report": report_md,
@@ -72,26 +77,46 @@ class MarketReportAgent:
         
         try:
             prompt = f"Refine the following maritime intelligence requirement for a MiroFish-powered multi-agent swarm. Focus on stock impact, chokepoint risks, and systemic flow: '{requirement}'. Provide ONLY the refined prompt."
-            def _call_anthropic():
-                return self.client.messages.create(
-                    model="claude-3-5-sonnet-20241022",
-                    max_tokens=256,
-                    messages=[{"role": "user", "content": prompt}]
-                )
+            def _call_anthropic() -> Any:
+                if self.client:
+                    return self.client.messages.create(
+                        model="claude-3-5-sonnet-20241022",
+                        max_tokens=256,
+                        messages=[{"role": "user", "content": prompt}]
+                    )
+                return None
             
             response = await asyncio.to_thread(_call_anthropic)
-            return response.content[0].text.strip()
+            return str(response.content[0].text.strip()) if response else requirement
         except Exception:
             return requirement
 
-    async def _synthesize_with_llm(self, swarm: dict[str, Any], market: dict[str, Quote], req: str, persona: str) -> str:
+    async def _synthesize_with_llm(self, swarm: dict[str, Any], market: dict[str, Quote], graph_engine: Any, req: str, persona: str) -> str:
         """
-        MiroFish ReportAgent logic for autonomous synthesis.
+        MiroFish ReportAgent logic for autonomous synthesis with GraphRAG context.
         """
+        if not self.client:
+            return "LLM_NOT_AVAILABLE"
+
         # Build context for the prompt
         predictions = swarm.get("predictions", [])
         impaired_agents = swarm.get("impaired_agents", 0)
         gtfi = swarm.get("gtfi_score", 1.0)
+        
+        # Extract graph-based impact for top predictions
+        graph_insights = []
+        for p in predictions[:5]:
+            if p.get('ticker'):
+                # Find facilities related to ticker in graph
+                related_facilities = [
+                    node.name for node in graph_engine.graph.nodes.values()
+                    if node.type == 'facility' and any(
+                        edge.target == f"ticker_{p['ticker']}" or edge.source == f"ticker_{p['ticker']}"
+                        for edge in graph_engine.graph.edges.get(node.id, []) + graph_engine.graph._reverse_edges.get(node.id, [])
+                    )
+                ]
+                if related_facilities:
+                    graph_insights.append(f"Ticker {p['ticker']} tied to facilities: {', '.join(related_facilities)}")
 
         # Format market snippets
         market_snippets = "\n".join([
@@ -128,6 +153,9 @@ class MarketReportAgent:
         【MISSION REQUIREMENT】
         {req}
 
+        【KNOWLEDGE GRAPH INSIGHTS】
+        {'\n'.join(graph_insights) if graph_insights else 'No direct facility-market paths identified in core graph.'}
+
         【PARALLEL WORLD STATE】
         - Global Trade Flow Index (GTFI): {gtfi}
         - Total Agents: {swarm.get('total_agents')}
@@ -144,16 +172,18 @@ class MarketReportAgent:
         """
 
         # Anthropic call (Synchronous wrapper to avoid blocking the event loop)
-        def _call_anthropic():
-            return self.client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=2048,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_prompt}]
-            )
+        def _call_anthropic() -> Any:
+            if self.client:
+                return self.client.messages.create(
+                    model="claude-3-5-sonnet-20241022",
+                    max_tokens=2048,
+                    system=system_prompt,
+                    messages=[{"role": "user", "content": user_prompt}]
+                )
+            return None
 
         response = await asyncio.to_thread(_call_anthropic)
-        return response.content[0].text
+        return str(response.content[0].text) if response else "SYNTHESIS_FAILED"
 
     def _generate_fallback_report(self, swarm: dict[str, Any], market: dict[str, Quote], req: str, persona: str = "Standard") -> dict[str, Any]:
         """Deterministic fallback if LLM is unavailable."""
@@ -226,18 +256,20 @@ class MarketReportAgent:
         Identify where they agree (Systemic Consensus) and where they diverge (Alpha Triggers).
         """
         
-        def _call_anthropic():
-            return self.client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=2048,
-                messages=[{"role": "user", "content": summary_prompt}]
-            )
+        def _call_anthropic() -> Any:
+            if self.client:
+                return self.client.messages.create(
+                    model="claude-3-5-sonnet-20241022",
+                    max_tokens=2048,
+                    messages=[{"role": "user", "content": summary_prompt}]
+                )
+            return None
         
         final_response = await asyncio.to_thread(_call_anthropic)
         
         return {
             "status": "success",
-            "consensus_report": final_response.content[0].text,
+            "consensus_report": final_response.content[0].text if final_response else "CONSENSUS_FAILED",
             "individual_reports": persona_reports,
             "gtfi": swarm_result["gtfi_score"],
             "timestamp": datetime.now(UTC).isoformat()

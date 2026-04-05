@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Sparkles, Send, FileText, Globe, Database, Cpu, Activity, Link2, BarChart2 } from 'lucide-react';
+import * as Lucide from 'lucide-react';
 import { useTerminalStore, useSignalStore } from '../store';
 import { executeCommand } from '../lib/commandEngine';
+
+const Activity = Lucide.Activity || Lucide.Zap;
 
 interface Citation {
   id: number;
@@ -90,6 +92,7 @@ const DataWidget = ({ type }: { type: 'vessel_density' | 'thermal_matrix' | 'mac
 }
 
 const ResearchView = () => {
+  const { Search, Sparkles, Send, FileText, Globe, Database, Cpu, Link2, BarChart2 } = Lucide;
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const { currentTicker } = useTerminalStore();

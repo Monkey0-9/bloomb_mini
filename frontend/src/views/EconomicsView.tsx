@@ -1,104 +1,37 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { BarChart2, Globe, DollarSign, Activity, Crosshair, ArrowRight, ArrowRightLeft } from 'lucide-react';
+import * as Lucide from 'lucide-react';
 
-const Sparkline = ({ history, color, isNegative }: { history: { value: string }[]; color: string; isNegative?: boolean }) => {
-  const vals = history.slice(0, 30).map(h => parseFloat(h.value)).filter(v => !isNaN(v));
+const Activity = Lucide.Activity || Lucide.Zap;
+
+const Sparkline = ({ history, color }: { history: { value: string }[]; color: string }) => {
+  const vals = history.slice(0, 20).map(h => parseFloat(h.value)).filter(v => !isNaN(v));
   if (vals.length < 2) return null;
   const min = Math.min(...vals);
   const max = Math.max(...vals);
   const range = max - min || 1;
   const W = 100, H = 24;
-  
-  const points = vals.map((v, i) => {
-    const x = (i / (vals.length - 1)) * W;
-    const y = H - ((v - min) / range) * H;
-    return `${x},${y}`;
-  }).join(' ');
+  const points = vals.map((v, i) => `${(i / (vals.length - 1)) * W},${H - ((v - min) / range) * H}`).join(' ');
 
   return (
-    <svg width={W} height={H} className="opacity-90">
-      <defs>
-        <linearGradient id={`grad-${color.replace('#','')}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity={0.2} />
-          <stop offset="100%" stopColor={color} stopOpacity={0} />
-        </linearGradient>
-      </defs>
-      <polygon 
-        points={`0,${H} ${points} ${W},${H}`} 
-        fill={`url(#grad-${color.replace('#','')})`}
-      />
+    <svg width={W} height={H} className="opacity-60">
       <polyline points={points} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" />
     </svg>
   );
 };
 
 const MACRO_SERIES = [
-  { key: 'US_CPI',      label: 'US CPI Y/Y',      unit: '%',       color: '#00C8FF' },
-  { key: 'US_PPI',      label: 'PPI Final Demand',unit: 'Index',   color: '#00FF9D' },
-  { key: 'OIL_WTI',     label: 'WTI Crude Oil',   unit: '$/bbl',   color: '#FFB700' },
-  { key: 'NATURAL_GAS', label: 'Henry Hub Gas',   unit: '$/MMBtu', color: '#FFB700' },
-  { key: 'US_10Y',      label: 'US 10Y Yield',    unit: '%',       color: '#C084FC' },
-  { key: 'FED_FUNDS',   label: 'Effective Fed Funds', unit: '%',   color: '#F472B6' },
-  { key: 'USD_INDEX',   label: 'DXY Trade Index', unit: 'Index',   color: '#94A3B8' },
-  { key: 'BALTIC_DRY',  label: 'Baltic Dry Index',unit: 'Pts',     color: '#00FF9D' },
+  { key: 'US_CPI',      label: 'US CPI Y/Y',      unit: '%',       color: '#38bdf8' },
+  { key: 'US_PPI',      label: 'PPI Industrial',  unit: 'Index',   color: '#10b981' },
+  { key: 'OIL_WTI',     label: 'WTI Crude Oil',   unit: 'USD',     color: '#f59e0b' },
+  { key: 'US_10Y',      label: 'US 10Y Yield',    unit: '%',       color: '#818cf8' },
+  { key: 'USD_INDEX',   label: 'DXY Index',       unit: 'Index',   color: '#94a3b8' },
+  { key: 'BALTIC_DRY',  label: 'Baltic Dry Index',unit: 'Pts',     color: '#10b981' },
 ];
 
-interface SeriesData {
-  latest_value: string | null;
-  latest_date: string | null;
-  history: { date: string; value: string }[];
-}
-
-const MacroRow = ({ s, data }: { s: typeof MACRO_SERIES[0], data: SeriesData | null }) => {
-  const val = data?.latest_value ? parseFloat(data.latest_value) : null;
-  const prev = data?.history?.[1]?.value ? parseFloat(data.history[1].value) : null;
-  const change = val !== null && prev !== null ? val - prev : null;
-  const pct = change !== null && prev ? (change / prev) * 100 : null;
-  const isUp = change !== null && change >= 0;
-
-  return (
-      <div className="flex items-center h-8 border-b border-surface-4 hover:bg-surface-2 transition-colors group">
-          <div className="w-1.5 h-full opacity-0 group-hover:opacity-100 transition-opacity" style={{ backgroundColor: s.color }}></div>
-          <div className="flex-1 px-2 py-0 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 shrink-0 border border-white/20" style={{ backgroundColor: s.color + '40' }}></div>
-                  <span className="text-[11px] text-accent-primary font-bold uppercase w-40 truncate">{s.label}</span>
-                  <span className="text-[9px] text-neutral uppercase w-16 text-right mr-4">{s.unit}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                  {data?.history ? (
-                      <div className="w-20 opacity-60 group-hover:opacity-100 transition-opacity">
-                          <Sparkline history={data.history} color={s.color} />
-                      </div>
-                  ) : <div className="w-20 h-4 bg-surface-1 animate-pulse"></div>}
-                  
-                  <div className="w-24 text-right flex flex-col items-end justify-center">
-                      {val !== null ? (
-                          <motion.span 
-                              key={val}
-                              initial={{ opacity: 0, x: -5 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              className="text-[11px] font-bold text-accent-primary tabular-nums leading-none tracking-tight"
-                          >
-                              {val.toFixed(2)}
-                          </motion.span>
-                      ) : <span className="text-neutral animate-pulse">—</span>}
-                      
-                      {change !== null && (
-                          <div className={`flex items-center justify-end gap-1 text-[9px] mt-0 tracking-wider ${isUp ? 'text-bull' : 'text-bear'}`}>
-                              {isUp ? '+' : ''}{change.toFixed(3)} ({pct !== null ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : ''})
-                          </div>
-                      )}
-                  </div>
-              </div>
-          </div>
-      </div>
-  );
-};
-
 const EconomicsView = () => {
-  const [macroData, setMacroData] = useState<Record<string, SeriesData> | null>(null);
+  const { Globe, Crosshair, ArrowRightLeft, ArrowRight, TrendingUp } = Lucide;
+  const [macroData, setMacroData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -109,25 +42,15 @@ const EconomicsView = () => {
         const json = await resp.json();
         const data = json.data;
         
-        // Map API keys to the ones expected by the component
         const mappedData: any = {};
-        mappedData['US_CPI'] = data['CPI'];
-        mappedData['US_PPI'] = data['INDUSTRIAL']; // Using Industrial as proxy for PPI
-        mappedData['OIL_WTI'] = data['WTI_OIL'];
-        mappedData['NATURAL_GAS'] = data['M2_MONEY']; 
-        mappedData['US_10Y'] = data['YIELD_10Y'];
-        mappedData['FED_FUNDS'] = data['FED_FUNDS'];
-        mappedData['USD_INDEX'] = data['DOLLAR_INDEX'];
-        mappedData['BALTIC_DRY'] = data['UNEMPLOYMENT']; 
-
-        Object.keys(mappedData).forEach(k => {
-          if (mappedData[k]) {
-            mappedData[k].history = [
-                { date: 'PREV', value: (mappedData[k].prev || 0).toString() },
-                { date: 'CURR', value: (mappedData[k].value || 0).toString() }
-            ];
-            mappedData[k].latest_value = (mappedData[k].value || 0).toString();
-          }
+        Object.keys(data).forEach(k => {
+          mappedData[k] = {
+            ...data[k],
+            history: [
+              { date: 'P', value: (data[k].prev || 0).toString() },
+              { date: 'C', value: (data[k].value || 0).toString() }
+            ]
+          };
         });
         setMacroData(mappedData);
       } catch {
@@ -137,117 +60,151 @@ const EconomicsView = () => {
       }
     };
     load();
-    const iv = setInterval(load, 30_000);
+    const iv = setInterval(load, 30000);
     return () => clearInterval(iv);
   }, []);
 
   return (
-    <div className="flex-1 flex flex-col bg-void overflow-hidden font-mono text-accent-primary select-none w-full tabular-nums">
-      
-      {/* HEADER */}
-      <div className="h-7 border-b border-surface-4 flex items-center justify-between px-2 shrink-0 bg-void">
-        <div className="flex items-center gap-2">
-          <Globe size={12} className="text-accent-primary" />
-          <span className="text-[11px] font-bold tracking-widest text-accent-primary uppercase">Global Macro Surveillance</span>
-        </div>
+    <div className="flex-1 flex flex-col p-8 gap-8 overflow-hidden bg-slate-950/20 h-full">
+      <header className="flex justify-between items-center">
         <div className="flex items-center gap-3">
-            <span className="text-[9px] text-neutral uppercase tracking-widest border border-surface-4 px-1 py-0 bg-surface-1">
-                FRED / ST. LOUIS
+          <Globe size={20} className="text-accent-primary" />
+          <h1 className="font-display text-2xl tracking-widest text-white">MACRO_SURVEILLANCE_L7</h1>
+        </div>
+        <div className="flex items-center gap-4">
+          <span className="text-[10px] font-mono text-slate-500 font-bold uppercase tracking-widest bg-white/5 px-2 py-1 border border-white/10">FRED // FED_RESERVE_ST_LOUIS</span>
+          <div className="flex items-center gap-2">
+            <div className="w-1.5 h-1.5 rounded-full bg-bull animate-pulse" />
+            <span className="text-[10px] font-mono font-bold text-bull uppercase">Data Ingest Synchronized</span>
+          </div>
+        </div>
+      </header>
+
+      <div className="flex-1 grid grid-cols-2 gap-8 min-h-0">
+        {/* LEFT: INDICATORS LIST */}
+        <div className="glass-panel neo-border rounded-sm flex flex-col min-h-0 overflow-hidden">
+          <div className="px-6 py-4 border-b border-white/5 bg-white/5 flex justify-between items-center">
+            <span className="text-[11px] font-bold text-slate-300 uppercase tracking-[0.2em] flex items-center gap-2">
+              <TrendingUp size={14} className="text-accent-primary" /> Live Economic Instruments
             </span>
-            <span className="text-[9px] text-accent-secondary tracking-widest font-bold animate-pulse">L7 CONNECTION ACTIVE</span>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-auto custom-scrollbar flex flex-col xl:flex-row divide-y xl:divide-y-0 xl:divide-x divide-surface-4">
-        
-        {/* LEFT PANE: LIVE STREAMS */}
-        <div className="flex-1 p-0 xl:min-w-[500px] flex flex-col">
-            <div className="h-6 bg-surface-1 flex items-center px-2 border-b border-surface-4 shrink-0">
-                <span className="text-[9px] uppercase tracking-widest text-neutral font-bold flex items-center gap-2">
-                    <Activity size={10}/> Live Economic Instruments
-                </span>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto">
-                {MACRO_SERIES.map(s => (
-                <MacroRow
-                    key={s.key}
-                    s={s}
-                    data={macroData ? macroData[s.key] as SeriesData : null}
-                />
-                ))}
-            </div>
-        </div>
-
-        {/* RIGHT PANE: CROSS-ASSET CORRELATION MATRIX */}
-        <div className="flex-1 bg-void flex flex-col">
-            <div className="h-6 bg-surface-1 flex items-center justify-between px-2 border-b border-surface-4 shrink-0">
-                <span className="text-[9px] uppercase tracking-widest text-neutral font-bold flex items-center gap-2">
-                    <Crosshair size={10}/> Orbital ↔ Macro Correlation Matrix
-                </span>
-                <span className="text-[9px] uppercase tracking-widest text-accent-primary font-bold">Spearman ρ LEAD-LAG</span>
-            </div>
-            
-            <div className="p-2">
-                <div className="border border-surface-4 bg-void">
-                    {/* Matrix Header */}
-                    <div className="grid grid-cols-12 h-6 border-b border-surface-4 bg-surface-1">
-                        <div className="col-span-4 flex items-center px-2"><span className="text-[9px] tracking-widest text-neutral uppercase font-bold">Satellite Alpha Node</span></div>
-                        <div className="col-span-1 flex items-center justify-center border-l border-surface-4"><ArrowRightLeft size={10} className="text-neutral"/></div>
-                        <div className="col-span-3 flex items-center px-2 border-l border-surface-4"><span className="text-[9px] tracking-widest text-neutral uppercase font-bold">Macro Target</span></div>
-                        <div className="col-span-2 flex items-center justify-end px-2 border-l border-surface-4"><span className="text-[9px] tracking-widest text-neutral uppercase font-bold">ρ Score</span></div>
-                        <div className="col-span-2 flex items-center justify-center border-l border-surface-4"><span className="text-[9px] tracking-widest text-neutral uppercase font-bold">Lag Vector</span></div>
-                    </div>
-
-                    {/* Matrix Rows */}
-                    {[
-                        { sat: 'Industrial Thermal (FIRMS)', macro: 'US Industrial Prod', rho: 0.82, lead: '+12D', type: 'LEAD', rhoColor: '#00FF00' },
-                        { sat: 'Maritime AIS Activity', macro: 'Global Trade Flow', rho: 0.91, lead: 'SYNC', type: 'SYNC', rhoColor: '#00FF00' },
-                        { sat: 'Military Flight Density', macro: 'Geopolitical Risk', rho: 0.77, lead: '+4h', type: 'LEAD', rhoColor: '#00FF00' },
-                        { sat: 'MiroFish Swarm Consensus', macro: 'Market Volatility', rho: -0.68, lead: '+2D', type: 'LEAD', rhoColor: '#FF3D3D' },
-                        { sat: 'Sentinel-2 Cloud Density', macro: 'Agri Spot Price', rho: 0.54, lead: '+30D', type: 'LEAD', rhoColor: '#00FF00' },
-                    ].map((row, i) => (
-                        <div key={i} className="grid grid-cols-12 h-6 border-b border-surface-4 hover:bg-surface-2 transition-colors group">
-                            <div className="col-span-4 flex items-center px-2">
-                                <span className="text-[11px] text-accent-primary font-bold truncate pr-2">{row.sat}</span>
-                            </div>
-                            <div className="col-span-1 flex items-center justify-center border-l border-surface-4 opacity-40 group-hover:opacity-100 transition-opacity">
-                                <ArrowRight size={10} className={row.rho >= 0 ? 'text-bull' : 'text-bear'}/>
-                            </div>
-                            <div className="col-span-3 flex items-center px-2 border-l border-surface-4">
-                                <span className="text-[10px] text-neutral uppercase tracking-wider">{row.macro}</span>
-                            </div>
-                            <div className="col-span-2 flex items-center justify-end px-2 border-l border-surface-4">
-                                <span className="text-[11px] font-bold" style={{ color: row.rhoColor }}>{row.rho.toFixed(2)}</span>
-                            </div>
-                            <div className="col-span-2 flex items-center justify-center border-l border-surface-4">
-                                <span className={`text-[10px] font-bold px-1 py-0 border ${
-                                    row.type === 'LEAD' ? 'text-bull border-bull bg-bull/10' : 
-                                    row.type === 'LAG' ? 'text-bear border-bear bg-bear/10' : 'text-[#C084FC] border-[#C084FC]/30 bg-[#C084FC]/10'
-                                }`}>
-                                    {row.lead}
-                                </span>
-                            </div>
+            <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest">Update every 30s</span>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
+            <table className="w-full text-left">
+              <thead className="sticky top-0 bg-slate-900/80 backdrop-blur-md z-10">
+                <tr className="border-b border-white/5">
+                  <th className="px-6 py-3 text-[10px] font-mono text-slate-500 uppercase tracking-widest">Instrument</th>
+                  <th className="px-6 py-3 text-[10px] font-mono text-slate-500 uppercase tracking-widest">Trend</th>
+                  <th className="px-6 py-3 text-[10px] font-mono text-slate-500 uppercase tracking-widest text-right">Last Value</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {MACRO_SERIES.map((s) => {
+                  const d = macroData?.[s.key.replace('US_', '').replace('OIL_WTI', 'WTI_OIL').replace('USD_INDEX', 'DOLLAR_INDEX')];
+                  const val = d?.value || 0;
+                  const change = d?.change || 0;
+                  return (
+                    <tr key={s.key} className="hover:bg-white/5 transition-colors group">
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col">
+                          <span className="text-[12px] font-bold text-white group-hover:text-accent-primary transition-colors">{s.label}</span>
+                          <span className="text-[9px] text-slate-500 uppercase font-bold">{s.unit}</span>
                         </div>
-                    ))}
-                </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        {d?.history && <Sparkline history={d.history} color={s.color} />}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex flex-col items-end">
+                          <span className="text-[13px] font-mono font-bold text-white tracking-tighter">{Number(val).toFixed(2)}</span>
+                          <span className={`text-[10px] font-mono font-bold ${change >= 0 ? 'text-bull' : 'text-bear'}`}>
+                            {change >= 0 ? '+' : ''}{Number(change).toFixed(3)}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-                <div className="mt-4">
-                    <span className="text-[9px] uppercase tracking-widest text-neutral font-bold block mb-1">Model Inference Insights</span>
-                    <div className="bg-surface-1 border-l-2 border-bull p-2 text-[10px] text-accent-primary/80 leading-relaxed font-mono">
-                        <strong className="text-accent-primary font-mono tracking-tight block mb-0.5">High-Conviction Alpha Detected</strong>
-                        The TFT engine has identified a systemic lag between <span className="text-white font-bold">Sentinel-2 Cargo Density</span> and the <span className="text-white font-bold">Baltic Dry Index</span>. Signal lead time is actively decaying (+5D remaining). Suggest immediate rebalancing of bulk maritime exposure.
-                    </div>
-                </div>
+        {/* RIGHT: CORRELATION MATRIX */}
+        <div className="flex flex-col gap-8 min-h-0">
+          <div className="glass-panel neo-border rounded-sm flex flex-col min-h-0 overflow-hidden">
+            <div className="px-6 py-4 border-b border-white/5 bg-white/5 flex justify-between items-center">
+              <span className="text-[11px] font-bold text-slate-300 uppercase tracking-[0.2em] flex items-center gap-2">
+                <Crosshair size={14} className="text-accent-primary" /> Alpha Node Correlation
+              </span>
+              <span className="text-[10px] font-mono text-accent-primary font-bold uppercase underline tracking-widest">Spearman ρ Lead-Lag</span>
             </div>
+            
+            <div className="flex-1 p-4 overflow-y-auto custom-scrollbar">
+              <div className="space-y-4">
+                {[
+                  { sat: 'Industrial Thermal', macro: 'US Industrial Prod', rho: 0.82, lead: '+12D' },
+                  { sat: 'Maritime AIS Activity', macro: 'Global Trade Flow', rho: 0.91, lead: 'SYNC' },
+                  { sat: 'Cargo flight Density', macro: 'Retail Logistics', rho: 0.77, lead: '+4D' },
+                  { sat: 'MiroFish Consensus', macro: 'Market Volatility', rho: -0.68, lead: '+2D' },
+                ].map((row, i) => (
+                  <div key={i} className="bg-white/5 border border-white/5 p-4 rounded-sm hover:bg-white/10 transition-all flex items-center justify-between group">
+                    <div className="flex items-center gap-4 flex-1">
+                      <div className="flex flex-col">
+                        <span className="text-[11px] font-bold text-white group-hover:text-accent-primary transition-colors uppercase">{row.sat}</span>
+                        <div className="flex items-center gap-2 mt-1">
+                           <ArrowRightLeft size={10} className="text-slate-500" />
+                           <span className="text-[9px] text-slate-500 font-bold uppercase">{row.macro}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-8">
+                       <div className="flex flex-col items-end">
+                          <span className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">ρ Score</span>
+                          <span className={`text-[12px] font-mono font-black ${row.rho > 0.8 ? 'text-bull' : row.rho < 0 ? 'text-bear' : 'text-accent-primary'}`}>
+                            {row.rho.toFixed(2)}
+                          </span>
+                       </div>
+                       <div className="w-16 flex flex-col items-center">
+                          <span className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Vector</span>
+                          <span className="text-[10px] font-mono font-bold bg-white/5 px-1.5 border border-white/10 text-slate-300 rounded-sm mt-1">{row.lead}</span>
+                       </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* INSIGHTS PANEL */}
+          <div className="glass-panel neo-border rounded-sm p-6 bg-accent-primary/5 flex flex-col gap-4 border-accent-primary/20 shadow-glow-sky">
+            <div className="flex items-center gap-3">
+              <Lucide.Lightbulb size={18} className="text-accent-primary" />
+              <span className="text-[11px] font-bold text-accent-primary uppercase tracking-[0.3em]">AI Model Inference</span>
+            </div>
+            <p className="text-[13px] text-slate-200 leading-relaxed font-sans italic">
+              "Systemic divergence detected between <span className="text-white font-bold underline">WTI Crude Oil</span> and 
+              regional thermal activity in the Permian Basin. Historical rho-decay suggests a pricing correction 
+              within the next 72-96 hours. Risk-weighted adjustment recommended."
+            </p>
+            <div className="mt-2 flex justify-between items-center">
+              <div className="flex -space-x-2">
+                 {[1,2,3].map(n => (
+                   <div key={n} className="w-6 h-6 rounded-full bg-slate-800 border border-slate-900 flex items-center justify-center text-[8px] font-bold text-accent-primary">A{n}</div>
+                 ))}
+              </div>
+              <span className="text-[10px] font-mono font-bold text-accent-primary/60 uppercase">Divergence Confidence: 94.2%</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="h-6 border-t border-surface-4 flex items-center px-2 bg-surface-1 shrink-0 z-10">
-        <span className="text-[9px] text-neutral uppercase tracking-widest font-mono">
-          Proprietary Intelligence · FRED / IMF / WORLD BANK · Last Sync: {new Date().toLocaleTimeString()}
-        </span>
-      </div>
+      <footer className="h-6 flex items-center justify-between text-[9px] font-mono text-slate-600 uppercase tracking-widest border-t border-white/5 pt-4">
+        <span>Terminal ID: ST-MACRO-99</span>
+        <span>KA-BAND UPLINK: SECURE</span>
+        <span>{new Date().toISOString()}</span>
+      </footer>
     </div>
   );
 };

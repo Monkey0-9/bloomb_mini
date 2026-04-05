@@ -8,7 +8,7 @@ class SeedProvider(ABC):
     """
     
     @abstractmethod
-    async def fetch(self, *args, **kwargs) -> Any:
+    async def fetch(self, *args: Any, **kwargs: Any) -> Any:
         """Fetch raw data from the external source."""
         pass
 

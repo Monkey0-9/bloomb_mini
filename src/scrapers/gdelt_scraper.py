@@ -15,10 +15,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
-import requests
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ class GDELTArticle:
 class GDELTNewsScraper:
     """
     GDELT DOC 2.0 API scraper for geopolitical news intelligence.
-    
+
     Features:
     - Search by keyword/topic
     - Tone/sentiment analysis built-in
@@ -67,7 +67,7 @@ class GDELTNewsScraper:
     - Entity extraction (persons, organizations)
     - Multi-language support (65 languages)
     - No API key required
-    
+
     Base URL: https://api.gdeltproject.org/api/v2/doc/doc
     """
 
@@ -87,330 +87,119 @@ class GDELTNewsScraper:
         '"energy crisis" OR "gas shortage"'
     ]
 
-    def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update({
+    def __init__(self) -> None:
+        self.headers = {
             'User-Agent': 'Mozilla/5.0 (SatTrade Intelligence Bot)'
-        })
+        }
 
-    def search_articles(self,
-                       query: str,
-                       max_records: int = 50,
-                       timespan: str = "1d") -> list[GDELTArticle]:
+    async def search_articles(self,
+                              query: str,
+                              max_records: int = 50,
+                              timespan: str = "1d") -> list[GDELTArticle]:
         """
         Search for articles matching query.
-        
-        Args:
-            query: Search query string
-            max_records: Number of articles to return (max 250)
-            timespan: Time window (e.g., '1d', '7d', '1h')
-            
-        Returns:
-            List of GDELTArticle objects
         """
         params = {
             'query': query,
-            'mode': 'ArtList',
+            'mode': 'artlist',
             'maxrecords': min(max_records, 250),
             'timespan': timespan,
-            'format': 'JSON'
+            'format': 'json',
+            'sort': 'DateDesc'
         }
 
         try:
-            response = self.session.get(self.BASE_URL, params=params, timeout=30)
-            if response.status_code != 200:
-                logger.error(f"GDELT API error: {response.status_code}")
-                return []
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.get(self.BASE_URL,
+                                            params=params,
+                                            headers=self.headers)
+                response.raise_for_status()
 
             try:
                 data = response.json()
+                if not data or not isinstance(data, dict):
+                    logger.warning(
+                        f"GDELT returned empty or non-dict JSON: {query[:30]}"
+                    )
+                    return []
             except Exception as e:
-                logger.error(f"GDELT JSON parse error: {e}")
+                logger.error(f"GDELT JSON parse error for '{query[:30]}': {e}")
+                logger.debug(f"Raw response: {response.text[:200]}")
                 return []
-            articles = []
 
+            articles: list[GDELTArticle] = []
             for item in data.get('articles', []):
                 article = self._parse_article(item)
                 if article:
                     articles.append(article)
-
-            logger.info(f"GDELT search: '{query[:50]}...' returned {len(articles)} articles")
             return articles
 
+        except httpx.HTTPError as e:
+            logger.error(f"GDELT API error for query '{query[:30]}': {e}")
+            return []
         except Exception as e:
-            logger.error(f"GDELT search failed: {e}")
+            logger.error(f"Unexpected error in GDELT search: {e}")
             return []
 
+    async def get_maritime_intelligence(self) -> list[GDELTArticle]:
+        """
+        Get latest maritime intelligence articles across standard queries.
+        """
+        all_articles: list[GDELTArticle] = []
+        seen_urls: set[str] = set()
+
+        for query in self.MARITIME_QUERIES:
+            articles = await self.search_articles(query, max_records=20)
+            for article in articles:
+                if article.url not in seen_urls:
+                    all_articles.append(article)
+                    seen_urls.add(article.url)
+
+        # Sort by date, newest first
+        all_articles.sort(key=lambda x: x.seendate, reverse=True)
+        return all_articles
+
     def _parse_article(self, item: dict[str, Any]) -> GDELTArticle | None:
-        """Parse GDELT article JSON into GDELTArticle."""
+        """Parse a single GDELT article JSON item."""
         try:
-            # Parse date
+            url = item.get('url', '')
+            if not url:
+                return None
+
             seendate_str = item.get('seendate', '')
-            if seendate_str:
-                seendate = datetime.strptime(seendate_str, '%Y%m%dT%H%M%SZ').replace(tzinfo=UTC)
-            else:
+            try:
+                # GDELT date format: 20240325T114424Z
+                seendate = datetime.strptime(seendate_str, '%Y%m%dT%H%M%SZ')
+                seendate = seendate.replace(tzinfo=UTC)
+            except (ValueError, TypeError):
                 seendate = datetime.now(UTC)
 
-            # Parse tone (format: "tone,pos,neg,polarity,activeref,refs")
-            tone_str = item.get('tone', '0,0,0,0,0,0')
-            tone_parts = tone_str.split(',')
-            tone = float(tone_parts[0]) if tone_parts else 0.0
+            tone_str = item.get('tone', '0')
+            try:
+                tone = float(tone_str)
+            except (ValueError, TypeError):
+                tone = 0.0
 
-            # Determine sentiment
+            sentiment = 'neutral'
             if tone > 2:
                 sentiment = 'positive'
             elif tone < -2:
                 sentiment = 'negative'
-            else:
-                sentiment = 'neutral'
-
-            # Parse themes, persons, organizations
-            themes = item.get('themes', '').split(';') if item.get('themes') else []
-            persons = item.get('persons', '').split(';') if item.get('persons') else []
-            organizations = item.get('organizations', '').split(';') if item.get('organizations') else []
-
-            # Parse locations
-            locations = []
-            if item.get('locations'):
-                for loc_str in item['locations'].split(';'):
-                    if '#' in loc_str:
-                        parts = loc_str.split('#')
-                        if len(parts) >= 4:
-                            locations.append({
-                                'name': parts[0],
-                                'lat': float(parts[1]) if parts[1] else 0,
-                                'lon': float(parts[2]) if parts[2] else 0,
-                                'type': parts[3] if len(parts) > 3 else 'unknown'
-                            })
 
             return GDELTArticle(
-                url=item.get('url', ''),
-                title=item.get('title', ''),
+                url=url,
+                title=item.get('title', 'Unknown Title'),
                 seendate=seendate,
-                domain=item.get('domain', ''),
-                language=item.get('language', 'eng'),
-                sourcecountry=item.get('sourcecountry', ''),
+                domain=item.get('domain', 'unknown'),
+                language=item.get('language', 'English'),
+                sourcecountry=item.get('sourcecountry', 'Unknown'),
                 tone=tone,
                 sentiment=sentiment,
-                themes=[t.strip() for t in themes if t.strip()],
-                persons=[p.strip() for p in persons if p.strip()],
-                organizations=[o.strip() for o in organizations if o.strip()],
-                locations=locations
+                themes=item.get('themes', []),
+                persons=item.get('persons', []),
+                organizations=item.get('organizations', []),
+                locations=item.get('locations', [])
             )
-
         except Exception as e:
-            logger.warning(f"Failed to parse article: {e}")
+            logger.debug(f"Error parsing GDELT article: {e}")
             return None
-
-    def search_maritime_intelligence(self, timespan: str = "24h") -> list[GDELTArticle]:
-        """
-        Search for maritime/shipping related intelligence.
-        
-        Combines multiple maritime queries to get comprehensive coverage.
-        """
-        all_articles = []
-        seen_urls = set()
-
-        for query in self.MARITIME_QUERIES:
-            articles = self.search_articles(query, max_records=25, timespan=timespan)
-            for article in articles:
-                if article.url not in seen_urls:
-                    all_articles.append(article)
-                    seen_urls.add(article.url)
-
-            # Small delay between queries
-            import time
-            time.sleep(0.5)
-
-        # Sort by recency and tone (prioritize negative news as it affects markets)
-        all_articles.sort(key=lambda a: (a.seendate, abs(a.tone)), reverse=True)
-
-        logger.info(f"Maritime intelligence: {len(all_articles)} unique articles")
-        return all_articles
-
-    def search_ticker_news(self, ticker: str, company_name: str, timespan: str = "7d") -> list[GDELTArticle]:
-        """
-        Search for news related to a specific company/ticker.
-        
-        Args:
-            ticker: Stock ticker symbol
-            company_name: Company name for search
-            timespan: Time window
-        """
-        # Build query with ticker and company name
-        queries = [
-            f'"{company_name}"',
-            f'"{ticker}"',  # Some sources use ticker symbols
-        ]
-
-        all_articles = []
-        seen_urls = set()
-
-        for query in queries:
-            articles = self.search_articles(query, max_records=30, timespan=timespan)
-            for article in articles:
-                if article.url not in seen_urls:
-                    all_articles.append(article)
-                    seen_urls.add(article.url)
-
-        # Sort by recency
-        all_articles.sort(key=lambda a: a.seendate, reverse=True)
-
-        return all_articles
-
-    def get_tone_timeline(self, query: str, timespan: str = "7d") -> list[dict[str, Any]]:
-        """
-        Get tone/sentiment timeline for a query.
-        
-        Useful for tracking sentiment shifts over time.
-        """
-        params = {
-            'query': query,
-            'mode': 'timelinetone',
-            'timespan': timespan,
-            'format': 'JSON'
-        }
-
-        try:
-            response = self.session.get(self.BASE_URL, params=params, timeout=30)
-            response.raise_for_status()
-
-            data = response.json()
-            timeline = []
-
-            for item in data.get('timeline', []):
-                timeline.append({
-                    'date': item.get('date'),
-                    'tone': item.get('tone'),
-                    'volume': item.get('volume'),
-                    'positivity': item.get('pos'),
-                    'negativity': item.get('neg')
-                })
-
-            return timeline
-
-        except Exception as e:
-            logger.error(f"GDELT timeline failed: {e}")
-            return []
-
-    def analyze_news_impact(self, articles: list[GDELTArticle]) -> dict[str, Any]:
-        """
-        Analyze news articles for market impact.
-        
-        Returns:
-            Dict with impact analysis
-        """
-        if not articles:
-            return {'impact_score': 0, 'sentiment': 'neutral', 'urgency': 'low'}
-
-        # Calculate metrics
-        avg_tone = sum(a.tone for a in articles) / len(articles)
-        negative_count = sum(1 for a in articles if a.sentiment == 'negative')
-        positive_count = sum(1 for a in articles if a.sentiment == 'positive')
-
-        # Extract key themes
-        all_themes = []
-        for a in articles:
-            all_themes.extend(a.themes)
-
-        from collections import Counter
-        top_themes = Counter(all_themes).most_common(10)
-
-        # Extract mentioned organizations
-        all_orgs = []
-        for a in articles:
-            all_orgs.extend(a.organizations)
-        top_organizations = Counter(all_orgs).most_common(10)
-
-        # Determine urgency based on recency and negativity
-        recent_negative = [
-            a for a in articles
-            if a.sentiment == 'negative' and
-            (datetime.now(UTC) - a.seendate) < timedelta(hours=6)
-        ]
-
-        if len(recent_negative) >= 3:
-            urgency = 'high'
-        elif len(recent_negative) >= 1:
-            urgency = 'medium'
-        else:
-            urgency = 'low'
-
-        # Impact score (-10 to +10)
-        impact_score = avg_tone
-
-        return {
-            'impact_score': round(impact_score, 2),
-            'sentiment': 'positive' if avg_tone > 1 else 'negative' if avg_tone < -1 else 'neutral',
-            'urgency': urgency,
-            'article_count': len(articles),
-            'negative_articles': negative_count,
-            'positive_articles': positive_count,
-            'avg_tone': round(avg_tone, 2),
-            'top_themes': top_themes,
-            'top_organizations': top_organizations,
-            'recent_alerts': [a.to_dict() for a in recent_negative[:5]]
-        }
-
-
-# Singleton
-_scraper: GDELTNewsScraper | None = None
-
-def get_gdelt_scraper() -> GDELTNewsScraper:
-    """Get or create GDELT scraper singleton."""
-    global _scraper
-    if _scraper is None:
-        _scraper = GDELTNewsScraper()
-    return _scraper
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-
-    scraper = GDELTNewsScraper()
-
-    print("=" * 70)
-    print("GDELT News Scraper Test")
-    print("=" * 70)
-
-    # Test 1: Maritime intelligence
-    print("\n1. Maritime Intelligence (24h)")
-    print("-" * 70)
-    maritime_articles = scraper.search_maritime_intelligence(timespan="24h")
-    print(f"Found {len(maritime_articles)} maritime-related articles")
-
-    if maritime_articles:
-        impact = scraper.analyze_news_impact(maritime_articles[:20])
-        print("\nImpact Analysis:")
-        print(f"  Articles: {impact['article_count']}")
-        print(f"  Sentiment: {impact['sentiment']} (score: {impact['impact_score']})")
-        print(f"  Urgency: {impact['urgency']}")
-        print(f"  Top Themes: {[t[0] for t in impact['top_themes'][:5]]}")
-
-        print("\nSample Articles:")
-        for article in maritime_articles[:3]:
-            print(f"  - {article.title[:60]}... ({article.sourcecountry}, tone: {article.tone:.1f})")
-
-    # Test 2: Ticker search (ArcelorMittal)
-    print("\n2. Company Search: ArcelorMittal")
-    print("-" * 70)
-    company_articles = scraper.search_ticker_news("MT", "ArcelorMittal", timespan="7d")
-    print(f"Found {len(company_articles)} articles about ArcelorMittal")
-
-    if company_articles:
-        for article in company_articles[:3]:
-            print(f"  - {article.title[:60]}... ({article.seendate.strftime('%Y-%m-%d')})")
-
-    # Test 3: Tone timeline for Strait of Hormuz
-    print("\n3. Tone Timeline: Strait of Hormuz (7d)")
-    print("-" * 70)
-    timeline = scraper.get_tone_timeline('"Strait of Hormuz"', timespan="7d")
-    print(f"Retrieved {len(timeline)} data points")
-
-    if timeline:
-        for point in timeline[:5]:
-            print(f"  {point['date']}: tone={point['tone']:.2f}, vol={point['volume']}")
-
-    print("\n" + "=" * 70)
-    print("GDELT Scraper Test Complete")
-    print("=" * 70)

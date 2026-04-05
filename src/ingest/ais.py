@@ -1,11 +1,11 @@
 """
-NOAA AIS Data Ingestor — Phase 1.1
+NOAA AIS Data Ingestor - Phase 1.1
 
 Ingests Automatic Identification System (AIS) vessel position data
 from NOAA Marine Cadastre for vessel tracking and port activity analysis.
 
 Data source: https://marinecadastre.gov/ais/
-License: Public Domain — commercial use permitted.
+License: Public Domain - commercial use permitted.
 
 Used for Phase 4 AIS/RF Fusion: matching SAR vessel detections
 with AIS identities for dark vessel flagging and port throughput estimation.
@@ -14,10 +14,14 @@ with AIS identities for dark vessel flagging and port throughput estimation.
 from __future__ import annotations
 
 import csv
+import io
 import logging
+import zipfile
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+import httpx
 
 from src.common.schemas import BoundingBox
 
@@ -80,79 +84,83 @@ class PortDefinition:
     anchorage_zones: list[BoundingBox] = field(default_factory=list)
 
 
-# ── Major Asia-Pacific container ports for Phase 1 ──────────────────────
+# -- Major Asia-Pacific container ports for Phase 1 ----------------------
 PHASE1_PORTS = [
     PortDefinition(
         port_id="CNSHA",
         port_name="Shanghai",
         country="CN",
-        bbox=BoundingBox(west=121.3, south=30.6, east=122.1, north=31.5),
+        bbox=BoundingBox(
+            min_lon=121.3, min_lat=30.6, max_lon=122.1, max_lat=31.5
+        ),
     ),
     PortDefinition(
         port_id="SGSIN",
         port_name="Singapore",
         country="SG",
-        bbox=BoundingBox(west=103.6, south=1.1, east=104.1, north=1.5),
+        bbox=BoundingBox(
+            min_lon=103.6, min_lat=1.1, max_lon=104.1, max_lat=1.5
+        ),
     ),
     PortDefinition(
         port_id="CNNGB",
         port_name="Ningbo-Zhoushan",
         country="CN",
-        bbox=BoundingBox(west=121.4, south=29.7, east=122.3, north=30.2),
+        bbox=BoundingBox(
+            min_lon=121.4, min_lat=29.7, max_lon=122.3, max_lat=30.2
+        ),
     ),
     PortDefinition(
         port_id="CNSZN",
         port_name="Shenzhen",
         country="CN",
-        bbox=BoundingBox(west=113.8, south=22.4, east=114.4, north=22.7),
+        bbox=BoundingBox(
+            min_lon=113.8, min_lat=22.4, max_lon=114.4, max_lat=22.7
+        ),
     ),
     PortDefinition(
         port_id="KRPUS",
         port_name="Busan",
         country="KR",
-        bbox=BoundingBox(west=128.9, south=35.0, east=129.2, north=35.2),
+        bbox=BoundingBox(
+            min_lon=128.9, min_lat=35.0, max_lon=129.2, max_lat=35.2
+        ),
     ),
     PortDefinition(
         port_id="CNQIN",
         port_name="Qingdao",
         country="CN",
-        bbox=BoundingBox(west=120.1, south=35.9, east=120.5, north=36.2),
+        bbox=BoundingBox(
+            min_lon=120.1, min_lat=35.9, max_lon=120.5, max_lat=36.2
+        ),
     ),
     PortDefinition(
         port_id="HKHKG",
         port_name="Hong Kong",
         country="HK",
-        bbox=BoundingBox(west=113.8, south=22.2, east=114.4, north=22.5),
+        bbox=BoundingBox(
+            min_lon=113.8, min_lat=22.2, max_lon=114.4, max_lat=22.5
+        ),
     ),
     PortDefinition(
         port_id="TWKHH",
         port_name="Kaohsiung",
         country="TW",
-        bbox=BoundingBox(west=120.2, south=22.5, east=120.4, north=22.7),
+        bbox=BoundingBox(
+            min_lon=120.2, min_lat=22.5, max_lon=120.4, max_lat=22.7
+        ),
     ),
 ]
-
-# AIS vessel type codes for classification
-VESSEL_TYPE_MAP = {
-    range(70, 80): "cargo",
-    range(80, 90): "tanker",
-    range(60, 70): "passenger",
-    range(30, 40): "fishing",
-}
 
 
 class AISIngestor:
     """
     NOAA AIS data ingestor for vessel position tracking.
-
-    Downloads AIS position reports, filters by port bounding boxes,
-    and computes port activity metrics for the feature pipeline.
     """
 
-    # Vessel navigation status codes
     STATUS_AT_ANCHOR = 1
     STATUS_MOORED = 5
-    SOG_THRESHOLD_KNOTS = 0.5  # Below this = stationary
+    SOG_THRESHOLD_KNOTS = 0.5
 
     def __init__(
         self,
@@ -163,18 +171,13 @@ class AISIngestor:
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._ports = ports or PHASE1_PORTS
 
-    def ingest_daily(self, date: datetime) -> list[PortActivity]:
-        """
-        Ingest AIS data for a single day and compute port activity metrics.
-
-        Steps:
-        1. Download/load AIS position data for the date
-        2. Filter positions within port bounding boxes
-        3. Classify vessel status (at berth, anchored, in transit)
-        4. Compute aggregated port metrics
-        """
-        positions = self._load_positions(date)
-        logger.info(f"Loaded {len(positions)} AIS positions for {date.strftime('%Y-%m-%d')}")
+    async def ingest_daily(self, date: datetime) -> list[PortActivity]:
+        """Ingest AIS data and compute port metrics."""
+        positions = await self._load_positions(date)
+        logger.info(
+            f"Loaded {len(positions)} AIS positions for "
+            f"{date.strftime('%Y-%m-%d')}"
+        )
 
         activities = []
         for port in self._ports:
@@ -193,53 +196,78 @@ class AISIngestor:
             activity = self._compute_port_activity(port, port_positions, date)
             activities.append(activity)
             logger.info(
-                f"Port {port.port_name}: {activity.vessel_count} vessels, "
-                f"{activity.vessels_at_berth} at berth, "
-                f"avg dwell {activity.avg_dwell_time_hours:.1f}h"
+                f"Port {port.port_name}: {activity.vessel_count} vessels"
             )
 
         return activities
 
-    def _load_positions(self, date: datetime) -> list[VesselPosition]:
-        """Load AIS position data for a date (from local cache or download)."""
+    async def _load_positions(self, date: datetime) -> list[VesselPosition]:
+        """Load positions from cache or download from NOAA."""
         cache_file = self._data_dir / f"ais_{date.strftime('%Y%m%d')}.csv"
-
         if cache_file.exists():
             return self._parse_csv(cache_file)
 
-        # In production: download from NOAA Marine Cadastre
-        # The NOAA AIS data is distributed as monthly CSV archives
-        logger.info(f"AIS data not cached for {date.strftime('%Y-%m-%d')}")
+        target_date = date
+        max_attempts = 5
+        for i in range(max_attempts):
+            check_date = target_date - timedelta(days=i)
+            year = check_date.year
+            month = check_date.strftime("%m")
+            day = check_date.strftime("%d")
+
+            url = f"{NOAA_AIS_BASE_URL}/{year}/AIS_{year}_{month}_{day}.zip"
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    resp = await client.get(url)
+                if resp.status_code == 200:
+                    with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
+                        csvs = [n for n in z.namelist() if n.endswith('.csv')]
+                        if not csvs:
+                            continue
+                        with z.open(csvs[0]) as f:
+                            content = f.read().decode('utf-8')
+                            with open(cache_file, 'w', encoding='utf-8') as cf:
+                                cf.write(content)
+                    return self._parse_csv(cache_file)
+            except Exception as e:
+                logger.error(f"AIS download error: {e}")
+
         return []
 
     def _parse_csv(self, path: Path) -> list[VesselPosition]:
-        """Parse NOAA AIS CSV format into VesselPosition objects."""
-        positions = []
-        with open(path, encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                try:
-                    pos = VesselPosition(
-                        mmsi=row.get("MMSI", ""),
-                        timestamp_utc=datetime.strptime(
-                            row.get("BaseDateTime", ""), "%Y-%m-%dT%H:%M:%S"
-                        ).replace(tzinfo=UTC),
-                        latitude=float(row.get("LAT", 0)),
-                        longitude=float(row.get("LON", 0)),
-                        sog=float(row.get("SOG", 0)),
-                        cog=float(row.get("COG", 0)),
-                        heading=float(row.get("Heading", 0)),
-                        vessel_name=row.get("VesselName"),
-                        vessel_type=int(row.get("VesselType", 0))
-                        if row.get("VesselType")
-                        else None,
-                        imo=row.get("IMO"),
-                        status=int(row.get("Status", 0)) if row.get("Status") else None,
-                    )
-                    positions.append(pos)
-                except (ValueError, KeyError) as e:
-                    logger.debug(f"Skipping malformed AIS record: {e}")
-                    continue
+        """Parse NOAA AIS CSV format."""
+        positions: list[VesselPosition] = []
+        try:
+            with open(path, encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    try:
+                        v_type_str = row.get("VesselType", "")
+                        v_type = int(v_type_str) if v_type_str else None
+                        stat_str = row.get("Status", "")
+                        stat = int(stat_str) if stat_str else None
+                        dt_s = row.get("BaseDateTime", "")
+                        dt = datetime.strptime(
+                            dt_s, "%Y-%m-%dT%H:%M:%S"
+                        ).replace(tzinfo=UTC)
+
+                        positions.append(VesselPosition(
+                            mmsi=row.get("MMSI", ""),
+                            timestamp_utc=dt,
+                            latitude=float(row.get("LAT", 0)),
+                            longitude=float(row.get("LON", 0)),
+                            sog=float(row.get("SOG", 0)),
+                            cog=float(row.get("COG", 0)),
+                            heading=float(row.get("Heading", 0)),
+                            vessel_name=row.get("VesselName"),
+                            vessel_type=v_type,
+                            imo=row.get("IMO"),
+                            status=stat,
+                        ))
+                    except (ValueError, KeyError, TypeError):
+                        continue
+        except Exception as e:
+            logger.error(f"Error reading AIS cache {path}: {e}")
         return positions
 
     def _filter_by_bbox(
@@ -249,9 +277,9 @@ class AISIngestor:
     ) -> list[VesselPosition]:
         """Filter positions within a bounding box."""
         return [
-            p
-            for p in positions
-            if bbox.west <= p.longitude <= bbox.east and bbox.south <= p.latitude <= bbox.north
+            p for p in positions
+            if bbox.min_lon <= p.longitude <= bbox.max_lon and
+            bbox.min_lat <= p.latitude <= bbox.max_lat
         ]
 
     def _compute_port_activity(
@@ -260,10 +288,8 @@ class AISIngestor:
         positions: list[VesselPosition],
         date: datetime,
     ) -> PortActivity:
-        """Compute port activity metrics from filtered AIS positions."""
+        """Compute port activity metrics."""
         unique_mmsis = list(set(p.mmsi for p in positions))
-
-        # Classify vessel status
         at_berth = 0
         anchored = 0
         in_transit = 0
@@ -272,20 +298,21 @@ class AISIngestor:
         containers = 0
 
         for mmsi in unique_mmsis:
-            vessel_positions = [p for p in positions if p.mmsi == mmsi]
-            latest = max(vessel_positions, key=lambda p: p.timestamp_utc)
+            v_pos = [p for p in positions if p.mmsi == mmsi]
+            latest = max(v_pos, key=lambda p: p.timestamp_utc)
 
-            # Status classification
             if latest.status == self.STATUS_MOORED or (
-                latest.sog < self.SOG_THRESHOLD_KNOTS and self._in_berth_zone(latest, port)
+                latest.sog < self.SOG_THRESHOLD_KNOTS and
+                self._in_berth_zone(latest, port)
             ):
                 at_berth += 1
-            elif latest.status == self.STATUS_AT_ANCHOR or (latest.sog < self.SOG_THRESHOLD_KNOTS):
+            elif latest.status == self.STATUS_AT_ANCHOR or (
+                latest.sog < self.SOG_THRESHOLD_KNOTS
+            ):
                 anchored += 1
             else:
                 in_transit += 1
 
-            # Vessel type classification
             if latest.vessel_type:
                 vt = latest.vessel_type
                 if 70 <= vt < 80:
@@ -295,9 +322,7 @@ class AISIngestor:
                 elif 80 <= vt < 90:
                     tankers += 1
 
-        # Estimate dwell times
-        dwell_hours = self._estimate_dwell_times(positions, unique_mmsis)
-
+        dwell_h = self._estimate_dwell_times(positions, unique_mmsis)
         return PortActivity(
             port_id=port.port_id,
             port_name=port.port_name,
@@ -307,7 +332,7 @@ class AISIngestor:
             vessels_at_berth=at_berth,
             vessels_anchored=anchored,
             vessels_in_transit=in_transit,
-            avg_dwell_time_hours=dwell_hours,
+            avg_dwell_time_hours=dwell_h,
             cargo_vessels=cargo,
             tankers=tankers,
             container_ships=containers,
@@ -317,30 +342,29 @@ class AISIngestor:
     def _in_berth_zone(self, pos: VesselPosition, port: PortDefinition) -> bool:
         """Check if position is within any defined berth zone."""
         for bz in port.berth_zones:
-            if bz.west <= pos.longitude <= bz.east and bz.south <= pos.latitude <= bz.north:
+            if bz.min_lon <= pos.longitude <= bz.max_lon and \
+               bz.min_lat <= pos.latitude <= bz.max_lat:
                 return True
-        # If no berth zones defined, assume inner port area
-        center_lon = (port.bbox.west + port.bbox.east) / 2
-        center_lat = (port.bbox.south + port.bbox.north) / 2
-        return abs(pos.longitude - center_lon) < 0.05 and abs(pos.latitude - center_lat) < 0.05
+        c_lon = (port.bbox.min_lon + port.bbox.max_lon) / 2
+        c_lat = (port.bbox.min_lat + port.bbox.max_lat) / 2
+        return abs(pos.longitude - c_lon) < 0.05 and \
+               abs(pos.latitude - c_lat) < 0.05
 
     def _estimate_dwell_times(
         self,
         positions: list[VesselPosition],
         mmsis: list[str],
     ) -> float:
-        """Estimate average vessel dwell time from position timestamps."""
-        dwell_times = []
+        """Estimate average vessel dwell time."""
+        dwells: list[float] = []
         for mmsi in mmsis:
-            vessel_pos = sorted(
+            v_p = sorted(
                 [p for p in positions if p.mmsi == mmsi],
                 key=lambda p: p.timestamp_utc,
             )
-            if len(vessel_pos) >= 2:
-                first = vessel_pos[0].timestamp_utc
-                last = vessel_pos[-1].timestamp_utc
-                hours = (last - first).total_seconds() / 3600
-                if hours > 0:
-                    dwell_times.append(hours)
-
-        return float(sum(dwell_times) / len(dwell_times)) if dwell_times else 0.0
+            if len(v_p) >= 2:
+                hrs = (v_p[-1].timestamp_utc -
+                       v_p[0].timestamp_utc).total_seconds() / 3600
+                if hrs > 0:
+                    dwells.append(hrs)
+        return float(sum(dwells) / len(dwells)) if dwells else 0.0

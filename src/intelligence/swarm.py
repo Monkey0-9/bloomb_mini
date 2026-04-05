@@ -19,6 +19,8 @@ from src.live.quakes import Quake, get_latest_quakes
 from src.live.thermal import ThermalCluster, get_global_thermal
 from src.live.vessels import get_all_vessels
 from src.live.topo import get_ocean_depth
+from src.swarm.graphrag_engine import get_graphrag_engine
+from src.swarm.performance_audit import get_swarm_auditor
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +50,8 @@ def _load_memory() -> dict[str, float]:
     if os.path.exists(MEMORY_FILE):
         try:
             with open(MEMORY_FILE) as f:
-                return json.load(f)
+                data = json.load(f)
+                return cast(dict[str, float], data)
         except Exception as e:
             logger.warning(f"Failed to load swarm memory: {e}")
             return {}
@@ -98,7 +101,12 @@ async def run_swarm_simulation() -> dict[str, Any]:
 
     # 1. Instantiate the swarm with Persona and Persistence
     swarm: list[SwarmAgent] = []
-    available_personas = ["Cautious", "Aggressive", "Standard", "Weather-Sensitive", "Economic-Sensitive"]
+    available_personas: list[Literal["Cautious", "Aggressive", "Standard", "Weather-Sensitive", "Economic-Sensitive"]] = ["Cautious", "Aggressive", "Standard", "Weather-Sensitive", "Economic-Sensitive"]
+
+    # Initialize Knowledge Graph and Swarm Auditor for intelligent mapping/weighting
+    graph_engine = get_graphrag_engine()
+    swarm_auditor = get_swarm_auditor()
+    persona_weights = swarm_auditor.get_persona_weights()
 
     for v in vessels:
         if hasattr(v, "mmsi"):
@@ -112,21 +120,39 @@ async def run_swarm_simulation() -> dict[str, Any]:
             v_lat = float(v.get("lat", 0.0))
             v_lon = float(v.get("lon", 0.0))
 
-        p_index = sum(ord(c) for c in mmsi) % len(available_personas)
+        # Weight persona selection based on performance (Auditor weighted)
+        # Use simple weighted random selection or deterministic hash
+        mmsi_hash = sum(ord(c) for c in mmsi)
+        available_personas_list = list(available_personas)
+        
+        # Sort personas by performance weights if available
+        # This gives higher-performance personas more representation in the swarm
+        persona_performance_order = sorted(available_personas_list, key=lambda p: persona_weights.get(p, 0.2), reverse=True)
+        p_index = mmsi_hash % len(available_personas_list)
+        
+        selected_persona = persona_performance_order[p_index] if mmsi_hash % 2 == 0 else available_personas_list[p_index]
 
+        # Intelligent Ticker Mapping via GraphRAG
         ticker = None
-        if "Tanker" in v_type_name:
-            ticker = random.choice([
-                "XOM", "CVX", "SHEL", "TTE", "BP", "EQNR", "FRO", "EURN", "DHT"
-            ])
-        elif "Cargo" in v_type_name or "Container" in v_type_name:
-            ticker = random.choice([
-                "ZIM", "AMKBY", "MATX", "DSX", "SBLK", "GOGL", "NMM", "DAC"
-            ])
-        elif "Bulk" in v_type_name:
-            ticker = random.choice([
-                "RIO", "BHP", "VALE", "FCX", "NUE", "MT", "CLF"
-            ])
+        # Try to find tickers related to vessel type in the graph
+        related_tickers = [
+            node.name for node in graph_engine.graph.nodes.values()
+            if node.type == 'ticker' and (
+                v_type_name.lower() in node.attributes.get('sector', '').lower() or
+                v_type_name.lower() in node.attributes.get('vessel_types', [])
+            )
+        ]
+        
+        if related_tickers:
+            ticker = random.choice(related_tickers)
+        else:
+            # Fallback for common types
+            if "Tanker" in v_type_name:
+                ticker = random.choice(["XOM", "CVX", "SHEL", "TTE", "BP", "EQNR", "FRO", "EURN", "DHT"])
+            elif "Cargo" in v_type_name or "Container" in v_type_name:
+                ticker = random.choice(["ZIM", "AMKBY", "MATX", "DSX", "SBLK", "GOGL", "NMM", "DAC"])
+            elif "Bulk" in v_type_name:
+                ticker = random.choice(["RIO", "BHP", "VALE", "FCX", "NUE", "MT", "CLF"])
 
         # Apply persistent memory score (historical trauma)
         historical_trauma = agent_memory.get(mmsi, 0.0)
@@ -134,7 +160,7 @@ async def run_swarm_simulation() -> dict[str, Any]:
 
         swarm.append(SwarmAgent(
             id=mmsi,
-            persona=cast(Any, available_personas[p_index]),
+            persona=cast(Any, selected_persona),
             health=initial_health,
             lat=v_lat,
             lon=v_lon,
@@ -328,15 +354,15 @@ async def run_swarm_simulation() -> dict[str, Any]:
         region = f"{round(a.lat/20)*20},{round(a.lon/20)*20}"
         regions[region] = regions.get(region, 0.0) + a.health
 
-    for region, count in regions.items():
-        if count >= 2:
-            conf = min(99.9, 90.0 + count * 1.2)
+    for region, health_score in regions.items():
+        if health_score >= 2.0:
+            conf = min(99.9, 90.0 + health_score * 1.2)
             predictions.append({
                 "region": region,
                 "prediction": f"Maritime flow bottleneck clustering at {region}.",
                 "confidence": round(conf, 1),
                 "action": "WATCH",
-                "impaired_agents": count
+                "impaired_agents": health_score
             })
 
     predictions = sorted(predictions, key=lambda x: x["confidence"], reverse=True)

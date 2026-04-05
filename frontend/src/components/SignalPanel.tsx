@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react';
-import { Activity } from 'lucide-react';
-import { useTerminalStore } from '../store';
-import { api } from '../api/client';
+import * as Lucide from 'lucide-react';
+
+const Activity = Lucide.Activity || Lucide.Zap;
 
 const SignalCard = ({ 
   name, 

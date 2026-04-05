@@ -9,6 +9,7 @@ import time
 import httpx
 import pandas as pd
 import structlog
+from typing import Any
 
 log = structlog.get_logger()
 

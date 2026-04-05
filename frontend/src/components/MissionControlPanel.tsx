@@ -1,5 +1,6 @@
-import React from 'react';
-import { Activity } from 'lucide-react';
+import * as Lucide from 'lucide-react';
+
+const Activity = Lucide.Activity || Lucide.Zap;
 
 const MissionControlPanel = () => {
     const [volume, setVolume] = React.useState(0);

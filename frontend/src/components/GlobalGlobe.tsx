@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useMemo, useCallback } from 'react';
 import Globe from 'react-globe.gl';
 import * as THREE from 'three';
 import { useTerminalStore, useEquityStore } from '../store';
+import { Globe as GlobeIcon } from 'lucide-react';
 import { countryLabels } from '../data/countries';
 import { api, connectLive } from '../api/client';
 

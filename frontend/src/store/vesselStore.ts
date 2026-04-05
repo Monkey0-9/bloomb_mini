@@ -28,17 +28,18 @@ export const useVesselStore = create<VesselState>((set) => ({
       const response = await fetch(`${API_BASE}/api/intelligence/ships`);
       if (!response.ok) throw new Error('Failed to fetch vessels');
       const data = await response.json();
-      const vessels = (data.ships || data || []).map((f: any) => ({
-        ...f,
-        mmsi: f.id,
+      const vessels = (data.ships || data.vessels || data || []).map((v: any) => ({
+        ...v,
+        id: v.id || v.mmsi,
+        mmsi: v.mmsi || v.id,
         position: {
-          lat: f.lat,
-          lon: f.lon,
+          lat: v.lat,
+          lon: v.lon,
           timestamp: new Date().toISOString(),
-          speed_knots: f.velocity || 0,
-          heading_degrees: f.heading || 0,
-          navigational_status: f.status || "Under Way",
-          course_over_ground: f.heading || 0,
+          speed_knots: v.sog || 0,
+          heading_degrees: v.heading || 0,
+          navigational_status: v.status || "Under Way",
+          course_over_ground: v.heading || 0,
         }
       }));
       set({ vessels, isLoading: false });

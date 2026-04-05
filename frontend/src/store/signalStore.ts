@@ -38,6 +38,7 @@ interface SignalState {
   events: TerminalEvent[];
   satFeed: any[];
   workflows: any;
+  conflicts: any[];
   setSignals: (signals: Signal[]) => void;
   setIndices: (indices: MarketIndex[]) => void;
   setEvents: (events: TerminalEvent[]) => void;
@@ -45,12 +46,14 @@ interface SignalState {
   fetchSignals: () => Promise<void>;
   fetchSatFeed: () => Promise<void>;
   fetchWorkflows: () => Promise<void>;
+  fetchConflicts: () => Promise<void>;
   handleWSUpdate: (msg: any) => void;
 }
 
 export const useSignalStore = create<SignalState>((set) => ({
   signals: [],
   satFeed: [],
+  conflicts: [],
   workflows: { active: [], completed: [], system: { ingest_rate: '0 GB/s', compute: '0%', status: 'LOADING' } },
   indices: [],
   events: [],
@@ -61,10 +64,11 @@ export const useSignalStore = create<SignalState>((set) => ({
   fetchSignals: async () => {
     try {
       // Parallel fetch for optimal terminal performance
-      const [sigRes, newsRes, swarmRes] = await Promise.all([
-        fetch('/api/thermal'),
+      const [sigRes, newsRes, swarmRes, conflictRes] = await Promise.all([
+        fetch('/api/intelligence/thermal'),
         fetch('/api/news/live'),
-        fetch('/api/intelligence/swarm')
+        fetch('/api/intelligence/swarm'),
+        fetch('/api/conflicts')
       ]);
 
       if (sigRes.ok) {
@@ -122,8 +126,24 @@ export const useSignalStore = create<SignalState>((set) => ({
         }));
         set((state) => ({ events: [...swarmEvents, ...state.events].slice(0, 100) }));
       }
+
+      if (conflictRes.ok) {
+        const cData = await conflictRes.json();
+        set({ conflicts: cData.events || [] });
+      }
     } catch (err) {
       console.error('Failed to fetch intelligence data:', err);
+    }
+  },
+  fetchConflicts: async () => {
+    try {
+      const resp = await fetch('/api/conflicts');
+      if (resp.ok) {
+        const data = await resp.json();
+        set({ conflicts: data.events || [] });
+      }
+    } catch (err) {
+      console.error('Failed to fetch conflicts:', err);
     }
   },
   fetchSatFeed: async () => {

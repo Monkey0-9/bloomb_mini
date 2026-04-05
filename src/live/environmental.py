@@ -1,4 +1,6 @@
 import asyncio
+from typing import Any
+
 import httpx
 import structlog
 
@@ -12,7 +14,7 @@ class EnvironmentalMonitor:
     """
 
     @staticmethod
-    async def get_sea_state(lat: float, lon: float) -> dict:
+    async def get_sea_state(lat: float, lon: float) -> dict[str, Any]:
         """
         Fetches marine weather and visibility from Open-Meteo.
         """

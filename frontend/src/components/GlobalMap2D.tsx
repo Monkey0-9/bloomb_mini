@@ -3,8 +3,8 @@ import React, { useMemo, useState, useCallback } from 'react';
 import Map, { Marker, Popup } from 'react-map-gl/maplibre';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { useTerminalStore, useVesselStore, useFlightStore } from '../store';
-import { Ship, Plane, X, Anchor, Package, MapPin, Navigation, Gauge, Flag } from 'lucide-react';
+import { useTerminalStore, useVesselStore, useFlightStore, useSignalStore } from '../store';
+import { Ship, Plane, X, Anchor, Package, MapPin, Navigation, Gauge, Flag, Flame, Zap, ShieldAlert, Target, Globe } from 'lucide-react';
 
 // ── Vessel popup card ──────────────────────────────────────────────────────
 const VesselCard = ({ vessel, onClose }: { vessel: any; onClose: () => void }) => {
@@ -143,14 +143,112 @@ const FlightCard = ({ flight, onClose }: { flight: any; onClose: () => void }) =
 };
 
 
+// ── Conflict popup card ────────────────────────────────────────────────────
+const ConflictCard = ({ event, onClose }: { event: any; onClose: () => void }) => {
+  const sevColor: Record<string, string> = {
+    CRITICAL: '#ff4560',
+    HIGH:     '#feb019',
+    MEDIUM:   '#ff9a00',
+    LOW:      '#82aaff',
+  };
+  const col = sevColor[event.severity] || '#ff4560';
+  return (
+    <div
+      style={{ borderColor: col + '44', boxShadow: `0 0 30px ${col}22` }}
+      className="relative bg-[#02060f]/95 border rounded-sm backdrop-blur-2xl font-mono w-[320px] pointer-events-auto"
+    >
+      <div style={{ borderColor: col + '44', background: `linear-gradient(135deg, ${col}12, transparent)` }}
+        className="flex items-center justify-between px-4 py-3 border-b"
+      >
+        <div className="flex items-center gap-2.5">
+          <ShieldAlert size={16} style={{ color: col }} />
+          <div>
+            <div className="text-[11px] font-black tracking-[0.2em] uppercase" style={{ color: col }}>{event.type}</div>
+            <div className="text-[9px] text-white/40 tracking-widest">{event.country} · {event.region}</div>
+          </div>
+        </div>
+        <button onClick={onClose} className="text-white/30 hover:text-white/80 transition-colors">
+          <X size={14} />
+        </button>
+      </div>
+      <div className="px-4 py-3 border-b border-white/5">
+        <p className="text-[10px] text-white/70 leading-relaxed italic">"{event.description || 'No detailed intel available.'}"</p>
+      </div>
+      <div className="grid grid-cols-2 gap-px bg-white/5 border-t border-white/5">
+        <div className="bg-[#02060f]/80 px-3 py-2.5">
+          <div className="text-[8px] text-white/30 tracking-widest mb-1 uppercase">Fatalities</div>
+          <div className="text-[10px] text-white font-semibold tabular-nums">{event.fatalities}</div>
+        </div>
+        <div className="bg-[#02060f]/80 px-3 py-2.5">
+          <div className="text-[8px] text-white/30 tracking-widest mb-1 uppercase">Severity</div>
+          <div className="text-[10px] font-black tabular-nums" style={{ color: col }}>{event.severity}</div>
+        </div>
+      </div>
+      {event.tickers && event.tickers.length > 0 && (
+        <div className="px-4 py-2 bg-white/2 border-t border-white/5 flex flex-wrap gap-2">
+           {event.tickers.map((t: string) => (
+             <span key={t} className="text-[8px] font-bold text-accent-primary bg-accent-primary/10 px-1.5 py-0.5 rounded-sm border border-accent-primary/20">{t}</span>
+           ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Thermal popup card ─────────────────────────────────────────────────────
+const ThermalCard = ({ signal, onClose }: { signal: any; onClose: () => void }) => {
+  const col = '#ff7a3d';
+  return (
+    <div
+      style={{ borderColor: col + '44', boxShadow: `0 0 30px ${col}22` }}
+      className="relative bg-[#02060f]/95 border rounded-sm backdrop-blur-2xl font-mono w-[300px] pointer-events-auto"
+    >
+      <div style={{ borderColor: col + '44', background: `linear-gradient(135deg, ${col}12, transparent)` }}
+        className="flex items-center justify-between px-4 py-3 border-b"
+      >
+        <div className="flex items-center gap-2.5">
+          <Flame size={16} style={{ color: col }} />
+          <div>
+            <div className="text-[11px] font-black tracking-[0.2em] uppercase" style={{ color: col }}>{signal.name || 'Thermal Anomaly'}</div>
+            <div className="text-[9px] text-white/40 tracking-widest">SATELLITE DETECTED · {signal.location}</div>
+          </div>
+        </div>
+        <button onClick={onClose} className="text-white/30 hover:text-white/80 transition-colors">
+          <X size={14} />
+        </button>
+      </div>
+      <div className="px-4 py-3 border-b border-white/5">
+        <div className="text-[8px] text-white/30 uppercase tracking-widest mb-1">Observation Intelligence</div>
+        <div className="text-[10px] text-white/70 leading-relaxed">{signal.description}</div>
+      </div>
+      <div className="grid grid-cols-2 gap-px bg-white/5 border-t border-white/5">
+        <div className="bg-[#02060f]/80 px-3 py-2.5">
+          <div className="text-[8px] text-white/30 tracking-widest mb-1 uppercase">Sigma Score</div>
+          <div className="text-[10px] text-white font-semibold tabular-nums">{signal.score?.toFixed(2)}</div>
+        </div>
+        <div className="bg-[#02060f]/80 px-3 py-2.5">
+          <div className="text-[8px] text-white/30 tracking-widest mb-1 uppercase">Signal</div>
+          <div className={`text-[10px] font-black uppercase ${signal.status === 'bullish' ? 'text-bull' : signal.status === 'bearish' ? 'text-bear' : 'text-white/40'}`}>
+            {signal.status}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 // ── Main 2D Map ────────────────────────────────────────────────────────────
 const GlobalMap2D: React.FC = () => {
   const { activeLayers } = useTerminalStore();
   const { vessels } = useVesselStore();
   const { flights } = useFlightStore();
+  const { conflicts, signals } = useSignalStore();
 
   const [selectedVessel, setSelectedVessel] = useState<any>(null);
   const [selectedFlight, setSelectedFlight] = useState<any>(null);
+  const [selectedConflict, setSelectedConflict] = useState<any>(null);
+  const [selectedThermal, setSelectedThermal] = useState<any>(null);
 
   const filteredVessels = useMemo(() =>
     activeLayers.includes('VESSELS') ? vessels : [], [vessels, activeLayers]);
@@ -158,14 +256,30 @@ const GlobalMap2D: React.FC = () => {
   const filteredFlights = useMemo(() =>
     activeLayers.includes('AIRCRAFT') ? flights : [], [flights, activeLayers]);
 
+  const filteredConflicts = useMemo(() =>
+    activeLayers.includes('CONFLICTS') ? conflicts : [], [conflicts, activeLayers]);
+
+  const filteredThermal = useMemo(() =>
+    activeLayers.includes('THERMAL') ? signals : [], [signals, activeLayers]);
+
   const handleVesselClick = useCallback((v: any) => {
-    setSelectedFlight(null);
+    setSelectedFlight(null); setSelectedConflict(null); setSelectedThermal(null);
     setSelectedVessel(v);
   }, []);
 
   const handleFlightClick = useCallback((f: any) => {
-    setSelectedVessel(null);
+    setSelectedVessel(null); setSelectedConflict(null); setSelectedThermal(null);
     setSelectedFlight(f);
+  }, []);
+
+  const handleConflictClick = useCallback((c: any) => {
+    setSelectedVessel(null); setSelectedFlight(null); setSelectedThermal(null);
+    setSelectedConflict(c);
+  }, []);
+
+  const handleThermalClick = useCallback((s: any) => {
+    setSelectedVessel(null); setSelectedFlight(null); setSelectedConflict(null);
+    setSelectedThermal(s);
   }, []);
 
   const typeColor: Record<string, string> = {
@@ -244,6 +358,42 @@ const GlobalMap2D: React.FC = () => {
           );
         })}
 
+        {/* Conflicts */}
+        {filteredConflicts.map((c: any, i: number) => {
+          if (!c.lat && !c.lon) return null;
+          const isSelected = selectedConflict?.id === c.id;
+          const sevColor: Record<string, string> = { CRITICAL: '#ff4560', HIGH: '#feb019', MEDIUM: '#ff9a00', LOW: '#82aaff' };
+          const col = sevColor[c.severity] || '#ff4560';
+          return (
+            <Marker key={`conflict-${c.id || i}`} longitude={c.lon} latitude={c.lat} anchor="center">
+              <div onClick={() => handleConflictClick(c)} className="cursor-pointer group relative">
+                {isSelected && (
+                  <div className="absolute inset-[-12px] rounded-full border-2 border-dashed animate-[spin_4s_linear_infinite]" style={{ borderColor: col + '88' }} />
+                )}
+                <div className={`w-4 h-4 flex items-center justify-center bg-[#02060f] border-2 rounded-full transition-transform group-hover:scale-125 shadow-[0_0_10px_rgba(0,0,0,0.5)]`} style={{ borderColor: col }}>
+                   <ShieldAlert size={10} style={{ color: col }} />
+                </div>
+              </div>
+            </Marker>
+          );
+        })}
+
+        {/* Thermal Anomalies */}
+        {filteredThermal.map((s: any, i: number) => {
+          const coords = s.location.split(',').map(Number);
+          if (isNaN(coords[0]) || isNaN(coords[1])) return null;
+          const isSelected = selectedThermal?.id === s.id;
+          const col = '#ff7a3d';
+          return (
+            <Marker key={`thermal-${s.id || i}`} longitude={coords[1]} latitude={coords[0]} anchor="center">
+              <div onClick={() => handleThermalClick(s)} className="cursor-pointer group relative">
+                 <div className="absolute inset-[-8px] rounded-full animate-pulse bg-[#ff7a3d22]" />
+                 <Flame size={14} style={{ color: col }} className={`${isSelected ? 'scale-150' : 'scale-100'} transition-transform group-hover:scale-125`} />
+              </div>
+            </Marker>
+          );
+        })}
+
         {/* Vessel popup */}
         {selectedVessel && (() => {
           const lat = selectedVessel.position?.lat ?? selectedVessel.lat ?? 0;
@@ -281,23 +431,69 @@ const GlobalMap2D: React.FC = () => {
             </Popup>
           );
         })()}
+
+        {/* Conflict popup */}
+        {selectedConflict && (
+          <Popup
+            longitude={selectedConflict.lon}
+            latitude={selectedConflict.lat}
+            anchor="bottom"
+            closeButton={false}
+            closeOnClick={false}
+            offset={15}
+            className="vessel-popup"
+          >
+            <ConflictCard event={selectedConflict} onClose={() => setSelectedConflict(null)} />
+          </Popup>
+        )}
+
+        {/* Thermal popup */}
+        {selectedThermal && (() => {
+          const coords = selectedThermal.location.split(',').map(Number);
+          return (
+            <Popup
+              longitude={coords[1]}
+              latitude={coords[0]}
+              anchor="bottom"
+              closeButton={false}
+              closeOnClick={false}
+              offset={15}
+              className="vessel-popup"
+            >
+              <ThermalCard signal={selectedThermal} onClose={() => setSelectedThermal(null)} />
+            </Popup>
+          );
+        })()}
       </Map>
 
       {/* Legend */}
       <div className="absolute bottom-4 left-4 flex flex-col gap-1.5 pointer-events-none z-10">
-        <div className="bg-black/70 backdrop-blur-sm border border-white/10 px-3 py-2 rounded-sm font-mono">
-          <div className="text-[9px] text-white/30 uppercase tracking-widest mb-2">AIS LEGEND</div>
-          {Object.entries({ Container: '#00ffcc', Tanker: '#ff6b35', 'Bulk Carrier': '#ffc107', Cargo: '#82aaff' }).map(([t, c]) => (
-            <div key={t} className="flex items-center gap-2 mb-1">
-              <div className="w-2 h-2 rounded-sm" style={{ background: c }} />
-              <span className="text-[9px] text-white/50">{t}</span>
-            </div>
-          ))}
+        <div className="bg-black/80 backdrop-blur-md border border-white/10 px-4 py-3 rounded-sm font-mono shadow-2xl">
+          <div className="text-[10px] text-accent-primary font-black uppercase tracking-[0.25em] mb-3 flex items-center gap-2">
+            <Globe size={14} /> Intelligence Legend
+          </div>
+          <div className="space-y-2">
+            {[
+              { label: 'Conflict/War (UCDP)', icon: <ShieldAlert size={10} />, color: '#ff4560' },
+              { label: 'Thermal Anomaly (FIRMS)', icon: <Flame size={10} />, color: '#ff7a3d' },
+              { label: 'Merchant Vessel (AIS)', icon: <Ship size={10} />, color: '#00ffcc' },
+              { label: 'Aircraft (ADS-B)', icon: <Plane size={10} />, color: '#bd93f9' }
+            ].map(l => (
+              <div key={l.label} className="flex items-center gap-3">
+                <div className="w-5 h-5 rounded-full border border-white/10 flex items-center justify-center bg-white/2">
+                   <div style={{ color: l.color }}>{l.icon}</div>
+                </div>
+                <span className="text-[9px] text-white/50 font-bold uppercase tracking-widest">{l.label}</span>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="bg-black/70 backdrop-blur-sm border border-white/10 px-3 py-2 rounded-sm font-mono">
-          <div className="text-[9px] text-white/50">
-            <span className="text-white/80 font-bold">{filteredVessels.length}</span> vessels ·{' '}
-            <span className="text-white/80 font-bold">{filteredFlights.length}</span> aircraft
+        <div className="bg-black/80 backdrop-blur-md border border-white/10 px-4 py-2 rounded-sm font-mono shadow-2xl">
+          <div className="text-[9px] text-white/50 flex items-center gap-4">
+            <div className="flex items-center gap-1.5"><Ship size={12} /> <span className="text-white/80 font-black tabular-nums">{filteredVessels.length}</span></div>
+            <div className="flex items-center gap-1.5"><Plane size={12} /> <span className="text-white/80 font-black tabular-nums">{filteredFlights.length}</span></div>
+            <div className="flex items-center gap-1.5"><ShieldAlert size={12} /> <span className="text-white/80 font-black tabular-nums">{filteredConflicts.length}</span></div>
+            <div className="flex items-center gap-1.5"><Flame size={12} /> <span className="text-white/80 font-black tabular-nums">{filteredThermal.length}</span></div>
           </div>
         </div>
       </div>

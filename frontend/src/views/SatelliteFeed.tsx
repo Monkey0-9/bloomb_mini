@@ -1,15 +1,16 @@
-import React, { useMemo } from 'react';
-import { motion } from 'framer-motion';
+import React, { useMemo, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useSignalStore } from '../store';
+import * as Lucide from 'lucide-react';
 
 const SatelliteFeed = () => {
-  const [search, setSearch] = React.useState('');
-  const [brightness, setBrightness] = React.useState(75);
-  const [filter, setFilter] = React.useState('ALL');
-  const { signals, satFeed } = useSignalStore();
+  const { Search, Filter, Maximize2, Download, Info, Zap, Globe, Clock, Layers } = Lucide;
+  const [search, setSearch] = useState('');
+  const [brightness, setBrightness] = useState(85);
+  const [filter, setFilter] = useState('ALL');
+  const { satFeed } = useSignalStore();
   
   const images = useMemo(() => {
-    // Start with curated base imagery
     const baseImagery = [
       { 
         id: 'b1', 
@@ -35,7 +36,6 @@ const SatelliteFeed = () => {
       },
     ];
 
-    // Map live signals to high-fidelity feed items
     const liveItems = (satFeed || []).map((s: any) => ({
       id: s.id,
       location: s.location,
@@ -43,7 +43,7 @@ const SatelliteFeed = () => {
       cloud: s.cloud,
       res: s.res,
       type: s.type,
-      signal: s.signal as 'bullish' | 'bearish' | 'neutral',
+      signal: s.signal?.toUpperCase() || 'STABLE',
       detail: s.detail,
       url: s.url
     }));
@@ -57,8 +57,7 @@ const SatelliteFeed = () => {
       const lowercasedSearch = search.toLowerCase();
       result = result.filter((img: any) => 
         img.location.toLowerCase().includes(lowercasedSearch) ||
-        img.detail.toLowerCase().includes(lowercasedSearch) ||
-        img.type.toLowerCase().includes(lowercasedSearch)
+        img.detail.toLowerCase().includes(lowercasedSearch)
       );
     }
     if (filter !== 'ALL') {
@@ -68,127 +67,152 @@ const SatelliteFeed = () => {
   }, [images, search, filter]);
 
   return (
-    <div className="flex-1 flex flex-col bg-[var(--bg-base)] overflow-hidden font-mono">
-      {/* FEED HEADER: OSINT STYLE */}
-      <div className="h-10 border-b border-[var(--border-subtle)] flex items-center justify-between px-3 shrink-0 bg-[var(--bg-surface)]">
-         <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-               <span className="text-[12px] font-bold tracking-[0.2em] text-[var(--text-primary)] shadow-sm uppercase">Raw Intel Feed</span>
-               <div className="w-1.5 h-1.5 rounded-none bg-[var(--neon-bull)] animate-pulse"></div>
+    <div className="flex-1 flex flex-col bg-slate-950 font-mono h-full overflow-hidden">
+      {/* OSINT HEADER */}
+      <header className="h-14 border-b border-white/5 flex items-center justify-between px-8 bg-slate-900/40 shrink-0 backdrop-blur-md z-20">
+         <div className="flex items-center gap-6">
+            <div className="flex items-center gap-3">
+               <Layers size={18} className="text-accent-primary animate-pulse" />
+               <h1 className="font-display text-xl tracking-[0.3em] text-white">RAW_STAC_INGEST_L2</h1>
             </div>
             
-            {/* SEARCH FILTER */}
-            <div className="flex items-center bg-[var(--bg-overlay)] border border-[var(--border-subtle)] px-2 py-0.5 group focus-within:border-[var(--neon-bull)] transition-all ml-2">
+            <div className="h-6 w-px bg-white/10 mx-2" />
+
+            <div className="flex items-center bg-slate-950 border border-white/10 px-3 py-1.5 rounded-sm focus-within:border-accent-primary transition-all group">
+               <Search size={14} className="text-slate-600 group-focus-within:text-accent-primary" />
                <input 
                   type="text" 
-                  placeholder="QUERY TARGET..." 
+                  placeholder="QUERY_GEO_NODE..." 
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="bg-transparent outline-none text-[10px] uppercase text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] w-32 font-mono"
+                  className="bg-transparent outline-none text-[10px] uppercase text-white placeholder:text-slate-700 w-48 ml-3"
                />
             </div>
 
-            {/* QUICK FILTERS */}
-            <div className="flex gap-1 ml-2">
+            <div className="flex gap-1">
               {['ALL', 'BULLISH', 'BEARISH'].map(f => (
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
-                  className={`text-[8px] font-bold px-1.5 py-0.5 border transition-all uppercase tracking-widest ${
-                    filter === f ? 'bg-[var(--neon-bull)] text-black border-[var(--neon-bull)]' : 'bg-[var(--bg-overlay)] border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
+                  className={`text-[9px] font-black px-3 py-1 border transition-all uppercase tracking-widest rounded-sm ${
+                    filter === f ? 'bg-accent-primary text-slate-950 border-accent-primary' : 'bg-white/5 border-white/5 text-slate-500 hover:text-slate-300'
                   }`}
                 >
                   {f}
                 </button>
               ))}
             </div>
-
-            {/* BRIGHTNESS SLIDER */}
-            <div className="flex items-center gap-2 ml-4">
-              <span className="text-[8px] text-[var(--text-tertiary)] uppercase font-bold tracking-widest">LUM:</span>
-              <input 
-                type="range" 
-                min="0" 
-                max="150" 
-                value={brightness} 
-                onChange={(e) => setBrightness(parseInt(e.target.value))}
-                className="w-20 h-1 bg-[var(--bg-overlay)] appearance-none cursor-pointer accent-[var(--neon-bull)]"
-              />
-            </div>
          </div>
          
-         <div className="flex gap-2">
-            <button className="text-[9px] font-bold px-2 py-1 bg-[var(--bg-overlay)] border border-[var(--border-subtle)] text-[var(--text-tertiary)] uppercase tracking-widest hover:border-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all">DIFF MAP</button>
-            <button className="text-[9px] font-bold px-2 py-1 bg-[var(--bg-overlay)] border border-[var(--border-subtle)] text-[var(--text-tertiary)] uppercase tracking-widest hover:border-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all">DL RAW</button>
+         <div className="flex items-center gap-6">
+            <div className="flex items-center gap-3">
+              <span className="text-[9px] text-slate-500 uppercase font-black tracking-widest">LUM:</span>
+              <input 
+                type="range" min="0" max="150" value={brightness} 
+                onChange={(e) => setBrightness(parseInt(e.target.value))}
+                className="w-24 h-1 bg-slate-800 appearance-none cursor-pointer accent-accent-primary"
+              />
+            </div>
+            <div className="h-6 w-px bg-white/10" />
+            <button className="flex items-center gap-2 text-[9px] font-black text-accent-primary uppercase tracking-widest hover:brightness-110">
+               <Download size={14} /> DL_SITAR_RAW
+            </button>
          </div>
-      </div>
+      </header>
 
-      <div className="flex-1 p-4 overflow-y-auto custom-scrollbar bg-transparent">
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <div className="flex-1 p-8 overflow-y-auto custom-scrollbar relative">
+        <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+
+        <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-8">
           {filteredImages.map((img: any) => (
             <motion.div 
               key={img.id}
-              className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-none overflow-hidden group cursor-pointer flex h-[160px]"
-              whileHover={{ borderColor: 'var(--neon-bull)' }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="glass-panel neo-border rounded-sm overflow-hidden group cursor-pointer flex flex-col h-[380px] hover:bg-white/5 transition-all"
             >
-              {/* IMAGE COLUMN */}
-              <div className="w-[240px] shrink-0 relative overflow-hidden border-r border-[var(--border-subtle)]">
+              {/* IMAGE HUD */}
+              <div className="h-[220px] shrink-0 relative overflow-hidden bg-black">
                 <img 
                   src={img.url} 
                   alt={img.location} 
-                  style={{ filter: `grayscale(1) brightness(${brightness}%)` }}
-                  className="w-full h-full object-cover group-hover:grayscale-0 group-hover:scale-105 transition-all duration-700" 
+                  style={{ filter: `grayscale(1) brightness(${brightness}%) contrast(1.1)` }}
+                  className="w-full h-full object-cover group-hover:grayscale-0 group-hover:scale-110 transition-all duration-1000 opacity-80 group-hover:opacity-100" 
                 />
-                <div className="absolute inset-0 bg-[var(--neon-bull)] opacity-10 group-hover:opacity-0 transition-opacity mix-blend-color"></div>
                 
-                <div className="absolute top-2 left-2 flex gap-1">
-                   <div className="bg-[var(--bg-overlay)] backdrop-blur-md border border-[var(--border-subtle)] px-1.5 py-0.5 text-[8px] text-[var(--text-primary)] uppercase font-bold tracking-widest">{img.type}</div>
+                {/* CROSSHAIR OVERLAY */}
+                <div className="absolute inset-0 border border-white/5 pointer-events-none group-hover:border-accent-primary/20 transition-all" />
+                <div className="absolute top-1/2 left-0 w-full h-px bg-white/5 pointer-events-none group-hover:bg-accent-primary/10" />
+                <div className="absolute top-0 left-1/2 w-px h-full bg-white/5 pointer-events-none group-hover:bg-accent-primary/10" />
+
+                <div className="absolute top-4 left-4 flex gap-2">
+                   <div className="glass-panel px-2 py-1 border-white/10 text-[9px] text-white font-mono font-bold tracking-widest uppercase rounded-sm flex items-center gap-2">
+                      <Zap size={10} className="text-accent-primary" /> {img.type}
+                   </div>
+                   <div className="glass-panel px-2 py-1 border-white/10 text-[9px] text-white font-mono font-bold tracking-widest uppercase rounded-sm">
+                      {img.res} RES
+                   </div>
+                </div>
+
+                <div className="absolute bottom-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                   <button className="p-2 bg-slate-950/80 border border-white/20 text-white rounded-sm hover:bg-accent-primary hover:text-slate-950 transition-all">
+                      <Maximize2 size={14} />
+                   </button>
                 </div>
               </div>
               
-              {/* CONTENT COLUMN */}
-              <div className="flex-1 flex flex-col p-3 min-w-0">
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex flex-col">
-                    <span className="text-[12px] font-bold text-[var(--text-primary)] group-hover:text-[var(--neon-bull)] transition-colors tracking-[0.1em] truncate">{img.location.toUpperCase()}</span>
-                    <span className="text-[9px] text-[var(--text-tertiary)] uppercase mt-0.5 tracking-wider">{img.time} // COVERT: {img.cloud}</span>
+              {/* CONTENT AREA */}
+              <div className="flex-1 flex flex-col p-6 min-w-0 bg-slate-900/40">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-black text-white group-hover:text-accent-primary transition-colors tracking-tight uppercase truncate w-48">{img.location}</span>
+                    <div className="flex items-center gap-2">
+                       <Clock size={10} className="text-slate-500" />
+                       <span className="text-[9px] text-slate-500 font-mono uppercase font-bold">{img.time} // COVERT: {img.cloud}</span>
+                    </div>
                   </div>
-                  <div className={`px-2 py-0.5 rounded-none border text-[9px] font-bold tracking-widest uppercase ${
-                    img.signal === 'BULLISH' ? 'bg-[var(--neon-dim-bull)] border-[var(--neon-bull)]/50 text-[var(--neon-bull)]' : 
-                    img.signal === 'BEARISH' ? 'bg-[var(--neon-dim-bear)] border-[var(--neon-bear)]/50 text-[var(--neon-bear)]' : 
-                    'bg-[var(--bg-overlay)] border-[var(--border-subtle)] text-[var(--text-secondary)]'
+                  <div className={`px-2 py-1 rounded-sm border text-[9px] font-black tracking-widest uppercase shadow-2xl ${
+                    img.signal === 'BULLISH' ? 'bg-bull/10 border-bull/30 text-bull shadow-glow-bull' : 
+                    img.signal === 'BEARISH' ? 'bg-bear/10 border-bear/30 text-bear shadow-glow-bear' : 
+                    'bg-white/5 border-white/10 text-slate-400'
                   }`}>
                     {img.signal}
                   </div>
                 </div>
 
-                <div className="bg-[var(--bg-overlay)] p-2 rounded-none border border-[var(--border-subtle)] flex-1 mb-2 overflow-hidden relative">
-                   <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-[var(--text-tertiary)] opacity-30"></div>
-                   <p className="text-[10px] text-[var(--text-secondary)] leading-snug line-clamp-3">
-                     {img.detail}
+                <div className="bg-void/60 p-3 border-l-2 border-accent-primary/40 rounded-sm flex-1 mb-4 relative overflow-hidden">
+                   <p className="text-[11px] text-slate-300 leading-relaxed italic font-sans">
+                     "{img.detail}"
                    </p>
                 </div>
 
-                <div className="flex justify-between items-center mt-auto border-t border-[var(--border-subtle)] pt-1.5">
-                   <div className="flex gap-4">
-                      <div className="flex flex-col">
-                         <span className="text-[8px] text-[var(--text-tertiary)] uppercase tracking-widest">RES</span>
-                         <span className="text-[10px] text-[var(--text-primary)] font-bold">{img.res}</span>
-                      </div>
+                <footer className="flex justify-between items-center pt-4 border-t border-white/5">
+                   <div className="flex items-center gap-4 text-[8px] font-mono text-slate-600 font-bold uppercase tracking-widest">
+                      <span>Ref: S2-T99</span>
+                      <span>Auth: 0x99</span>
                    </div>
-                   <span className="text-[9px] text-[var(--neon-bull)] font-bold tracking-[0.2em] group-hover:underline uppercase flex items-center gap-1">ANALYZE <span className="opacity-0 group-hover:opacity-100 transition-opacity">→</span></span>
-                </div>
+                   <button className="text-[10px] text-accent-primary font-black tracking-[0.2em] uppercase flex items-center gap-2 hover:underline group/btn">
+                      Induce_Alpha <Lucide.ArrowRight size={12} className="group-hover/btn:translate-x-1 transition-transform" />
+                   </button>
+                </footer>
               </div>
             </motion.div>
           ))}
         </div>
       </div>
 
-      {/* FEED FOOTER */}
-      <div className="h-8 border-t border-[var(--border-subtle)] flex items-center justify-between px-3 bg-[var(--bg-surface)] shrink-0">
-         <span className="text-[9px] text-[var(--text-tertiary)] uppercase tracking-[0.2em] font-bold">L1 Stream: <span className="text-[var(--neon-bull)]">Encrypted / SECURE</span></span>
-         <span className="text-[9px] text-[var(--text-tertiary)] uppercase tracking-[0.2em] font-bold">Next TX: <span className="text-[var(--text-primary)]">12:44:02 UTC</span></span>
-      </div>
+      {/* OSINT FOOTER */}
+      <footer className="h-10 border-t border-white/5 bg-slate-950 px-6 flex items-center justify-between shrink-0">
+         <div className="flex gap-8 items-center">
+            <span className="text-[9px] text-slate-600 font-bold uppercase tracking-widest flex items-center gap-2">
+               <div className="w-1.5 h-1.5 rounded-full bg-bull" /> L1_STREAM: SECURE
+            </span>
+            <span className="text-[9px] text-slate-600 font-bold uppercase tracking-widest flex items-center gap-2">
+               <div className="w-1.5 h-1.5 rounded-full bg-accent-primary" /> ORBIT_SYNC: NOMINAL
+            </span>
+         </div>
+         <span className="text-[9px] font-mono text-slate-700 uppercase tracking-tighter">DATASET_REF_ID: SAT-OSINT-MASTER-2026</span>
+      </footer>
     </div>
   );
 };

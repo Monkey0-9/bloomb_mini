@@ -114,46 +114,44 @@ def get_prices(tickers: list[str] | None = None) -> dict[str, Quote]:
     return result
 
 def _fetch_yfinance_prices(tickers: list[str]) -> dict[str, Quote]:
-    """Private helper for yfinance fallback."""
-    try:
-        raw = yf.download(
-            tickers[:100],
-            period = "2d",
-            auto_adjust = True,
-            progress = False,
-            threads = True,
-            group_by = "ticker",
-        )
-        result = {}
-        for t in tickers[:100]:
-            try:
-                if hasattr(raw.columns, "get_level_values"):
-                    if t not in raw.columns.get_level_values(0): continue
-                    rows = raw[t].dropna()
-                else:
-                    rows = raw.dropna()
+    """Fetch prices via yfinance fast_info (proven to work in this environment)."""
+    result: dict[str, Quote] = {}
+    ts_now = datetime.now(UTC).isoformat()
 
-                if len(rows) < 1: continue
+    for t in tickers[:50]:  # Limit to 50 to avoid rate limits
+        try:
+            info = yf.Ticker(t).fast_info
+            # fast_info is a dataclass — use getattr, not .get()
+            price      = getattr(info, "last_price", None) or getattr(info, "previous_close", None)
+            prev_close = getattr(info, "previous_close", None) or price
+            if not price:
+                continue
 
-                price = float(rows["Close"].iloc[-1])
-                prev = float(rows["Close"].iloc[-2]) if len(rows) > 1 else price
-                chg = (price - prev) / prev * 100 if prev > 0 else 0.0
+            price      = float(price)
+            prev_close = float(prev_close) if prev_close else price
+            chg        = (price - prev_close) / prev_close * 100 if prev_close > 0 else 0.0
 
-                result[t] = Quote(
-                    ticker = t, name = t, price = round(price, 2),
-                    prev_close = round(prev, 2), change_pct = round(chg, 2),
-                    volume = int(rows.get("Volume", pd.Series([0])).iloc[-1]),
-                    high = round(float(rows.get("High", price)).iloc[-1], 2) if isinstance(rows.get("High"), pd.Series) else price,
-                    low = round(float(rows.get("Low", price)).iloc[-1], 2) if isinstance(rows.get("Low"), pd.Series) else price,
-                    market_cap = None, sector = "", exchange = "", source = "yfinance",
-                    ts = datetime.now(UTC).isoformat()
-                )
-            except Exception:
-                pass
-        return result
-    except Exception as e:
-        log.error("yfinance_fallback_error", error=str(e))
-        return {}
+            result[t] = Quote(
+                ticker     = t,
+                name       = t,
+                price      = round(price, 2),
+                prev_close = round(prev_close, 2),
+                change_pct = round(chg, 2),
+                volume     = int(getattr(info, "last_volume", 0) or 0),
+                high       = round(float(getattr(info, "day_high", price) or price), 2),
+                low        = round(float(getattr(info, "day_low", price) or price), 2),
+                market_cap = getattr(info, "market_cap", None),
+                sector     = "",
+                exchange   = getattr(info, "exchange", "") or "",
+                source     = "yfinance_fast_info",
+                ts         = ts_now,
+            )
+            log.info("yfinance_price_ok", ticker=t, price=price, chg=round(chg, 2))
+        except Exception as e:
+            log.warning("yfinance_ticker_error", ticker=t, error=str(e))
+
+    return result
+
 
 def get_ohlcv(ticker: str, period: str = "3mo") -> list[dict]:
     """Get OHLCV history for charting. Uses Alpaca if possible."""

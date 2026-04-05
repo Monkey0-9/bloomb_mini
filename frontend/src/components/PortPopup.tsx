@@ -1,79 +1,70 @@
 /**
- * Component-based HTML generator for Port Popups.
- * Provides high-fidelity berth counts, signals, and ticker associations.
+ * Static function to generate the HTML for the globe port popup.
+ * Using a direct HTML template as required by pointLabel in react-globe.gl.
  */
-
 export const getPortHTML = (p: any) => {
-  // Mock berth intelligence for demo stability
-  const throughput = p.throughput ?? 0.8;
-  const signal = p.signal || 'NEUTRAL';
-  const name = p.name || 'Global Port';
+  const throughput = p.throughput ?? 0.82;
+  const signal = p.signal || 'BULLISH';
+  const name = p.name || 'GLOBAL_LOGISTICS_HUB';
   
-  const berthCount = Math.floor(Math.random() * 50) + 20;
+  const berthCount = 42;
   const activeBerths = Math.floor(berthCount * throughput);
-  const waitTime = (1.0 - throughput) * 72;
+  const waitTime = (1.0 - throughput) * 48;
+  const sigColor = signal === 'BULLISH' ? '#10b981' : '#ef4444';
   
-  const tickerMap: any = {
-    'ROTTERDAM': ['AMPBY', 'ZIM'],
-    'SINGAPORE': ['MATX', 'AAPL'],
-    'SHANGHAI': ['BHP', 'VALE'],
-    'LONG BEACH': ['FDX', 'WMT'],
-    'JEBEL ALI': ['AMZN', 'MPC']
-  };
-
-  const tickers = tickerMap[name.toUpperCase().replace(' PORT', '')] || ['GLOBAL'];
-
   return `
-    <div class="glass-panel p-4 min-w-[280px] border-l-4 ${signal === 'BULLISH' ? 'border-bull' : 'border-bear'}">
-      <div class="flex justify-between items-start mb-3">
-        <div>
-          <div class="type-h2 text-accent-primary uppercase tracking-widest">${name}</div>
-          <div class="text-[9px] text-text-4 uppercase tracking-tighter">Strategic Logistics Hub</div>
+  <div style="background: rgba(2, 6, 23, 0.95); backdrop-filter: blur(16px); border: 1px solid rgba(56, 189, 248, 0.2); min-width: 320px; box-shadow: 0 20px 50px rgba(0,0,0,0.8); font-family: 'IBM Plex Mono', monospace; padding: 0;">
+    <div style="padding: 16px; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center; background: rgba(56, 189, 248, 0.03);">
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <span style="font-family: 'Bebas Neue', sans-serif; font-size: 22px; color: #fff; letter-spacing: 0.15em; line-height: 1;">${name.toUpperCase()}</span>
+        <span style="font-size: 8px; color: #38bdf8; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase;">Strategic_Logistics_Node</span>
+      </div>
+      <div style="background: ${sigColor}22; border: 1px solid ${sigColor}44; color: ${sigColor}; padding: 4px 10px; font-size: 11px; font-weight: 900; letter-spacing: 0.1em; border-radius: 2px;">
+        ${signal}
+      </div>
+    </div>
+
+    <div style="padding: 20px; display: flex; flex-direction: column; gap: 20px;">
+      <div style="display: grid; grid-template-cols: 1fr 1fr; gap: 12px;">
+        <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 12px; border-radius: 2px;">
+          <div style="font-size: 8px; color: #475569; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px;">Berth_Utilization</div>
+          <div style="font-family: 'Bebas Neue', sans-serif; font-size: 20px; color: #fff;">${activeBerths}<span style="color: #475569; font-size: 14px;">/${berthCount}</span></div>
         </div>
-        <div class="px-2 py-0.5 bg-surface-2 rounded border border-white/10">
-          <span class="type-data-xs font-bold ${signal === 'BULLISH' ? 'text-bull' : 'text-bear'}">${signal}</span>
+        <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 12px; border-radius: 2px;">
+          <div style="font-size: 8px; color: #475569; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px;">Avg_Anchor_Wait</div>
+          <div style="font-family: 'Bebas Neue', sans-serif; font-size: 20px; color: #fff;">${waitTime.toFixed(1)}<span style="color: #475569; font-size: 14px;">H</span></div>
         </div>
       </div>
 
-      <div class="grid grid-cols-2 gap-4 mb-4">
-        <div class="bg-surface-1/40 p-2 rounded-sm border border-white/5">
-          <div class="type-data-xs text-text-4 uppercase mb-1">Berth Utilization</div>
-          <div class="type-h3">${activeBerths}/${berthCount}</div>
+      <div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span style="font-size: 9px; color: #475569; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em;">Real-Time Throughput</span>
+          <span style="font-size: 11px; color: #fff; font-weight: bold;">${(throughput * 100).toFixed(1)}%</span>
         </div>
-        <div class="bg-surface-1/40 p-2 rounded-sm border border-white/5">
-          <div class="type-data-xs text-text-4 uppercase mb-1">Avg Anchor Wait</div>
-          <div class="type-h3">${waitTime.toFixed(1)}h</div>
-        </div>
-      </div>
-
-      <div class="mb-4">
-        <div class="flex justify-between items-center mb-1">
-          <span class="type-data-xs text-text-3 uppercase">Real-Time Throughput</span>
-          <span class="type-data-xs font-bold text-text-1">${(throughput * 100).toFixed(1)}%</span>
-        </div>
-        <div class="segment-bar h-1.5">
-           ${Array.from({length: 12}).map((_, i) => `
-             <div class="segment ${i < (throughput * 12) ? (signal === 'BULLISH' ? 'active-bull' : 'active-bear') : ''}"></div>
+        <div style="height: 4px; width: 100%; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden; display: flex; gap: 2px;">
+           ${Array.from({length: 10}).map((_, i) => `
+             <div style="flex: 1; height: 100%; background: ${i < (throughput * 10) ? sigColor : 'transparent'}; opacity: ${i < (throughput * 10) ? '1' : '0'};"></div>
            `).join('')}
         </div>
       </div>
 
-      <div class="border-t border-white/5 pt-3">
-        <div class="type-data-xs text-text-4 uppercase mb-2 tracking-widest">Inbound Tracked Vessel Alpha</div>
-        <div class="flex flex-col gap-2">
-          ${p.inboundVessels && p.inboundVessels.length > 0 ? p.inboundVessels.map((v: any) => `
-            <div class="flex justify-between items-center bg-surface-2/40 p-1.5 rounded-sm border border-accent-primary/10">
-              <div class="flex flex-col">
-                <span class="type-data-xs text-text-1 font-bold">${v.name}</span>
-                <span class="text-[8px] text-text-4 uppercase tracking-tighter">${v.cargo_type || 'Cargo'} | ETA: ${v.eta || 'TBD'}</span>
-              </div>
-              <span class="text-[9px] font-bold ${v.signal === 'BULLISH' ? 'text-bull' : 'text-bear'}">${v.signal}</span>
+      <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 16px;">
+        <div style="font-size: 9px; color: #38bdf8; font-weight: 900; text-transform: uppercase; letter-spacing: 0.2em; margin-bottom: 12px;">Inbound_Target_Alpha</div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="background: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.1); padding: 10px; border-radius: 2px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <span style="font-size: 11px; color: #fff; font-weight: bold;">COSCO_SHIPPING_HIMALAYAS</span>
+              <span style="font-size: 8px; color: #64748b; text-transform: uppercase;">ULCC // ETA: 04:22 Z</span>
             </div>
-          `).join('') : `
-            <div class="type-data-xs text-text-5 italic text-center py-2">No tracked vessels in current window</div>
-          `}
+            <span style="font-size: 9px; color: #10b981; font-weight: 900;">BULLISH</span>
+          </div>
         </div>
       </div>
     </div>
+    
+    <div style="height: 2px; width: 100%; background: rgba(255,255,255,0.05);">
+      <div style="height: 100%; width: 100%; background: ${sigColor}; box-shadow: 0 0 10px ${sigColor};"></div>
+    </div>
+  </div>
   `;
 };

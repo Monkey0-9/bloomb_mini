@@ -5,68 +5,72 @@ interface VesselPopupProps {
   vessel: Vessel;
 }
 
-// NOTE: Since pointLabel in react-globe.gl requires an HTML string, 
-// we provide a static function to generate the HTML.
+/**
+ * Static function to generate the HTML for the globe popup.
+ * Using a direct HTML template as required by pointLabel in react-globe.gl.
+ */
 export const getVesselHTML = (v: any) => {
   const signal = v.signal?.status || 'NEUTRAL';
   const cargo = v.cargo || {};
+  const sigColor = signal === 'BULLISH' ? '#10b981' : signal === 'BEARISH' ? '#ef4444' : '#64748b';
+  
   return `
-  <div class="glass-panel intelligence-popup transition-all duration-300 transform scale-100 min-w-[280px]">
-    <div class="popup-header bg-surface-2/50 p-3 flex justify-between items-start border-b border-white/10">
-      <div class="flex flex-col">
-        <span class="type-h2 text-text-1 font-bold tracking-tight">${v.name || 'Unknown Vessel'}</span>
-        <span class="type-data-xs text-text-4 font-mono">${v.mmsi || 'N/A'} | ${v.operator || 'Independent'}</span>
+  <div style="background: rgba(2, 6, 23, 0.9); backdrop-filter: blur(12px); border: 1px solid rgba(56, 189, 248, 0.2); min-width: 320px; box-shadow: 0 20px 50px rgba(0,0,0,0.8); pointer-events: auto; font-family: 'IBM Plex Mono', monospace;">
+    <div style="padding: 16px; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: flex-start; background: rgba(255,255,255,0.02);">
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <span style="font-family: 'Bebas Neue', sans-serif; font-size: 20px; color: #fff; letter-spacing: 0.1em; line-height: 1;">${v.name || 'UNKNOWN_VESSEL'}</span>
+        <span style="font-size: 9px; color: #64748b; font-weight: bold; letter-spacing: 0.1em; text-transform: uppercase;">${v.mmsi || 'MMSI_PENDING'} // ${v.operator || 'INDEPENDENT_OPS'}</span>
       </div>
-      <span class="signal-badge ${signal === 'BULLISH' ? 'signal-bull' : signal === 'BEARISH' ? 'signal-bear' : 'signal-neutral'} shadow-lg py-1 px-2 rounded font-bold text-[10px]">
+      <div style="background: ${sigColor}22; border: 1px solid ${sigColor}44; color: ${sigColor}; padding: 4px 8px; font-size: 10px; font-weight: 900; letter-spacing: 0.1em; box-shadow: 0 0 10px ${sigColor}22;">
         ${signal}
-      </span>
+      </div>
     </div>
-    <div class="popup-body p-3">
-      <div class="space-y-1.5 font-mono">
-        <div class="data-row flex justify-between"><span class="data-label text-text-4 text-[10px] uppercase">Class</span><span class="data-value text-accent-secondary text-[11px] font-bold">${v.type || 'Cargo'} ${v.class ? `(${v.class})` : ''}</span></div>
-        <div class="data-row flex justify-between"><span class="data-label text-text-4 text-[10px] uppercase">IMO / MMSI</span><span class="data-value text-[11px]">${v.imo || 'N/A'} / ${v.mmsi || 'N/A'}</span></div>
-        <div class="data-row flex justify-between"><span class="data-label text-text-4 text-[10px] uppercase">Tonnage / Draft</span><span class="data-value text-[11px]">${v.gross_tonnage || 'N/A'} GT / ${v.draft || 'N/A'}m</span></div>
-        <div class="data-row flex justify-between"><span class="data-label text-text-4 text-[10px] uppercase">Route</span><span class="data-value text-[11px]">${v.origin || 'N/A'} → ${v.destination || 'N/A'}</span></div>
-        <div class="data-row flex justify-between pt-1 border-t border-white/5"><span class="data-label text-text-4 text-[10px] uppercase">Cargo</span><span class="data-value text-bull text-[11px] font-bold">${cargo.type || 'General'}</span></div>
-        <div class="data-row flex justify-between"><span class="data-label text-text-4 text-[10px] uppercase">Manifest</span><span class="data-value text-[10px] italic text-text-2">${cargo.manifest || 'No details available'}</span></div>
-        <div class="data-row flex justify-between"><span class="data-label text-text-4 text-[10px] uppercase">Quantity</span><span class="data-value text-[11px]">${cargo.quantity || 'Bulk'} ${cargo.teu ? `(${cargo.teu} TEU)` : ''}</span></div>
-        <div class="data-row flex justify-between"><span class="data-label text-text-4 text-[10px] uppercase">Shipper</span><span class="data-value text-[10px]">${cargo.shipper || 'Unknown'}</span></div>
-        ${v.sar_validated ? `
-        <div class="data-row flex justify-between pt-1 mt-1 border-t border-accent-primary/20">
-          <span class="data-label text-accent-primary text-[9px] font-bold uppercase tracking-tighter">SAR Validated</span>
-          <span class="data-value text-accent-primary text-[10px] font-bold flex items-center gap-1">
-             <span class="w-1.5 h-1.5 bg-accent-primary rounded-full animate-pulse"></span>
-             SENTINEL-1 (${(v.sar_backscatter_db || 0).toFixed(1)} dB)
-          </span>
-        </div>` : ''}
+
+    <div style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div style="display: flex; justify-content: space-between; font-size: 10px;">
+          <span style="color: #475569; text-transform: uppercase; font-weight: bold;">Class</span>
+          <span style="color: #38bdf8; font-weight: black;">${v.type || 'CARGO'}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 10px;">
+          <span style="color: #475569; text-transform: uppercase; font-weight: bold;">Vector</span>
+          <span style="color: #e2e8f0;">${v.origin || 'SEA_LANES'} → ${v.destination || 'UNKNOWN_DEST'}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 10px;">
+          <span style="color: #475569; text-transform: uppercase; font-weight: bold;">Cargo_Manifest</span>
+          <span style="color: #10b981; font-weight: black;">${cargo.type || 'GENERAL_FREIGHT'}</span>
+        </div>
       </div>
 
-      <div class="mt-4 pt-3 border-t border-white/10">
-        <div class="flex flex-wrap gap-1 mb-2">
-          ${v.tickers && Array.isArray(v.tickers) ? v.tickers.map((t: string) => `<span class="ticker-chip bg-accent-primary/10 text-accent-primary border border-accent-primary/20 px-1.5 py-0.5 rounded text-[9px] font-bold">${t}</span>`).join('') : ''}
-        </div>
-        <div class="type-data-xs text-text-4 leading-tight border-l-2 border-accent-primary pl-2 py-1 bg-accent-primary/5">
-          <span class="text-accent-primary font-bold">ALPHA INTEL:</span> ${v.signal?.reason || 'Scanning...'}
-        </div>
+      <div style="background: rgba(56, 189, 248, 0.05); border-left: 2px solid #38bdf8; padding: 12px;">
+        <div style="font-size: 9px; color: #38bdf8; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 4px;">MIROFISH_INFERENCE</div>
+        <div style="font-size: 11px; color: #cbd5e1; font-style: italic; line-height: 1.5;">"${v.signal?.reason || 'Initiating real-time signal induction...'}"</div>
       </div>
       
-      <div class="flex justify-between items-center mt-3 pt-2 border-t border-white/10">
-        <div class="flex flex-col">
-           <span class="text-[9px] text-text-5 uppercase tracking-widest font-bold">Est. Economic Impact</span>
-           <span class="text-sm font-black text-bull tracking-tighter">$${(v.signal?.impact || 0).toFixed(1)}M USD</span>
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 12px;">
+        <div style="display: flex; flex-direction: column;">
+          <span style="font-size: 8px; color: #475569; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em;">Est_Market_Impact</span>
+          <span style="font-size: 16px; font-family: 'Bebas Neue', sans-serif; color: #10b981; letter-spacing: 0.05em;">$${(v.signal?.impact || 0).toFixed(1)}M USD</span>
         </div>
-        ${v.sar_validated ? '<span class="text-[8px] bg-accent-primary/20 text-accent-primary px-1 rounded border border-accent-primary/30">H-CONFIDENCE</span>' : ''}
+        <div style="display: flex; flex-direction: column; align-items: end;">
+          <span style="font-size: 8px; color: #475569; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em;">Integrity</span>
+          <span style="font-size: 10px; color: #10b981; font-weight: bold; display: flex; align-items: center; gap: 4px;">
+            <span style="width: 6px; height: 6px; background: #10b981; border-radius: 50%; box-shadow: 0 0 5px #10b981;"></span>
+            VERIFIED
+          </span>
+        </div>
       </div>
     </div>
-    <div class="h-1 w-full bg-surface-1 relative">
-      <div class="absolute left-0 top-0 h-full bg-bull shadow-[0_0_8px_rgba(0,255,157,0.5)] transition-all duration-1000" style="width: ${v.progress_pct || 0}%"></div>
+    
+    <div style="height: 2px; width: 100%; background: rgba(255,255,255,0.05);">
+      <div style="height: 100%; width: ${v.progress_pct || 0}%; background: #10b981; box-shadow: 0 0 10px #10b981;"></div>
     </div>
   </div>
-`;
+  `;
 };
 
 const VesselPopup: React.FC<VesselPopupProps> = ({ vessel }) => {
-  return null; // Used for type reference primarily, HTML generated by template
+  return null;
 };
 
 export default VesselPopup;

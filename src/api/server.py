@@ -3,9 +3,10 @@ import json
 import random
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import structlog
-from fastapi import Body, Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.agents.analyst import AnalystAgent
@@ -22,6 +23,7 @@ from src.api.agents.signal_alpha import SignalAgent
 from src.api.agents.thermal import ThermalAgent
 from src.api.orchestrator import SignalOrchestrator
 from src.api.routes import alpha, command, execution, market, portfolio
+from src.intelligence.black_swan import get_black_swan_detector
 from src.intelligence.engine import GlobalIntelligenceEngine
 from src.intelligence.mirofish_agent import agent as mirofish_agent
 from src.intelligence.swarm import run_swarm_simulation
@@ -36,6 +38,8 @@ from src.live.orbits import get_all_eo_satellites
 from src.live.portfolio import get_portfolio_status
 from src.live.thermal import get_global_thermal
 from src.live.vessels import detect_dark_vessels, get_all_vessels
+from src.swarm.graph_evolver import get_graph_evolver
+from src.swarm.graphrag_engine import get_graphrag_engine
 from src.swarm.simulation_orchestrator import get_orchestrator
 
 log = structlog.get_logger(__name__)
@@ -67,6 +71,8 @@ async def lifespan(app: FastAPI):
 
     # Background task: push live updates to all connected WebSocket clients
     asyncio.create_task(_live_push_loop())
+    # Background task: autonomously evolve the knowledge graph
+    asyncio.create_task(_graph_evolution_loop())
     yield
 
 app = FastAPI(title="SatTrade Intelligence Terminal v2", version="2.0.0", lifespan=lifespan)
@@ -80,6 +86,19 @@ app.include_router(market.router)
 app.include_router(execution.router)
 app.include_router(portfolio.router)
 app.include_router(command.router)
+
+async def _graph_evolution_loop():
+    """Autonomously evolve the knowledge graph from live news every 15 minutes."""
+    evolver = get_graph_evolver()
+    while True:
+        try:
+            news = await get_all_news(max_per_feed=20)
+            news_data = [{"title": n.title, "summary": n.summary} for n in news]
+            await evolver.evolve_from_news(news_data)
+            log.info("graph_evolution_complete", news_count=len(news_data))
+        except Exception as e:
+            log.error("graph_evolution_failed", error=str(e))
+        await asyncio.sleep(900) # 15 minutes
 
 async def _live_push_loop():
     """Push live aircraft + squawk alerts to all WebSocket clients every 10s."""
@@ -197,6 +216,7 @@ async def vessels_all():
         "vessels": [
             {
                 "mmsi":     v.mmsi,
+                "id":       v.mmsi,
                 "name":     v.name,
                 "lat":      v.lat,
                 "lon":      v.lon,
@@ -205,6 +225,8 @@ async def vessels_all():
                 "type":     v.vessel_type_name,
                 "type_code":v.vessel_type,
                 "length":   v.length,
+                "status":   v.status or "Under Way",
+                "cargo":    v.cargo_type,
                 "dark":     v.dark_vessel,
                 "source":   v.source,
             }
@@ -437,18 +459,18 @@ async def websocket_endpoint(websocket: WebSocket):
         if websocket in _clients:
             _clients.remove(websocket)
 @app.post("/api/intelligence/godmode")
-async def godmode_intelligence(payload: dict = Body(...)):
+async def godmode_intelligence(payload: dict[str, Any] = Body(...)):
     """
     Unified GodMode Multi-Agent Intelligence Comparison.
-    Orchestrates Cautious, Aggressive, and Standard personas in parallel.
+    Orchestrates ALL active personas in parallel.
     """
     query = payload.get("query", "Assess global trade stability and equity risk.")
     
-    # Execute all three personas in parallel for the GodMode comparison
+    # Execute all personas in parallel for the GodMode comparison
+    personas = ["Cautious", "Aggressive", "Standard", "Weather-Sensitive", "Economic-Sensitive"]
     tasks = [
-        mirofish_agent.generate_forecast(requirement=query, persona="Cautious"),
-        mirofish_agent.generate_forecast(requirement=query, persona="Aggressive"),
-        mirofish_agent.generate_forecast(requirement=query, persona="Standard")
+        mirofish_agent.generate_forecast(requirement=query, persona=p)
+        for p in personas
     ]
     
     results = await asyncio.gather(*tasks)
@@ -456,12 +478,40 @@ async def godmode_intelligence(payload: dict = Body(...)):
     return {
         "query": query,
         "timestamp": datetime.now(UTC).isoformat(),
-        "responses": {
-            "cautious": results[0],
-            "aggressive": results[1],
-            "standard": results[2]
-        }
+        "responses": dict(zip(personas, results))
     }
+
+# ─── GRAPHRAG ───────────────────────────────────────────────────────────────
+@app.get("/api/intelligence/graph/summary")
+async def graph_summary():
+    engine = get_graphrag_engine()
+    return engine.get_graph_summary()
+
+@app.get("/api/intelligence/graph/impact/{facility_id}")
+async def graph_impact(facility_id: str, event_type: str = "thermal_anomaly", severity: float = 0.5):
+    engine = get_graphrag_engine()
+    return engine.analyze_facility_event(facility_id, event_type, severity)
+
+@app.get("/api/intelligence/graph/path")
+async def graph_path(start: str, end: str):
+    engine = get_graphrag_engine()
+    paths = engine.graph.find_paths(start, end)
+    return {
+        "paths": [
+            {
+                "nodes": [n.name for n in p.nodes],
+                "reasoning": p.reasoning,
+                "impact_score": p.impact_score
+            }
+            for p in paths
+        ]
+    }
+
+# ─── BLACK SWAN ─────────────────────────────────────────────────────────────
+@app.get("/api/intelligence/black-swan")
+async def black_swan_alerts():
+    detector = get_black_swan_detector()
+    return await detector.detect_events()
 
 # ─── ALIASES FOR FRONTEND COMPATIBILITY ────────────────────────────────────
 @app.get("/api/intelligence/aircraft")

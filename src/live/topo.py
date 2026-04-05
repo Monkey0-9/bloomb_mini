@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 import httpx
 import structlog
 from .base import SeedProvider
@@ -10,7 +12,7 @@ class TopoProvider(SeedProvider):
     Used for simulating chokepoint navigation for VLCC tankers.
     """
     
-    async def fetch(self, lat: float, lon: float) -> dict:
+    async def fetch(self, lat: float, lon: float) -> dict[str, Any]:
         """Fetch ocean depth/elevation for a specific coordinate."""
         try:
             # GEBCO 2020 dataset for ocean depth
@@ -19,17 +21,17 @@ class TopoProvider(SeedProvider):
                 resp = await client.get(url)
                 if resp.status_code == 200:
                     results = resp.json().get("results", [])
-                    return results[0] if results else {}
+                    return cast(dict[str, Any], results[0] if results else {})
         except Exception as e:
             log.error("topo_fetch_failed", error=str(e))
         return {}
 
-    def process(self, data: dict) -> dict:
+    def process(self, data: dict[str, Any]) -> dict[str, Any]:
         """Process elevation into depth and risk for deep-draft vessels."""
         elevation = data.get("elevation", 0.0)
         # Deep draft vessels (like VLCCs) need at least 20m depth
         # Elevation is negative for ocean depth
-        depth = -elevation if elevation < 0 else 0
+        depth = -elevation if elevation < 0 else 0.0
         risk_level = "LOW"
         if depth < 20 and depth > 0:
             risk_level = "HIGH" # Risk of grounding
@@ -40,7 +42,7 @@ class TopoProvider(SeedProvider):
             "is_land": elevation >= 0
         }
 
-async def get_ocean_depth(lat: float, lon: float) -> dict:
+async def get_ocean_depth(lat: float, lon: float) -> dict[str, Any]:
     """Helper for the swarm simulation."""
     provider = TopoProvider()
     data = await provider.fetch(lat, lon)

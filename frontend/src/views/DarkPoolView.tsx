@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, ShieldAlert, Cpu } from 'lucide-react';
+import * as Lucide from 'lucide-react';
+
+const Activity = Lucide.Activity || Lucide.Zap;
 
 const DarkPoolView = () => {
+  const { ShieldAlert, Cpu } = Lucide;
   const [pools, setPools] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);

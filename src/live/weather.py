@@ -3,7 +3,7 @@ SatTrade Weather Intelligence — Open-Meteo Fusion.
 Correlates global weather patterns with supply chain disruptions.
 """
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import structlog
@@ -33,7 +33,8 @@ class WeatherProvider(SeedProvider):
                     }
                 )
                 if resp.status_code == 200:
-                    return resp.json().get("current_weather", {})
+                    data = resp.json().get("current_weather", {})
+                    return cast(dict[str, Any], data)
         except Exception as e:
             log.error("weather_fetch_failed", error=str(e))
         return {}

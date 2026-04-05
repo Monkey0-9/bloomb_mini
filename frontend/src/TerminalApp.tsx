@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { 
   useTerminalStore, 
   useSignalStore, 
@@ -6,8 +6,8 @@ import {
   useFlightStore,
   useSatelliteStore
 } from './store';
-import { executeCommand } from './lib/commandEngine';
-import type { ViewType } from './store/uiStore';
+import { useEquityStore } from './store/equityStore';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Views
 import WorldView from './views/WorldView';
@@ -17,7 +17,6 @@ import SatelliteFeed from './views/SatelliteFeed';
 import GlobalEquitiesView from './views/GlobalEquitiesView';
 import RawTerminalMode from './views/RawTerminalMode';
 import ResearchView from './views/ResearchView';
-import EducationView from './views/EducationView';
 import FeedView from './views/FeedView';
 import EconomicsView from './views/EconomicsView';
 import EarningsView from './views/EarningsView';
@@ -33,7 +32,6 @@ import InsiderView from './views/InsiderView';
 import WarRoomView from './views/WarRoomView';
 import SandboxView from './views/SandboxView';
 import GodModeView from './views/GodModeView';
-import { useEquityStore } from './store/equityStore';
 
 // Components
 import Masthead from './components/Masthead';
@@ -43,37 +41,19 @@ import WatchlistPanel from './components/WatchlistPanel';
 import GlobalGlobe from './components/GlobalGlobe';
 import TerminalOutput from './components/TerminalOutput';
 import IntelligenceDetails from './components/IntelligenceDetails';
-import { ErrorBoundary } from './components/ErrorBoundary';
-
-const UI_LAYOUT = {
-  activeView: 'satellite_feed' as ViewType,
-  sidebarExpanded: true,
-};
+import AlertHub from './components/AlertHub';
 
 export default function TerminalApp() {
-  const { selectedView, sidebarExpanded, setView } = useTerminalStore();
-  const [command, setCommand] = useState('');
-  const terminalRef = useRef<HTMLDivElement>(null);
-
+  const { selectedView, setView } = useTerminalStore();
   const { fetchSignals, fetchSatFeed, fetchWorkflows } = useSignalStore();
   const { fetchEquities } = useEquityStore();
   const { fetchFlights } = useFlightStore();
   const { fetchVessels } = useVesselStore();
   const { fetchSatellites } = useSatelliteStore();
 
-  // Global Data Induction for Terminal Parity
   useEffect(() => {
-    // Initial data fetch
-    fetchSignals();
-    fetchSatFeed();
-    fetchWorkflows();
-    fetchEquities();
-    fetchFlights();
-    fetchVessels();
-    fetchSatellites();
-    
-    // Set up polling intervals
-    const interval = setInterval(() => {
+    // Initial induction
+    const fetchData = () => {
       fetchSignals();
       fetchSatFeed();
       fetchWorkflows();
@@ -81,101 +61,45 @@ export default function TerminalApp() {
       fetchFlights();
       fetchVessels();
       fetchSatellites();
-    }, 30000); // 30s refresh cycle
-    
-    return () => clearInterval(interval);
-  }, [fetchSignals, fetchFlights, fetchVessels, fetchSatellites, fetchEquities]);
-
-  // Keyboard layout for Terminal Parity
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === 'k') {
-        e.preventDefault();
-        // Focus search/command bar
-      }
-      // GodMode Shortcut (Inspired by smol-ai/GodMode)
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'g') {
-        e.preventDefault();
-        setView('godmode');
-      }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setView]);
 
-  const handleCommand = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!command.trim()) return;
-    
-    // Virtual Engine Execution
-    await executeCommand(command);
-    
-    setCommand('');
-  };
-
-  console.log("TerminalApp Rendering", { selectedView });
+    fetchData();
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
+  }, [fetchSignals, fetchSatFeed, fetchWorkflows, fetchEquities, fetchFlights, fetchVessels, fetchSatellites]);
 
   const renderView = () => {
-    try {
-      switch (selectedView) {
-        case 'world':
-          return <WorldView />;
-        case 'charts':
-          return <ChartView />;
-        case 'matrix':
-          return <SignalMatrix />;
-        case 'satellite_feed':
-          return <SatelliteFeed />;
-        case 'global_equities':
-          return <GlobalEquitiesView />;
-        case 'terminal':
-          return <RawTerminalMode />;
-        case 'research':
-          return <ResearchView />;
-        case 'education':
-          return <EducationView />;
-        case 'news':
-          return <NewsHubView />;
-        case 'feed':
-          return <FeedView />;
-        case 'economics':
-          return <EconomicsView />;
-        case 'earnings':
-          return <EarningsView />;
-        case 'portfolio':
-          return <PortfolioView />;
-        case 'launchpad':
-          return <LaunchpadView />;
-        case 'alerts':
-          return <AlertsView />;
-        case 'workflow':
-          return <WorkflowView />;
-        case 'settings':
-          return <SettingsView />;
-        case 'dark_pools':
-          return <DarkPoolView />;
-        case 'insider':
-          return <InsiderView />;
-        case 'war_room':
-          return <WarRoomView />;
-        case 'sandbox':
-          return <SandboxView />;
-        case 'godmode':
-          return <GodModeView />;
-        case 'help':
-          return <HelpView />;
-        default:
-          return <SatelliteFeed />;
-      }
-    } catch (err) {
-      return <div className="p-8 text-bear">Render Error: {String(err)}</div>;
+    switch (selectedView) {
+      case 'world':           return <WorldView />;
+      case 'charts':          return <ChartView />;
+      case 'matrix':          return <SignalMatrix />;
+      case 'satellite_feed':  return <SatelliteFeed />;
+      case 'global_equities': return <GlobalEquitiesView />;
+      case 'terminal':        return <RawTerminalMode />;
+      case 'research':        return <ResearchView />;
+      case 'news':            return <NewsHubView />;
+      case 'feed':            return <FeedView />;
+      case 'economics':       return <EconomicsView />;
+      case 'earnings':        return <EarningsView />;
+      case 'portfolio':       return <PortfolioView />;
+      case 'launchpad':       return <LaunchpadView />;
+      case 'alerts':          return <AlertsView />;
+      case 'workflow':        return <WorkflowView />;
+      case 'settings':        return <SettingsView />;
+      case 'dark_pools':      return <DarkPoolView />;
+      case 'insider':         return <InsiderView />;
+      case 'war_room':        return <WarRoomView />;
+      case 'sandbox':         return <SandboxView />;
+      case 'godmode':         return <GodModeView />;
+      case 'help':            return <HelpView />;
+      default:                return <WorldView />;
     }
   };
 
   return (
-    <div className="flex h-screen w-screen bg-void text-text-1 overflow-hidden font-inter selection:bg-accent-primary selection:text-black">
-      {/* GLOBAL BACKGROUND GLOBE (GPU ACCELERATED) */}
-      <div className="fixed inset-0 z-0 pointer-events-none opacity-40">
+    <div className="flex h-screen w-screen bg-void text-slate-200 overflow-hidden font-sans selection:bg-accent-primary selection:text-void">
+      {/* Background Globe Ambience */}
+      <div className="fixed inset-0 z-0 pointer-events-none opacity-20">
         <GlobalGlobe />
       </div>
 
@@ -185,52 +109,65 @@ export default function TerminalApp() {
         <Masthead />
         
         <div className="flex-1 flex min-h-0">
-          <div className="flex-1 flex flex-col min-w-0 border-r border-border-1 bg-void/40 backdrop-blur-sm">
-            <div className="flex-1 min-h-0 overflow-hidden relative">
-              <ErrorBoundary widgetName="Main View">
+          {/* Main Viewport */}
+          <div className="flex-1 flex flex-col min-w-0 border-r border-white/5">
+            <div className="flex-1 min-h-0 overflow-hidden relative bg-slate-900/20 backdrop-blur-sm">
+              <ErrorBoundary widgetName="Main Viewport">
                 {renderView()}
               </ErrorBoundary>
             </div>
 
-            {/* COMMAND BAR — Bloomberg Command Line Interface */}
-            <div className="h-12 bg-surface-base border-t border-border-1 flex items-center px-4 gap-4 shrink-0 shadow-2xl">
-              <div className="flex items-center gap-2 text-accent-primary animate-pulse">
-                <span className="type-data-xs font-bold font-mono">SAT-OS {'>'}</span>
+            {/* Command Interface Strip */}
+            <div className="h-10 bg-slate-950 border-t border-white/5 flex items-center px-4 gap-4 shrink-0">
+              <div className="flex items-center gap-2 text-accent-primary">
+                <span className="text-[10px] font-black font-mono tracking-tighter">CMD{'>'}</span>
               </div>
-              <form onSubmit={handleCommand} className="flex-1">
-                <input
-                  type="text"
-                  value={command}
-                  onChange={(e) => setCommand(e.target.value)}
-                  placeholder="EX: .SENTINEL BRASKEM | .VAR PORTFOLIO_1 | .AIS ZIM_QUICK"
-                  className="w-full bg-transparent border-none outline-none text-accent-primary type-data-sm placeholder:text-text-4/30 font-mono tracking-wider no-ring"
-                />
-              </form>
-              <div className="flex items-center gap-4 text-text-4 font-mono text-[10px]">
-                <span className="opacity-40">RSID: {Math.random().toString(16).slice(2, 8).toUpperCase()}</span>
-                <span className="text-bull font-bold">● SYSTEM NOMINAL</span>
+              <input 
+                type="text" 
+                placeholder="EXECUTE KERNEL DIRECTIVE..."
+                className="flex-1 bg-transparent border-none outline-none text-[11px] text-accent-primary font-mono placeholder:text-slate-700"
+              />
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                   <div className="w-1.5 h-1.5 rounded-full bg-bull animate-pulse shadow-[0_0_8px_#10b981]" />
+                   <span className="text-[9px] font-mono font-bold text-bull uppercase">System Nominal</span>
+                </div>
+                <div className="h-4 w-px bg-white/10" />
+                <span className="text-[9px] font-mono text-slate-600 uppercase tracking-widest">Auth: LEVEL_4_CLEARANCE</span>
               </div>
             </div>
           </div>
 
-          <aside className="w-96 flex flex-col shrink-0 bg-surface-base/80 backdrop-blur-md hidden xl:flex">
-             <div className="flex-1 min-h-0 flex flex-col border-b border-border-1">
-                <ErrorBoundary widgetName="Watchlist">
-                  <WatchlistPanel />
-                </ErrorBoundary>
+          {/* Right Sidebar Panels */}
+          <aside className="w-80 flex flex-col shrink-0 bg-slate-950/80 backdrop-blur-md hidden 2xl:flex">
+             <div className="flex-1 min-h-0 flex flex-col border-b border-white/5">
+                <div className="h-8 bg-white/5 flex items-center px-4 shrink-0">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Active Watchlist</span>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <ErrorBoundary widgetName="Watchlist">
+                    <WatchlistPanel />
+                  </ErrorBoundary>
+                </div>
              </div>
-             <div className="flex-1 flex flex-col min-h-0 border-t border-border-1">
-                <ErrorBoundary widgetName="Intelligence Feed">
-                  <IntelligenceFeed />
-                </ErrorBoundary>
+             <div className="flex-1 min-h-0 flex flex-col">
+                <div className="h-8 bg-white/5 flex items-center px-4 shrink-0">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Signal Intelligence</span>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <ErrorBoundary widgetName="Intelligence Feed">
+                    <IntelligenceFeed />
+                  </ErrorBoundary>
+                </div>
              </div>
           </aside>
         </div>
       </main>
 
-      {/* GLOBAL OVERLAYS */}
+      {/* Global Modals & Overlays */}
       <TerminalOutput />
       <IntelligenceDetails />
+      <AlertHub />
     </div>
   );
 }

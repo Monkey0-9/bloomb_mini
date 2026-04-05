@@ -1,19 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, AlertTriangle, Radio, ShieldAlert, Navigation, Flame, Zap, ChevronRight } from 'lucide-react';
-import { useTerminalStore, useSignalStore, useFlightStore, useVesselStore } from '../store';
+import * as Lucide from 'lucide-react';
+import { useSignalStore, useTerminalStore, useFlightStore, useVesselStore } from '../store';
+
+const Activity = Lucide.Activity || Lucide.Zap;
 
 const getEventColor = (type: string) => {
   switch (type.toUpperCase()) {
-    case 'CONFLICT': return 'text-[#FF4560] border-[#FF4560] shadow-[0_0_10px_#FF456040]';
-    case 'EARTHQUAKE': return 'text-[#FEB019] border-[#FEB019] shadow-[0_0_10px_#FEB01940]';
-    case 'AIRCRAFT': return 'text-[#BD93F9] border-[#BD93F9] shadow-[0_0_10px_#BD93F940]';
-    case 'VESSEL': return 'text-[#00E396] border-[#00E396] shadow-[0_0_10px_#00E39640]';
-    case 'THERMAL': return 'text-[#FF7A3D] border-[#FF7A3D] shadow-[0_0_10px_#FF7A3D40]';
-    default: return 'text-[#38bdf8] border-[#38bdf8] shadow-[0_0_10px_#38bdf840]';
+    case 'CONFLICT': return 'text-bear border-bear/30 shadow-glow-bear';
+    case 'EARTHQUAKE': return 'text-amber-500 border-amber-500/30';
+    case 'AIRCRAFT': return 'text-sky-400 border-sky-400/30';
+    case 'VESSEL': return 'text-bull border-bull/30 shadow-glow-bull';
+    case 'THERMAL': return 'text-orange-500 border-orange-500/30';
+    default: return 'text-accent-primary border-accent-primary/30 shadow-glow-sky';
   }
 };
 
 const getEventIcon = (type: string) => {
+  const { ShieldAlert, Navigation, Flame, Radio } = Lucide;
   switch (type.toUpperCase()) {
     case 'CONFLICT': return <ShieldAlert size={12} />;
     case 'EARTHQUAKE': return <Activity size={12} />;
@@ -42,12 +45,12 @@ const getTimestamp = (dateStr: string | null) => {
 };
 
 const IntelligenceFeed = () => {
+  const { Zap, ChevronRight, RefreshCw } = Lucide;
   const { signals, fetchSignals } = useSignalStore();
   const { flights, fetchFlights } = useFlightStore();
   const { vessels, fetchVessels } = useVesselStore();
   const { setSelectedIntelligenceEvent } = useTerminalStore();
   
-  // Create a unified master timeline of all global intel
   const [feed, setFeed] = useState<any[]>([]);
 
   useEffect(() => {
@@ -57,10 +60,8 @@ const IntelligenceFeed = () => {
   }, [fetchSignals, fetchFlights, fetchVessels]);
 
   useEffect(() => {
-    // We synthesize a feed based on incoming stores
     const events: any[] = [];
     
-    // Add thermal signals
     signals.forEach((s: any, i) => {
       if(i > 15) return;
       events.push({
@@ -76,7 +77,6 @@ const IntelligenceFeed = () => {
       });
     });
 
-    // Add high-interest flights (military/cargo)
     flights.forEach((f: any) => {
       if(f.category !== 'COMMERCIAL') {
         events.push({
@@ -86,111 +86,99 @@ const IntelligenceFeed = () => {
           type: 'AIRCRAFT',
           title: `[${f.category}] ${f.callsign}`,
           location: f.route || 'Airspace',
-          detail: `Operator: ${f.operator} | Alt: ${f.position?.alt_ft || f.alt_ft || 0}ft | Cargo: ${f.cargo || 'Unknown'}`,
+          detail: `Operator: ${f.operator} | Alt: ${f.position?.alt_ft || f.alt_ft || 0}ft`,
           severity: f.category === 'MILITARY' ? 'HIGH' : 'INFO',
           raw: f
         });
       }
     });
 
-    // Add high-interest vessels (dark ships / tankers)
     vessels.forEach((v: any) => {
-      if(v.cargo !== 'Unknown') {
+      const isHighInterest = v.dark || ['Cargo', 'Tanker'].includes(v.type);
+      if (isHighInterest) {
         events.push({
-          id: `vs-${v.id || v.mmsi}`,
+          id: `vs-${v.mmsi || v.id}`,
           time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
           timestamp: Date.now(),
           type: 'VESSEL',
-          title: `[MARINE] MMSI ${v.id || v.mmsi}`,
+          title: `[MARINE] ${v.name || 'VESSEL'}`,
           location: v.destination || 'Maritime Route',
-          detail: `Status: ${v.status} | Cargo: ${v.cargo}`,
-          severity: 'INFO',
+          detail: `Status: ${v.status || 'Under Way'} | Cargo: ${v.cargo || 'General'}`,
+          severity: v.dark ? 'HIGH' : 'INFO',
           raw: v
         });
       }
     });
 
-    // Sort by timestamp descending
     events.sort((a, b) => b.timestamp - a.timestamp);
     setFeed(events);
   }, [signals, flights, vessels]);
 
   return (
-    <div className="flex flex-col h-full bg-[#020617]/90 backdrop-blur-xl border-l border-white/5 font-mono select-none overflow-hidden relative">
-      {/* Neo-Header */}
-      <div className="p-3 border-b border-white/10 flex flex-col gap-1 bg-gradient-to-r from-white/5 to-transparent shrink-0">
+    <div className="flex flex-col h-full bg-slate-950/60 backdrop-blur-xl border-l border-white/5 font-mono select-none overflow-hidden relative">
+      <header className="p-4 border-b border-white/10 flex flex-col gap-2 bg-slate-900/40 shrink-0">
           <div className="flex justify-between items-center">
-            <span className="text-[11px] text-white font-bold tracking-[0.3em] flex items-center gap-2 uppercase font-sans">
-              <Zap size={14} className="text-[#38bdf8]" /> GLOBAL INTELLIGENCE HUB
+            <span className="text-[11px] text-white font-black tracking-[0.3em] flex items-center gap-2 uppercase font-display">
+              <Zap size={14} className="text-accent-primary animate-pulse" /> Unified_Intelligence
             </span>
-            <div className="flex gap-1.5">
-               <div className="w-1.5 h-1.5 rounded-full bg-[#FF4560] shadow-[0_0_8px_#FF4560] animate-pulse"></div>
-               <div className="w-1.5 h-1.5 rounded-full bg-[#00E396] shadow-[0_0_8px_#00E396] animate-pulse" style={{animationDelay: '300ms'}}></div>
-               <div className="w-1.5 h-1.5 rounded-full bg-[#38bdf8] shadow-[0_0_8px_#38bdf8] animate-pulse" style={{animationDelay: '600ms'}}></div>
+            <div className="flex gap-1.5 items-center">
+               <div className="w-1.5 h-1.5 rounded-full bg-bear shadow-glow-bear animate-pulse" />
+               <div className="w-1.5 h-1.5 rounded-full bg-bull shadow-glow-bull animate-pulse" style={{animationDelay: '300ms'}} />
             </div>
           </div>
-          <div className="text-[9px] text-slate-400 tracking-widest mt-1 uppercase">Live Unified Threat & Assets Stream</div>
-      </div>
-      
-      {/* Event Timeline */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3">
-        {feed.length === 0 && (
-          <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs tracking-widest animate-pulse">
-            ACQUIRING SATELLITE UPLINK...
+          <div className="flex justify-between items-center">
+            <span className="text-[9px] text-slate-500 tracking-[0.2em] uppercase font-bold">L7_SYNTHETIC_STREAM</span>
+            <span className="text-[8px] font-mono text-accent-primary opacity-60">INGEST_RATE: 4.2 Gbps</span>
           </div>
-        )}
-        
-        {feed.map((ev, i) => {
-          const colorClass = getEventColor(ev.type);
-          return (
-            <div key={`${ev.id}-${i}`} className="relative pl-4 group" onClick={() => setSelectedIntelligenceEvent(ev)}>
-              {/* Timeline Stem */}
-              <div className="absolute left-[7px] top-4 bottom-[-10px] w-px bg-white/10 group-last:hidden"></div>
-              
-              {/* Timeline Node */}
-              <div className={`absolute left-0 top-1.5 w-[15px] h-[15px] rounded-full bg-[#020617] border-2 flex items-center justify-center z-10 transition-transform group-hover:scale-125 ${colorClass}`}>
-                <div className="w-1 h-1 bg-current rounded-full" />
-              </div>
-
-              {/* Event Card */}
-              <div className="bg-white/5 border border-white/5 rounded p-2.5 hover:bg-white/10 hover:border-white/20 transition-all cursor-crosshair ml-2 overflow-hidden relative">
-                <div className={`absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-current to-transparent opacity-0 group-hover:opacity-100 transition-opacity ${colorClass.split(' ')[0]}`}></div>
+      </header>
+      
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
+        {feed.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center space-y-4 opacity-20">
+            <RefreshCw size={32} className="animate-spin text-white" />
+            <span className="text-[10px] font-bold uppercase tracking-[0.4em]">Acquiring_Uplink</span>
+          </div>
+        ) : (
+          feed.map((ev, i) => {
+            const colorClass = getEventColor(ev.type);
+            return (
+              <div key={`${ev.id}-${i}`} className="relative pl-6 group cursor-crosshair" onClick={() => setSelectedIntelligenceEvent(ev)}>
+                {/* Timeline Stem */}
+                <div className="absolute left-[7px] top-6 bottom-[-16px] w-px bg-white/5 group-last:hidden" />
                 
-                <div className="flex justify-between items-start mb-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-[9px] font-bold tracking-widest flex items-center gap-1 uppercase ${colorClass.split(' ')[0]}`}>
-                      {getEventIcon(ev.type)} {ev.type}
+                {/* Timeline Node */}
+                <div className={`absolute left-0 top-1.5 w-[16px] h-[16px] rounded-sm bg-slate-950 border flex items-center justify-center z-10 transition-all group-hover:scale-110 group-hover:border-white/40 ${colorClass.split(' ')[0]} ${colorClass.split(' ')[1]}`}>
+                  {getEventIcon(ev.type)}
+                </div>
+
+                <div className="glass-panel p-4 neo-border rounded-sm group-hover:bg-white/5 transition-all relative overflow-hidden">
+                  <div className={`absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-current to-transparent opacity-0 group-hover:opacity-40 transition-opacity ${colorClass.split(' ')[0]}`} />
+                  
+                  <div className="flex justify-between items-start mb-2">
+                    <span className={`text-[9px] font-black tracking-widest uppercase ${colorClass.split(' ')[0]}`}>
+                      {ev.type} // {ev.severity}
+                    </span>
+                    <span className="text-[9px] font-mono text-slate-500 font-bold tracking-tighter">
+                      {ev.time}
                     </span>
                   </div>
-                  <span className="text-[9px] text-slate-500 tracking-wider">
-                    {ev.time}
-                  </span>
-                </div>
 
-                <div className="text-[11px] text-slate-200 font-bold font-sans tracking-wide leading-tight mb-1">
-                  {ev.title}
-                </div>
-                
-                <div className="text-[9px] text-slate-400 tracking-widest uppercase mb-1.5 flex items-center gap-1.5">
-                  <div className="w-1 h-1 bg-slate-400 rounded-full"></div> {ev.location}
-                </div>
-                
-                <div className="bg-black/40 border border-white/5 p-1.5 text-[9px] text-slate-300 font-mono tracking-tight flex justify-between items-center rounded-sm">
-                   <div className="truncate pr-2">{ev.detail}</div>
-                   <div className={`px-1 rounded-sm text-[8px] tracking-widest font-bold ${ev.severity === 'CRITICAL' || ev.severity === 'HIGH' ? 'bg-[#FF4560]/20 text-[#FF4560]' : 'bg-[#38bdf8]/20 text-[#38bdf8]'}`}>
-                     {ev.severity}
-                   </div>
-                </div>
-
-                <div className="mt-2 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div className="flex items-center gap-1 text-[8px] text-accent-primary font-bold uppercase tracking-widest">
-                        Inspect Signal <ChevronRight size={10} />
-                    </div>
+                  <h4 className="text-[12px] text-white font-bold tracking-tight mb-2 group-hover:text-accent-primary transition-colors leading-tight">{ev.title}</h4>
+                  
+                  <div className="flex items-center gap-2 mb-3">
+                    <Lucide.MapPin size={10} className="text-slate-600" />
+                    <span className="text-[9px] text-slate-500 uppercase font-bold tracking-widest">{ev.location}</span>
+                  </div>
+                  
+                  <div className="bg-black/40 border border-white/5 p-2 rounded-sm flex justify-between items-center group-hover:border-white/10 transition-colors">
+                     <span className="text-[10px] text-slate-400 font-mono truncate pr-4">{ev.detail}</span>
+                     <ChevronRight size={12} className="text-slate-700 group-hover:text-accent-primary transition-colors" />
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
     </div>
   );

@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useTerminalStore } from '../store';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Activity, Globe, Zap, Shield, AlertTriangle, Search } from 'lucide-react';
-import { api } from '../api/client';
+import * as Lucide from 'lucide-react';
+
+const Activity = Lucide.Activity || Lucide.Zap;
 
 const FeedView = () => {
+  const { Globe, Zap, Shield, AlertTriangle, Search } = Lucide;
   const [finNews, setFinNews] = useState<any[]>([]);
   const [shipNews, setShipNews] = useState<any[]>([]);
   const [milNews, setMilNews] = useState<any[]>([]);
