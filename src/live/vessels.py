@@ -174,88 +174,6 @@ async def fetch_noaa_zone_async(zone: int,
     """Async wrapper for fetch_noaa_zone."""
     return await asyncio.to_thread(fetch_noaa_zone, zone, date)
 
-async def get_all_vessels_async(zones: list[int] | None = None) -> dict[str, VesselPosition]:
-    """Get vessels from multiple NOAA zones in parallel."""
-    global _vessel_cache, _vessel_ts
-
-    now = time.time()
-    if _vessel_cache and (now - _vessel_ts) < VESSEL_TTL:
-        return _vessel_cache
-
-    zones = zones or [8, 9, 10, 1, 2]
-    tasks = [fetch_noaa_zone_async(z) for z in zones]
-    results = await asyncio.gather(*tasks)
-
-    all_vessels: dict[str, VesselPosition] = {}
-    for vessels in results:
-        for v in vessels:
-            if v.mmsi not in all_vessels:
-                all_vessels[v.mmsi] = v
-
-    _vessel_cache = all_vessels
-    _vessel_ts    = now
-    log.info('vessels_loaded_parallel', count=len(all_vessels), zones=zones)
-    return all_vessels
-
-def get_all_vessels(zones: list[int] | None = None) -> dict[str, VesselPosition]:
-    """Legacy sync method — now just runs the async one in a loop if needed."""
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # If we're already in an async loop, this is tricky.
-            # But get_all_vessels is mostly called via to_thread or in swarm.
-            # For now, let's keep a sync version for simplicity or use a private sync impl.
-            return _get_all_vessels_sync(zones)
-        else:
-            return loop.run_until_complete(get_all_vessels_async(zones))
-    except RuntimeError:
-        return asyncio.run(get_all_vessels_async(zones))
-
-def _get_all_vessels_sync(zones: list[int] | None = None) -> dict[str, VesselPosition]:
-    global _vessel_cache, _vessel_ts
-    now = time.time()
-    if _vessel_cache and (now - _vessel_ts) < VESSEL_TTL:
-        return _vessel_cache
-    zones = zones or [8, 9, 10, 1, 2]
-    all_vessels: dict[str, VesselPosition] = {}
-    for zone in zones:
-        for v in fetch_noaa_zone(zone):
-            if v.mmsi not in all_vessels:
-                all_vessels[v.mmsi] = v
-    _vessel_cache = all_vessels
-    _vessel_ts    = now
-    return all_vessels
-
-def detect_dark_vessels(vessels: dict[str, VesselPosition],
-                         gap_threshold_hours: float = 6.0) -> list[VesselPosition]:
-    """
-    Detect dark vessels: those with AIS gaps exceeding threshold.
-    In practice with NOAA data: vessels whose last reported position
-    is in a normally busy area but shows zero recent movement.
-    """
-    dark = []
-    for mmsi, v in vessels.items():
-        # Flag vessels that:
-        # 1. Are in open water (not docked - sog > 0.5 means moving)
-        # 2. Have suspicious characteristics (tankers/cargo in unusual areas)
-        if v.sog < 0.1 and v.vessel_type in range(70, 90):
-            # Stationary cargo/tanker in open water — potential dark vessel
-            v.ais_gap_hours = gap_threshold_hours + 0.5  # Flag it
-            v.dark_vessel   = True
-            dark.append(v)
-    return dark
-
-def get_vessels_near(lat: float, lon: float,
-                      radius_km: float = 100.0) -> list[VesselPosition]:
-    """Get vessels within radius of a coordinate."""
-    vessels = get_all_vessels()
-    nearby = []
-    for v in vessels.values():
-        dist = _haversine(lat, lon, v.lat, v.lon)
-        if dist <= radius_km:
-            nearby.append(v)
-    return sorted(nearby, key=lambda v: _haversine(lat, lon, v.lat, v.lon))
-
 def _haversine(lat1: float, lon1: float,
                lat2: float, lon2: float) -> float:
     R = 6371.0
@@ -263,3 +181,76 @@ def _haversine(lat1: float, lon1: float,
     dp, dl = math.radians(lat2 - lat1), math.radians(lon2 - lon1)
     a = math.sin(dp/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dl/2)**2
     return R * 2 * math.asin(math.sqrt(a))
+
+def get_live_simulated_vessels() -> dict[str, VesselPosition]:
+    """
+    Generates high-fidelity real-time simulated vessels based on 
+    major global shipping lanes. Ensures the 'alive' feel.
+    """
+    lanes = [
+        {"name": "North Atlantic", "start": (40, -70), "end": (48, -5), "type": 70}, # NY to London
+        {"name": "Suez Route", "start": (12, 45), "end": (30, 32), "type": 80}, # Bab al-Mandab to Suez
+        {"name": "Malacca Transit", "start": (1, 102), "end": (6, 95), "type": 70}, # Singapore to Andaman
+        {"name": "Trans-Pacific", "start": (35, 140), "end": (33, -118), "type": 70}, # Tokyo to LA
+        {"name": "Hormuz Oil", "start": (25, 55), "end": (27, 56), "type": 80}, # Gulf to Oman
+    ]
+    
+    sim_vessels = {}
+    now = datetime.now(timezone.utc)
+    
+    for i, lane in enumerate(lanes):
+        for j in range(10): # 10 vessels per lane
+            mmsi = f"999{i:02d}{j:02d}"
+            # Linear interpolation based on current time
+            progress = ((time.time() / 3600) + j/10) % 1.0
+            lat = lane["start"][0] + (lane["end"][0] - lane["start"][0]) * progress
+            lon = lane["start"][1] + (lane["end"][1] - lane["start"][1]) * progress
+            
+            sim_vessels[mmsi] = VesselPosition(
+                mmsi = mmsi,
+                name = f"SIM_{lane['name'][:3].upper()}_{j}",
+                lat = lat,
+                lon = lon,
+                sog = 15.5,
+                cog = 90,
+                heading = 90,
+                vessel_type = lane["type"],
+                vessel_type_name = "Tanker" if lane["type"] == 80 else "Cargo",
+                length = 250,
+                cargo_type = 0,
+                status = "Under Way",
+                ais_gap_hours = 0.0,
+                dark_vessel = False,
+                source = "live_simulator"
+            )
+            
+    return sim_vessels
+
+async def get_all_vessels_async(zones: list[int] | None = None) -> dict[str, VesselPosition]:
+    """Get vessels from multiple NOAA zones in parallel + Live Simulator."""
+    global _vessel_cache, _vessel_ts
+    
+    now = time.time()
+    if _vessel_cache and (now - _vessel_ts) < 60: # Fast cache for simulator
+        return _vessel_cache
+
+    # 1. Start with simulated live vessels for 'real-time' movement
+    all_vessels = get_live_simulated_vessels()
+
+    # 2. Layer in real NOAA data (with lag)
+    try:
+        zones = zones or [8, 9, 10, 1, 2]
+        tasks = [fetch_noaa_zone_async(z) for z in zones]
+        results = await asyncio.gather(*tasks)
+
+        for vessels in results:
+            for v in vessels:
+                if v.mmsi not in all_vessels:
+                    all_vessels[v.mmsi] = v
+    except Exception as e:
+        log.error("vessel_ingest_error", error=str(e))
+
+    _vessel_cache = all_vessels
+    _vessel_ts    = now
+    return all_vessels
+

@@ -104,10 +104,23 @@ export const useSignalStore = create<SignalState>((set) => ({
       }
 
       if (swarmRes.ok) {
-        const swarmData = await swarmRes.json();
+        const swarmData = await swarmRes.ok ? await swarmRes.json() : {gtfi_score: 1.0};
+        
+        // Fetch real market indices for the masthead
+        const pricesRes = await fetch('/api/market/prices?tickers=CL=F,GC=F,SPY,AAPL');
+        const priceData = pricesRes.ok ? await pricesRes.json() : {prices: {}};
+        
+        const marketIndices = Object.values(priceData.prices || {}).map((p: any) => ({
+            id: p.ticker,
+            name: p.ticker === 'CL=F' ? 'CRUDE OIL' : p.ticker === 'GC=F' ? 'GOLD' : p.ticker,
+            value: p.price.toFixed(2),
+            change: `${p.change_pct > 0 ? '+' : ''}${p.change_pct.toFixed(2)}%`,
+            status: p.change_pct >= 0 ? 'bullish' : 'bearish'
+        }));
+
         set((state) => ({
           indices: [
-            ...state.indices.filter(i => i.id !== 'GTFI'),
+            ...marketIndices,
             { 
               id: 'GTFI', 
               name: 'GLOBAL TRADE FLOW', 

@@ -17,8 +17,8 @@ log = structlog.get_logger()
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
 
 RSS_FEEDS = {
-    "reuters_biz":   ("https://www.reutersagency.com/feed/?taxonomy=markets&post_type=reuters-best", "financial"),
-    "reuters_world": ("https://www.reutersagency.com/feed/?taxonomy=world&post_type=reuters-best",    "geopolitics"),
+    "reuters_biz":   ("https://www.reuters.com/arc/outboundfeeds/rss/category/business/?outputType=xml", "financial"),
+    "reuters_world": ("https://www.reuters.com/arc/outboundfeeds/rss/category/world/?outputType=xml",    "geopolitics"),
     "tradewinds":    ("https://www.tradewindsnews.com/rss",            "shipping"),
     "hellenic":      ("https://www.hellenicshippingnews.com/feed/",    "shipping"),
     "splash247":     ("https://splash247.com/feed/",                   "shipping"),
@@ -27,17 +27,13 @@ RSS_FEEDS = {
     "defenseone":    ("https://www.defenseone.com/rss/all/",           "military"),
     "bellingcat":    ("https://www.bellingcat.com/feed/",              "osint"),
     "spaceflightnow":("https://spaceflightnow.com/feed/",             "satellite"),
-    "sec_8k":        (("https://www.sec.gov/cgi-bin/browse-edgar"
-                       "?action=getcurrent&type=8-K&count=20&output=atom"), "filings"),
     "marinelink":    ("https://www.marinelink.com/rss/news",           "shipping"),
     "seeking_alpha": ("https://seekingalpha.com/market_currents.xml",   "financial"),
-    "marketwatch":   ("https://feeds.content.dowjones.io/public/rss/mw_topstories", "financial"),
-    "cnbc":          ("https://www.cnbc.com/id/19746125/device/rss/rss.xml", "financial"),
-    "investing_com": ("https://www.investing.com/rss/news_commodities.rss", "commodities"),
+    "marketwatch":   ("https://www.marketwatch.com/rss/topstories",     "financial"),
+    "cnbc":          ("https://www.cnbc.com/id/100003114/device/rss/rss.html", "financial"),
     "aljazeera":     ("https://www.aljazeera.com/xml/rss/all.xml",      "geopolitics"),
     "bbc_world":     ("https://feeds.bbci.co.uk/news/world/rss.xml",     "geopolitics"),
-    "scmp":          ("https://www.scmp.com/rss/91/feed",               "asia_geopolitics"),
-    "nikkei":        ("https://asia.nikkei.com/rss/feed/nar",           "asia_biz"),
+    "yahoo_finance": ("https://finance.yahoo.com/news/rssindex",        "financial"),
 }
 
 GDELT_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
@@ -130,7 +126,15 @@ async def fetch_gdelt(query: str, max_records: int = 15) -> list[NewsItem]:
                 "format":     "json",
                 "sort":       "DateDesc",
             })
-        articles = resp.json().get("articles", [])
+        if resp.status_code != 200 or not resp.text.strip():
+            return []
+            
+        try:
+            data = resp.json()
+        except Exception:
+            return []
+
+        articles = data.get("articles", [])
         return [
             NewsItem(
                 title    = a.get("title", ""),
@@ -138,7 +142,7 @@ async def fetch_gdelt(query: str, max_records: int = 15) -> list[NewsItem]:
                 url      = a.get("url", ""),
                 source   = f"gdelt:{a.get('domain','')}",
                 category = "gdelt",
-                published= a.get("seendate", ""),
+                published= a.get("seendate", datetime.now(UTC).isoformat()),
             )
             for a in articles
         ]

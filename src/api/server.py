@@ -108,23 +108,45 @@ async def _graph_evolution_loop():
         await asyncio.sleep(900) # 15 minutes
 
 async def _live_push_loop():
-    """Push live aircraft + squawk alerts to all WebSocket clients every 10s."""
+    """Push live aircraft, vessels, thermal, and news alerts to all WebSocket clients every 15s."""
     while True:
-        await asyncio.sleep(10)
+        await asyncio.sleep(15)
         if not _clients:
             continue
         try:
-            # Run synchronous fetches in threads to avoid blocking the event loop
+            # 1. Aircraft (GeoJSON)
             aircraft  = await asyncio.to_thread(fetch_aircraft)
-            squawks   = await asyncio.to_thread(get_squawk_alerts)
             geojson   = await asyncio.to_thread(to_geojson, aircraft)
-            payload   = json.dumps({
+            
+            # 2. Vessels (Subset for performance)
+            vessels_dict = await asyncio.to_thread(get_all_vessels)
+            vessels_list = list(vessels_dict.values())[:50]
+            
+            # 3. Latest News
+            news_items = await get_all_news(max_per_feed=2)
+            
+            # 4. Thermal Clusters
+            thermal = await get_global_thermal(top_n=10)
+            
+            payload = json.dumps({
                 "type":    "LIVE_UPDATE",
                 "ts":      datetime.now(UTC).isoformat(),
-                "aircraft":geojson,
-                "squawks": squawks,
-                "summary": geojson["meta"],
+                "aircraft": geojson,
+                "vessels": [
+                    {"mmsi": v.mmsi, "lat": v.lat, "lon": v.lon, "name": v.name, "type": v.vessel_type_name}
+                    for v in vessels_list
+                ],
+                "news": [
+                    {"source": n.source, "text": n.title, "time": n.published[11:16]}
+                    for n in news_items[:5]
+                ],
+                "thermal": [
+                    {"name": c.facility_name, "sigma": c.anomaly_sigma, "signal": c.signal}
+                    for c in thermal
+                ],
+                "summary": geojson.get("meta", {}),
             })
+            
             dead = []
             for ws in _clients:
                 try:
@@ -134,8 +156,8 @@ async def _live_push_loop():
             for ws in dead:
                 if ws in _clients:
                     _clients.remove(ws)
-        except Exception:
-            pass
+        except Exception as e:
+            log.error("live_push_error", error=str(e))
 
 # ─── HEALTH ──────────────────────────────────────────────────────────────────
 @app.get("/health")

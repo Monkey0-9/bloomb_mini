@@ -8,6 +8,7 @@ import {
 } from './store';
 import { useEquityStore } from './store/equityStore';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { connectLive } from './api/client';
 
 // Views
 import WorldView from './views/WorldView';
@@ -50,6 +51,8 @@ export default function TerminalApp() {
   const { fetchFlights } = useFlightStore();
   const { fetchVessels } = useVesselStore();
   const { fetchSatellites } = useSatelliteStore();
+  const { handleWSUpdate: handleSignalWS } = useSignalStore();
+  const { handleWSUpdate: handleVesselWS } = useVesselStore();
 
   useEffect(() => {
     // Initial induction
@@ -64,9 +67,20 @@ export default function TerminalApp() {
     };
 
     fetchData();
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
+    const interval = setInterval(fetchData, 60000); // Refresh every minute
+    
+    // Connect live WebSocket
+    const unsub = connectLive((data) => {
+        handleSignalWS(data);
+        handleVesselWS(data);
+    });
+
+    return () => {
+        clearInterval(interval);
+        unsub();
+    };
   }, [fetchSignals, fetchSatFeed, fetchWorkflows, fetchEquities, fetchFlights, fetchVessels, fetchSatellites]);
+
 
   const renderView = () => {
     switch (selectedView) {
