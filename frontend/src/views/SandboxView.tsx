@@ -6,10 +6,14 @@ const SandboxView = () => {
   const [result, setResult] = useState<any>(null);
 
   const handleSimulate = async () => {
-    const resp = await fetch('/api/sandbox/inject', {
+    const resp = await fetch('/api/sandbox/simulate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ location, impact })
+      body: JSON.stringify({ 
+        title: `${impact} at ${location}`,
+        location_id: location.toLowerCase(), 
+        severity: impact === 'BLOCKADE' ? 0.9 : 0.4
+      })
     });
     const data = await resp.json();
     setResult(data);
@@ -68,23 +72,44 @@ const SandboxView = () => {
           {result ? (
             <div className="space-y-4 animate-in fade-in">
               <div className="flex justify-between items-center border-b border-border-1 pb-2">
-                <span className="text-[10px]">PREDICTED GTFI IMPACT</span>
-                <span className="text-bear font-bold">{result.predicted_gtfi_impact * 100}%</span>
+                <span className="text-[10px]">PREDICTED GTFI SHIFT</span>
+                <span className={result.predicted_gtfi_shift < 0 ? "text-bear font-bold" : "text-bull font-bold"}>
+                    {(result.predicted_gtfi_shift * 100).toFixed(2)}%
+                </span>
               </div>
               <div className="flex justify-between items-center border-b border-border-1 pb-2">
-                <span className="text-[10px]">CONFIDENCE</span>
-                <span className="text-bull font-bold">{result.confidence}%</span>
+                <span className="text-[10px]">SWARM CONSENSUS</span>
+                <span className="text-white font-bold">{result.swarm_forecast.action}</span>
               </div>
+              
               <div className="pt-2">
-                <p className="text-xs italic text-text-2">"{result.message}"</p>
+                <h3 className="text-[10px] uppercase mb-2 text-text-3">Graph Reasoning</h3>
+                <p className="text-xs italic text-text-2">
+                  {result.graph_impact?.reasoning || "No direct graph path identified for this location."}
+                </p>
               </div>
+
               <div className="pt-4">
-                <span className="text-[10px] block mb-2">VULNERABLE TICKERS</span>
-                <div className="flex gap-2">
-                  {result.affected_tickers.map((t: string) => (
-                    <span key={t} className="bg-surface-3 px-2 py-1 text-[10px] border border-border-1">{t}</span>
-                  ))}
+                <span className="text-[10px] block mb-2 uppercase text-text-3">Affected Tickers</span>
+                <div className="flex flex-wrap gap-2">
+                  {result.graph_impact?.affected_tickers?.map((t: any) => (
+                    <div key={t.ticker} className="bg-slate-900 border border-border-1 px-2 py-1 flex flex-col min-w-[60px]">
+                        <span className="text-[10px] font-bold text-accent-primary">{t.ticker}</span>
+                        <span className={`text-[8px] ${t.impact_score < 0 ? "text-bear" : "text-bull"}`}>
+                            {t.impact_score.toFixed(3)}
+                        </span>
+                    </div>
+                  )) || <span className="text-[10px] text-text-4 italic">No high-confidence ticker impacts detected.</span>}
                 </div>
+              </div>
+
+              <div className="pt-4 border-t border-border-1">
+                 <h3 className="text-[10px] uppercase mb-2 text-text-3">Swarm Insight</h3>
+                 <div className="bg-white/5 p-3 rounded-sm">
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                        {result.swarm_forecast.prediction}
+                    </p>
+                 </div>
               </div>
             </div>
           ) : (

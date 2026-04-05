@@ -7,15 +7,13 @@ SatTrade is a high-fidelity, production-ready trading intelligence terminal that
 ## ✨ Features
 
 - **🌍 3D World Intelligence**: Real-time WebGL globe visualizing global maritime and aviation freight.
-- **🛰️ Live Intelligence Seeds**: Production-grade data fusion from 10+ real-time sources:
-    - **Thermal**: NASA FIRMS (VIIRS/SNPP) industrial heat monitoring.
-    - **Seismic**: USGS real-time earthquake triggering.
-    - **Environmental**: OpenAQ & Open-Meteo Air Quality (PM2.5) and Sea State.
-    - **Macro**: FRED (St. Louis Fed) financial benchmarks.
+- **🧠 Autonomous GraphRAG**: Self-evolving Knowledge Graph that extracts corporate/industrial relationships from live news using LLMs.
+- **🧬 Performance-Audit Swarm**: Multi-agent swarm intelligence with dynamic persona re-weighting based on predictive accuracy.
 - **🕵️ Dark Vessel Intelligence**: Sentinel-1 SAR backscatter cross-referencing to detect and validate vessels with silent transponders (Dark Fleet).
+- **🕹️ Digital Scenario Sandbox**: "What-if" modeling environment to simulate global trade disruptions and cascaded market impacts.
+- **🛰️ Live Intelligence Seeds**: Production-grade data fusion from 20+ real-time sources (Thermal, Seismic, Environmental, OSINT).
 - **📈 TFT Quantile Forecasting**: Temporal Fusion Transformer (TFT) modeling providing P10/P50/P90 price range forecasts on all tracked equities.
 - **⌨️ NLP Command Engine**: Bloomberg-style command bar with semantic natural language intent routing.
-- **🧬 Weighted Alpha Scoring**: Principled signal fusion (Thermal > Maritime > Aviation) based on historical Information Coefficient (IC).
 
 ---
 
