@@ -3,9 +3,15 @@
 #include "Analysis.hpp"
 #include "Monitor.hpp"
 #include "BehavioralPredictor.hpp"
+#include "SpatialEngine.hpp"
+#include "SwarmSimulator.hpp"
 #include <iomanip>
 #include <csignal>
 #include <algorithm>
+#include <iostream>
+#include <vector>
+#include <map>
+#include <thread>
 
 using namespace SatTrade;
 
