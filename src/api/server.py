@@ -38,6 +38,7 @@ from src.live.orbits import get_all_eo_satellites
 from src.live.portfolio import get_portfolio_status
 from src.live.thermal import get_global_thermal
 from src.live.vessels import detect_dark_vessels, get_all_vessels
+from src.signals.news_signals import get_news_trade_signal_engine
 from src.swarm.graph_evolver import get_graph_evolver
 from src.swarm.graphrag_engine import get_graphrag_engine
 from src.swarm.simulation_orchestrator import get_orchestrator
@@ -430,6 +431,39 @@ async def workflows_endpoint():
         "ts": datetime.now(UTC).isoformat()
     }
 
+@app.post("/api/sandbox/simulate")
+async def sandbox_simulate(payload: dict = Body(...)):
+    """
+    Advanced MiroFish Sandbox: Inject a hypothetical event and simulate 
+    cascading impact through Knowledge Graph and Swarm.
+    """
+    event_title = payload.get("title", "Hypothetical Disruption")
+    location_id = payload.get("location_id") # Node ID in Graph
+    severity = payload.get("severity", 0.5)
+    
+    engine = get_news_trade_signal_engine()
+    graph_engine = get_graphrag_engine()
+    
+    # 1. Simulate Graph Impact
+    graph_impact = {}
+    if location_id:
+        graph_impact = graph_engine.analyze_facility_event(location_id, "simulated_event", severity)
+    
+    # 2. Simulate Swarm Consensus
+    swarm_forecast = await mirofish_agent.generate_forecast(
+        requirement=f"SIMULATION: {event_title} at {location_id if location_id else 'Global'}. Assess systemic risk.",
+        persona="Standard"
+    )
+    
+    return {
+        "status": "SIMULATION_COMPLETE",
+        "event": event_title,
+        "graph_impact": graph_impact,
+        "swarm_forecast": swarm_forecast,
+        "predicted_gtfi_shift": -0.1 * severity if swarm_forecast.get('action') == 'BEARISH' else 0.02 * severity,
+        "timestamp": datetime.now(UTC).isoformat()
+    }
+
 @app.post("/api/sandbox/inject")
 async def sandbox_inject(payload: dict):
     """
@@ -534,6 +568,14 @@ async def graph_path(start: str, end: str):
 async def black_swan_alerts():
     detector = get_black_swan_detector()
     return await detector.detect_events()
+
+# ─── SIGNALS ───────────────────────────────────────────────────────────────
+@app.get("/api/signals/news-driven")
+async def news_driven_signals():
+    news = await get_all_news(max_per_feed=20)
+    news_data = [{"title": n.title, "summary": n.summary} for n in news]
+    engine = get_news_trade_signal_engine()
+    return await engine.generate_signals(news_data)
 
 # ─── ALIASES FOR FRONTEND COMPATIBILITY ────────────────────────────────────
 @app.get("/api/intelligence/aircraft")
