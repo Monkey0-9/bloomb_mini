@@ -345,7 +345,29 @@ async def news_live_endpoint():
     items = await get_all_news(max_per_feed=10)
     return {
         "articles": [
-            {"source": i.source, "time": i.published[11:16], "text": i.title, "url": i.url}
+            {"source": i.source, "time": i.published[11:16], "text": i.title, "url": i.url, "summary": i.summary, "category": i.category}
+            for i in items
+        ]
+    }
+
+@app.get("/api/news/search")
+async def news_search_endpoint(q: str = "global trade"):
+    """Search for news using GDELT and RSS."""
+    from src.live.news import fetch_gdelt, fetch_rss, RSS_FEEDS
+    
+    tasks = [fetch_gdelt(q, max_records=20)]
+    # Search in a few top RSS feeds (some RSS feeds support search but many don't, 
+    # so we'll just filter our cache or fetch specialized ones if possible)
+    # For now, we'll just use GDELT for search as it's the most powerful
+    
+    results = await asyncio.gather(*tasks)
+    items = []
+    for res in results:
+        items.extend(res)
+    
+    return {
+        "articles": [
+            {"source": i.source, "time": i.published[11:16], "text": i.title, "url": i.url, "summary": i.summary, "category": i.category}
             for i in items
         ]
     }

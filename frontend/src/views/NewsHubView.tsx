@@ -14,6 +14,8 @@ const NewsHubView = () => {
   const [newsArticles, setNewsArticles] = useState<any[]>([]);
   const [isMuted, setIsMuted] = useState(true);
   const [selectedArticle, setSelectedArticle] = useState<any>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
 
   const streams = [
     { id: 'iss', title: 'NASA Earth Live', url: 'https://www.youtube.com/embed/S_8S-P3K53k', category: 'Orbital Recon' },
@@ -22,20 +24,43 @@ const NewsHubView = () => {
   ];
   const [selectedStream, setSelectedStream] = useState(streams[1]);
 
+  const loadNews = async () => {
+    if (isSearching) return;
+    try {
+      const response = await fetch('/api/news/live');
+      const data = await response.json();
+      setNewsArticles(data.articles || data.news || []);
+    } catch (err) {
+      console.error('Failed to fetch text news:', err);
+    }
+  };
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) {
+      setIsSearching(false);
+      loadNews();
+      return;
+    }
+    
+    setIsSearching(true);
+    try {
+      const response = await fetch(`/api/news/search?q=${encodeURIComponent(searchQuery)}`);
+      const data = await response.json();
+      setNewsArticles(data.articles || []);
+    } catch (err) {
+      console.error('Search failed:', err);
+    }
+  };
+
   useEffect(() => {
-    const loadNews = async () => {
-      try {
-        const response = await fetch('/api/news/live');
-        const data = await response.json();
-        setNewsArticles(data.articles || data.news || []);
-      } catch (err) {
-        console.error('Failed to fetch text news:', err);
-      }
-    };
     loadNews();
-    const interval = setInterval(loadNews, 30000);
+    const interval = setInterval(() => {
+        if (!isSearching) loadNews();
+    }, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isSearching]);
+
 
   return (
     <div className="flex-1 flex flex-col bg-slate-950 overflow-hidden font-mono selection:bg-accent-primary selection:text-void">
@@ -110,6 +135,16 @@ const NewsHubView = () => {
             <span className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-300 flex items-center gap-3">
               <Newspaper size={16} className="text-accent-primary" /> Global_Surveillance_Feed
             </span>
+            <form onSubmit={handleSearch} className="flex-1 max-w-md ml-8 mr-4 relative">
+              <input 
+                type="text" 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="SEARCH_MARKET_INTELLIGENCE..."
+                className="w-full bg-slate-900 border border-white/10 px-10 py-1.5 text-[10px] text-white uppercase font-mono tracking-widest outline-none focus:border-accent-primary/50"
+              />
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            </form>
             <span className="text-[9px] font-mono text-slate-500 font-bold uppercase tracking-widest bg-white/5 px-2 py-0.5 border border-white/5">24H_Continuous_Scan</span>
           </header>
           
@@ -155,7 +190,7 @@ const NewsHubView = () => {
                 <h1 className="font-display text-5xl text-white uppercase leading-none mb-12 tracking-tighter italic border-l-4 border-accent-primary pl-8">{selectedArticle.text}</h1>
                 <div className="prose prose-invert max-w-none prose-p:text-lg prose-p:leading-relaxed prose-p:text-slate-300 font-sans italic opacity-90">
                   <p>
-                    {selectedArticle.content || 
+                    {selectedArticle.summary || selectedArticle.content || 
                     `REGULATORY FILING SUMMARY: ${selectedArticle.text}. 
                     Automated sentiment analysis indicates a ${selectedArticle.impact || 'neutral'} impact on the 
                     correlated physical assets. Satellite surveillance of associated manufacturing nodes 

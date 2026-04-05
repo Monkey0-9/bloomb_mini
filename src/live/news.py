@@ -17,8 +17,8 @@ log = structlog.get_logger()
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
 
 RSS_FEEDS = {
-    "reuters_biz":   ("https://feeds.reuters.com/reuters/businessNews", "financial"),
-    "reuters_world": ("https://feeds.reuters.com/Reuters/worldNews",    "geopolitics"),
+    "reuters_biz":   ("https://www.reutersagency.com/feed/?taxonomy=markets&post_type=reuters-best", "financial"),
+    "reuters_world": ("https://www.reutersagency.com/feed/?taxonomy=world&post_type=reuters-best",    "geopolitics"),
     "tradewinds":    ("https://www.tradewindsnews.com/rss",            "shipping"),
     "hellenic":      ("https://www.hellenicshippingnews.com/feed/",    "shipping"),
     "splash247":     ("https://splash247.com/feed/",                   "shipping"),
@@ -30,6 +30,14 @@ RSS_FEEDS = {
     "sec_8k":        (("https://www.sec.gov/cgi-bin/browse-edgar"
                        "?action=getcurrent&type=8-K&count=20&output=atom"), "filings"),
     "marinelink":    ("https://www.marinelink.com/rss/news",           "shipping"),
+    "seeking_alpha": ("https://seekingalpha.com/market_currents.xml",   "financial"),
+    "marketwatch":   ("https://feeds.content.dowjones.io/public/rss/mw_topstories", "financial"),
+    "cnbc":          ("https://www.cnbc.com/id/19746125/device/rss/rss.xml", "financial"),
+    "investing_com": ("https://www.investing.com/rss/news_commodities.rss", "commodities"),
+    "aljazeera":     ("https://www.aljazeera.com/xml/rss/all.xml",      "geopolitics"),
+    "bbc_world":     ("https://feeds.bbci.co.uk/news/world/rss.xml",     "geopolitics"),
+    "scmp":          ("https://www.scmp.com/rss/91/feed",               "asia_geopolitics"),
+    "nikkei":        ("https://asia.nikkei.com/rss/feed/nar",           "asia_biz"),
 }
 
 GDELT_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
@@ -175,7 +183,7 @@ async def get_all_news(max_per_feed: int = 5) -> list[NewsItem]:
     for source_key, (url, category) in RSS_FEEDS.items():
         tasks.append(fetch_rss(source_key, url, category, max_per_feed))
 
-    for query in ["shipping tanker freight", "military conflict"]:
+    for query in ["shipping tanker freight", "military conflict", "global trade tariffs", "commodity supply chain", "port congestion", "energy crisis", "semiconductor trade"]:
         tasks.append(fetch_gdelt(query, max_records=8))
 
     results = await asyncio.gather(*tasks)
